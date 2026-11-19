@@ -38,4 +38,4 @@
 | #37 | Q5 live routing fixes | sol-loop: gpt-6.2-sol (high) | 5 (extended: injection and account routing) | approve | r1: code reads customer status, code's reply and named source for planted injections; r2: flagged chunks uncited, fallback keeps tier2, summary order, failed status read; r3: provider refusal routes by status, failed-read reply; r4: swallowed timeout | – | not reported |
 | #38 | D3 doc pointers + offline demo | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
 | #39 | C3 council review of the eval cases | sol-loop: gpt-6.2-sol (high); case content: council (gpt-6.2-sol, gpt-6.2-astra, claude-opus-5-5, high) | 1 (council: 3) | changes (one should + two nits, wording, fixed after the round and verified by the orchestrator) | R1 README said only a human sets the flag | – | not reported |
-| #40 | T2 harden tests | sol-loop: gpt-6.2-sol (high) | 3 | approve | S1–S4 weak-test blockers (see PR) | – | not reported |
+| #40 | T2 harden tests | sol-loop: gpt-6.2-sol (high) | 3 | approve | S1–S6: weak-test blockers S1–S4, gateway cancellation and timeout coverage S5–S6 (see PR) | – | not reported |

@@ -70,7 +70,7 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | Q4 reviewer reasons code already handled | Q3 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 2) | [#21](https://github.com/rick-learns/triagewright/pull/21) |
 | Q5 live routing fixes: planted injections to security, locked suspended accounts to tier2, asctime Retry-After | Q4, RF1, RF4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5, extended: injection and account routing) | [#37](https://github.com/rick-learns/triagewright/pull/37) |
 | L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5; live latency not measured yet) | [#30](https://github.com/rick-learns/triagewright/pull/30) |
-| X2 full live eval, `evals/report.md` | Q5, L1, F2 | `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | running (Gemini free tier degraded; run on OpenRouter `:free`, labeled) | – |
+| X2 full live eval, `evals/report.md`, replay recordings | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | running (Gemini free tier degraded; run on OpenRouter `:free`, labeled). Replay recordings not made yet; D3's scripted demo doesn't produce them | – |
 
 ### Lanes (parallel, disjoint owned paths)
 
@@ -85,7 +85,7 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | merged | [#24](https://github.com/rick-learns/triagewright/pull/24) |
 
 Second wave (refactors; RF4–RF6 launched 10:31 UTC, RF1 at 10:38 UTC). RF1 moved ahead of Q5 because the live
-fixes wait for the free-tier quota to reset; `src/triagewright/agent/**` and `tests/agent/**`
+fixes were waiting for the free-tier quota to reset; `src/triagewright/agent/**` and `tests/agent/**`
 were handed to RF1 until it merged (`llm/**` and `tests/llm/**` to RF4); both returned on merge (#35, #34).
 
 | id | deps | owned paths | worker | state | PR |
