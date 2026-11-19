@@ -7,6 +7,7 @@ import time
 import pytest
 
 from tests.agent.helpers import (
+    SHIPPING,
     TIPS,
     FakeClock,
     FlaggingGuardrails,
@@ -117,7 +118,9 @@ def test_many_colliding_metadata_keys_stay_distinct_and_fast() -> None:
     keys = {"[EMAIL]#3": "literal"} | {f"u{i}@x": str(i) for i in range(20_000)}
     started = time.perf_counter()
     redacted = s.coordinator._redact_metadata(keys)
-    assert time.perf_counter() - started < 2
+    # Linear takes well under a second; quadratic probing over 20k keys takes minutes. The
+    # wide bound keeps a loaded machine from failing it.
+    assert time.perf_counter() - started < 10
     assert len(redacted) == len(keys)
     assert redacted["[EMAIL]#3"] == "literal"
     assert redacted["[EMAIL]"] == "0" and redacted["[EMAIL]#4"] == "2"
@@ -258,7 +261,7 @@ async def test_fallback_in_a_flagged_request_goes_to_security() -> None:
     assert s.escalation_args()["queue"] == "security"
 
 
-async def test_flagged_tool_output_is_wrapped_as_data() -> None:
+async def test_flagged_tool_output_is_wrapped_as_data_and_goes_to_security() -> None:
     guard = FlaggingGuardrails("1z1002003", sources=[ContentSource.TOOL_OUTPUT])
     s = stack(
         [triage(), call("get_order", {"order_id": "ord_a1002"}), finalize(), review()],
@@ -269,7 +272,12 @@ async def test_flagged_tool_output_is_wrapped_as_data() -> None:
     assert result.content.startswith("<data>")
     assert result.content.endswith(prompts.FLAGGED_NOTE)
     assert response.triage is not None and response.triage.injection_suspected
-    assert response.status is ResolutionStatus.RESOLVED  # flagged, but nothing to block
+    # Planted in a record, not the customer's ask: an attack on the system, so a human looks.
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert args["queue"] == "security"
+    assert "planted in get_order" in str(args["summary"])
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)  # no model words go out
 
 
 async def test_flag_from_the_last_screen_blocks_an_earlier_proposal() -> None:
@@ -301,3 +309,34 @@ async def test_kb_text_is_screened_and_untrusted_docs_are_not_cited() -> None:
     assert response.citations == []
     assert response.triage is not None and response.triage.injection_suspected
     assert (ContentSource.KB_DOCUMENT, f"{TIPS.title}\n{TIPS.text}") in guard.screened
+    args = s.escalation_args()
+    assert args["queue"] == "security"
+    assert f"possible prompt injection; planted in {TIPS.chunk_id}" in str(args["summary"])
+    assert "pair it" not in response.reply
+
+
+async def test_a_flagged_trusted_kb_chunk_is_not_cited() -> None:
+    guard = FlaggingGuardrails("3 to 7 business days", sources=[ContentSource.KB_DOCUMENT])
+    s = stack(
+        [
+            triage("shipping"),
+            call("search_kb", {"query": SHIPPING.text}),
+            finalize("It ships soon.", citations=[(SHIPPING.chunk_id, SHIPPING.text[:40])]),
+            review(),
+        ],
+        guardrails=guard,
+    )
+    response = await s.resolve(sample_ticket("How long does shipping take?"))
+    assert response.citations == []
+    assert f"planted in {SHIPPING.chunk_id}" in str(s.escalation_args()["summary"])
+
+
+async def test_a_fallback_names_where_the_injection_was_planted() -> None:
+    guard = FlaggingGuardrails("1z1002003", sources=[ContentSource.TOOL_OUTPUT])
+    s = stack([triage(), call("get_order", {"order_id": "ord_a1002"})], guardrails=guard)
+    s.coordinator._config = s.coordinator._config.model_copy(update={"max_turns": 1})
+    response = await s.resolve(sample_ticket())
+    assert response.stop is LoopStop.MAX_TURNS
+    summary = str(s.escalation_args()["summary"])
+    assert "possible prompt injection; planted in get_order" in summary
+    assert summary.index("Why escalated") < summary.index("Facts checked")

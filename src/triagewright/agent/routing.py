@@ -13,11 +13,22 @@ from triagewright.contracts.agents import (
     FinalResponse,
     LoopStop,
     ResolutionStatus,
+    TicketCategory,
 )
 from triagewright.contracts.policy import REFUND_OUTCOME
 from triagewright.contracts.rag import Citation
-from triagewright.contracts.tools import CreateEscalationInput, RefundReason, ToolName
-from triagewright.contracts.world import EscalationQueue, EscalationReason, Priority
+from triagewright.contracts.tools import (
+    CreateEscalationInput,
+    GetCustomerInput,
+    RefundReason,
+    ToolName,
+)
+from triagewright.contracts.world import (
+    CustomerStatus,
+    EscalationQueue,
+    EscalationReason,
+    Priority,
+)
 
 
 class Routing(Replies, RefundRules):
@@ -41,6 +52,11 @@ class Routing(Replies, RefundRules):
                     EscalationReason.ACCOUNT_INACTIVE if inactive else EscalationReason.POLICY_LIMIT
                 )
                 why.append(f"refund blocked by policy ({winning})")
+        if _inactive_account(run):
+            # The suspended or closed row wins over self-serve lockout and the security row.
+            queue = queue or EscalationQueue.TIER2
+            reasons.append(EscalationReason.ACCOUNT_INACTIVE)
+            why.append(f"account is {run.customer_status}")
         reviewed = (
             review is not None
             and review.escalate
@@ -56,7 +72,8 @@ class Routing(Replies, RefundRules):
             failed = sorted({t.value for t in run.tool_failures})
             why.append(f"tool kept failing after retries ({', '.join(failed)})")
         # A refund ask with injection suspected anywhere, the reviewer's screen included
-        # (it runs last), goes to security whatever the models did.
+        # (it runs last), goes to security whatever the models did. So does an injection
+        # planted in a tool result or KB page: it targets the system, not the customer's ask.
         forced_write = run.triage is not None and (
             _refund_requested(run)
             or (
@@ -64,10 +81,12 @@ class Routing(Replies, RefundRules):
                 and EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
             )
         )
-        if run.injection and (queue is not None or run.irreversible_requested or forced_write):
+        other = queue is not None or run.irreversible_requested or forced_write
+        if run.injection and (other or run.planted_in):
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
-            why.insert(0, "possible prompt injection alongside a write or handoff request")
+            alongside = " alongside a write or handoff request" if other else ""
+            why.insert(0, _injection_why(run, alongside))
         if queue is None:
             return None
         given = review.handoff_summary if review is not None and reviewed else ""
@@ -96,7 +115,13 @@ class Routing(Replies, RefundRules):
         decision = self._route(run, review, proposed)
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
         if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
-            reply = self._refund_reply(run, reply, decision, notes)
+            reply = self._refund_reply(reply, decision)
+        elif decision is not None and (
+            run.planted_in or _inactive_account(run) or ToolName.GET_CUSTOMER in run.tool_failures
+        ):
+            # The models read the planted text, or drafted a self-serve answer the account's
+            # status rules out or that its status can't confirm, so none of their words go out.
+            reply = prompts.FALLBACK_REPLY
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
@@ -117,10 +142,14 @@ class Routing(Replies, RefundRules):
         why = [fallback.detail]
         if run.tool_failures:
             reasons.append(EscalationReason.TOOL_FAILURE)
+        if _inactive_account(run):
+            queue = EscalationQueue.TIER2
+            reasons.append(EscalationReason.ACCOUNT_INACTIVE)
+            why.append(f"account is {run.customer_status}")
         if run.injection:
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
-            why.insert(0, "possible prompt injection")
+            why.insert(0, _injection_why(run))
         decision = EscalationDecision(
             escalate=True,
             reasons=list(dict.fromkeys(reasons)),
@@ -160,6 +189,33 @@ class Routing(Replies, RefundRules):
         except Fallback:
             return prompts.LOGGED_FOR_REVIEW
         return prompts.LOGGED_FOR_REVIEW if result.is_error else prompts.handed_off(decision.queue)
+
+
+def _inactive_account(run: RequestRun) -> bool:
+    account = run.triage is not None and run.triage.category is TicketCategory.ACCOUNT_ACCESS
+    inactive = (CustomerStatus.SUSPENDED, CustomerStatus.CLOSED)
+    return account and run.customer_status in inactive
+
+
+async def _check_account(run: RequestRun) -> None:
+    """Read the customer's status for an account-access ticket if no model did: only
+    ``get_customer`` shows a suspension, and it decides the queue."""
+    customer = run.ticket.customer_id
+    account = run.triage is not None and run.triage.category is TicketCategory.ACCOUNT_ACCESS
+    if not account or customer is None:
+        return
+    if run.customer_status is None:
+        args = GetCustomerInput(customer_id=customer).model_dump(mode="json")
+        result = await run.call_tool(ToolName.GET_CUSTOMER, args, "coordinator")
+        run.observe(result, args)
+        if result.is_error and ToolName.GET_CUSTOMER not in run.tool_failures:
+            # The status decides the queue, so not knowing it is a failure a human handles.
+            run.tool_failures.append(ToolName.GET_CUSTOMER)
+
+
+def _injection_why(run: RequestRun, alongside: str = "") -> str:
+    where = f"; planted in {', '.join(dict.fromkeys(run.planted_in))}" if run.planted_in else ""
+    return f"possible prompt injection{alongside}{where}"
 
 
 def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool) -> bool:

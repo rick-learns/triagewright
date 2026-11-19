@@ -75,12 +75,20 @@ proposal-free replies are written by code: a sign-in request when the ticket has
 no customer, or "which order?" when the ticket names no order and neither a
 product it names nor the order count picks one. A refund ask with injection
 suspected anywhere in the request goes to security with no model text.
+An injection planted in a tool result or KB page goes to security too (see
+"By situation").
 
 Worked example: `cus_ivo09` (closed) asks to refund `ord_i9001` (delivered
 86 days ago). Both `account_inactive` and `outside_window` apply.
 `account_inactive` wins, so the ticket is escalated to tier2, not refused.
 
 ## By situation
+
+Two code rules override the rows below. An injection planted in a tool result or
+KB page (not the customer's own text) sends any ticket to security with code's
+reply, even a self-serve, needs-info, or refusal row; the handoff names the
+flagged chunk or tool. On an `account_access` ticket, code reads `get_customer`
+if no model did, and a suspended or closed account goes to tier2.
 
 | Situation | Status | Escalate | Queue | Must call | Cite |
 | --- | --- | --- | --- | --- | --- |

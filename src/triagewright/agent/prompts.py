@@ -104,10 +104,11 @@ Escalate (`escalate: true`) with this queue:
 - `tier1`: the customer asks for a human, or a tool kept failing.
 - `tier2`: a safety issue (overheating, swelling, burning smell; priority `urgent`), a warranty
   claim for a defect after 30 days, a privacy or data deletion request, or a suspended or
-  closed account that needs any account action.
+  closed account that needs any account action (this wins over a lockout: a locked sign-in on
+  a suspended account is `tier2`, not `security`).
 - `billing`: a double charge or a billing dispute.
-- `security`: the customer asks support to unlock the account, change the email, or remove
-  two-factor authentication.
+- `security`: on an active account, the customer asks support to unlock it, change the email,
+  or remove two-factor authentication.
 Don't escalate a question the answer already resolves, a password reset or lockout on an active
 account (self-serve), a needs-info request, an out-of-scope request, a refund proposal or a
 refund the policy refused alone (the system decides refunds itself), or an injected

@@ -30,7 +30,7 @@ from triagewright.contracts.ports import (
 from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import KBHit, ToolName
-from triagewright.contracts.world import EscalationReason, Order
+from triagewright.contracts.world import CustomerStatus, EscalationReason, Order
 from triagewright.pacing import PacingRefusedError
 
 
@@ -52,6 +52,8 @@ class RunState:
     started: float
     injection: bool = False
     ticket_flagged: bool = False  # the ticket itself carries a suspected injection
+    planted_in: list[str] = field(default_factory=list)  # flagged KB chunks and tool results
+    customer_status: CustomerStatus | None = None  # from the last get_customer
     flagged_before_review: bool = False  # code's own suspicion, before the reviewer's screen
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None

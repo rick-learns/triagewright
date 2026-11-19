@@ -58,12 +58,13 @@ class RefundRules:
         elif _order_unclear(run):
             reply = prompts.WHICH_ORDER_FOR_REFUND
         else:
-            return final  # ``_check_final`` accepted no proposal-free reply: unreachable
+            # ``_check_final`` accepts this proposal-free reply only with injection suspected,
+            # and then security takes the ticket and ``_refund_reply`` drops the model's text.
+            return final
         return final.model_copy(update={"status": "needs_info", "reply": reply})
 
-    def _refund_reply(
-        self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
-    ) -> str:
+    @staticmethod
+    def _refund_reply(reply: str, decision: EscalationDecision | None) -> str:
         """Code states every refund outcome (``_note``), and a security handoff never carries
         model text. What's left is a reply code wrote: ``_own_refund_reply`` replaced any
         model reply beside a proposal, and a refusal's reply is code's."""

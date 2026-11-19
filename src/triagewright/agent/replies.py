@@ -102,9 +102,10 @@ class Replies:
         attempted += [f"{subagents.queued(a)} (not submitted)" for a in run.deferred]
         lines = [
             f"Customer goal: {goal[:300]}",
-            f"Facts checked: {facts}",
-            f"Attempted: {'; '.join(attempted) or 'no actions'}",
+            # Before the facts, so a long facts list can't cut the reasons off.
             f"Why escalated: {'; '.join(why) or 'reviewer decision'}",
+            f"Attempted: {'; '.join(attempted) or 'no actions'}",
+            f"Facts checked: {facts}",
         ]
         return "\n".join(lines)[:_SUMMARY_MAX]
 

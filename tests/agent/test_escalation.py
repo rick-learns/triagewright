@@ -5,21 +5,26 @@ from __future__ import annotations
 import pytest
 
 from tests.agent.helpers import (
+    FakeClock,
     RedactingGuardrails,
+    TimedModel,
     call,
     finalize,
     refund_script,
     refund_ticket,
     review,
     stack,
+    text,
     triage,
 )
 from triagewright.agent import prompts
 from triagewright.contracts.agents import (
     LoopConfig,
+    LoopStop,
     ResolutionStatus,
 )
 from triagewright.contracts.evals import ToolFault
+from triagewright.contracts.llm import StopReason
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.testing import (
     sample_ticket,
@@ -172,3 +177,126 @@ async def test_reviewer_escalation_without_queue_or_reasons_gets_defaults() -> N
     args = s.escalation_args()
     assert (args["queue"], args["reason_codes"]) == ("tier1", ["low_confidence"])
     assert str(args["summary"]).startswith("Customer goal:")
+
+
+# ---- inactive accounts -----------------------------------------------------------
+
+
+async def test_a_locked_sign_in_on_a_suspended_account_goes_to_tier2() -> None:
+    """Only get_customer shows the suspension, so code reads it when no model did."""
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            call("get_account", {"customer_id": "cus_eli05"}),
+            finalize("Use the password reset link to unlock your account."),
+            review(escalate=True, queue="security", reasons=["account_security"]),
+        ]
+    )
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert [c.caller for c in s.calls(ToolName.GET_CUSTOMER)] == ["coordinator"]
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert args["queue"] == "tier2"
+    assert "account_inactive" in str(args["reason_codes"])
+    assert "account is suspended" in str(args["summary"])
+    # The self-serve draft is ruled out by the status, so code writes the reply.
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)
+    assert "password reset" not in response.reply
+
+
+async def test_a_lockout_on_an_active_account_stays_self_serve() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            call("get_customer", {"customer_id": "cus_ava01"}),
+            finalize("Use the password reset link to unlock your account."),
+            review(),
+        ]
+    )
+    response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
+    assert len(s.calls(ToolName.GET_CUSTOMER)) == 1  # the model's read is reused
+    assert response.status is ResolutionStatus.RESOLVED
+    assert s.calls(ToolName.CREATE_ESCALATION) == []
+
+
+async def test_a_fallback_keeps_a_known_suspended_account_in_tier2() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            call("get_customer", {"customer_id": "cus_eli05"}),
+        ],
+        config=LoopConfig(max_turns=1),
+    )
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert response.stop is LoopStop.MAX_TURNS
+    assert s.escalation_args()["queue"] == "tier2"
+
+
+@pytest.mark.parametrize(
+    "category", [ErrorCategory.NOT_FOUND, ErrorCategory.INTERNAL], ids=lambda c: c.value
+)
+async def test_an_unreadable_account_status_is_a_tool_failure(category: ErrorCategory) -> None:
+    error = ToolError(category=category, message="no answer", retryable=False)
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            finalize("Use the password reset link to unlock your account."),
+            review(),
+        ],
+        faults=[ToolFault(tool=ToolName.GET_CUSTOMER, error=error, times=5)],
+    )
+    response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
+    assert len(s.calls(ToolName.GET_CUSTOMER)) == 1
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert args["queue"] == "tier1"
+    assert "tool_failure" in str(args["reason_codes"])
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)  # the draft can't be confirmed
+
+
+async def test_a_provider_refusal_still_routes_a_suspended_account_to_tier2() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ]
+    )
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert response.stop is LoopStop.REFUSAL
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "tier2"
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)
+
+
+async def test_a_provider_refusal_on_an_active_account_stays_refused() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ]
+    )
+    response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
+    assert response.status is ResolutionStatus.REFUSED
+    assert s.calls(ToolName.CREATE_ESCALATION) == []
+
+
+async def test_a_status_read_past_the_budget_after_a_refusal_hands_off() -> None:
+    clock = FakeClock()
+    model = TimedModel(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ],
+        clock=clock,
+        step_s=14,
+    )
+    s = stack(model=model, clock=clock, config=LoopConfig(total_timeout_s=30, handoff_reserve_s=3))
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert response.stop is LoopStop.TIMEOUT
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.calls(ToolName.GET_CUSTOMER) == []
+    assert s.escalation_args()["queue"] == "tier1"

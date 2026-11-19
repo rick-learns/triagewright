@@ -28,7 +28,7 @@ from triagewright.contracts.tools import (
     ToolName,
     ToolResult,
 )
-from triagewright.contracts.world import EscalationReason
+from triagewright.contracts.world import Customer, EscalationReason
 
 _HANDOFF_FLOOR_S = 1.0
 
@@ -119,10 +119,17 @@ class ToolCalls(RunState):
             flagged = False
             for hit in hits:
                 self.kb_hits.setdefault(hit.chunk_id, hit)
-                text = f"{hit.title}\n{hit.text}"
-                flagged = self.screen(text, ContentSource.KB_DOCUMENT) or flagged
+                if self.screen(f"{hit.title}\n{hit.text}", ContentSource.KB_DOCUMENT):
+                    flagged = True
+                    self.planted_in.append(hit.chunk_id)
             return as_data(content, flagged)
+        # Planted in a record or page, not the customer's ask: an attack on the system.
         flagged = self.screen(content, ContentSource.TOOL_OUTPUT)
+        if flagged:
+            self.planted_in.append(result.tool.value)
+        if result.tool is ToolName.GET_CUSTOMER and result.data is not None:
+            with contextlib.suppress(ValidationError):
+                self.customer_status = Customer.model_validate(result.data).status
         if result.data is not None:
             fact = f"{result.tool.value} {canonical_json(arguments)}: {canonical_json(result.data)}"
             self.facts.append(as_data(fact, flagged))
@@ -154,10 +161,13 @@ class ToolCalls(RunState):
         return _search_key(arguments) in self.kb_searches
 
     def cite(self, chunk_id: str, quote: str) -> Citation | None:
-        """A citation only for a trusted hit seen in this request whose text holds the quote."""
+        """A citation only for a trusted, unflagged hit seen in this request whose text holds
+        the quote."""
         hit = self.kb_hits.get(chunk_id)
         quote = quote.strip()
-        if hit is None or not hit.trusted or not quote or quote not in hit.text:
+        if hit is None or not hit.trusted or chunk_id in self.planted_in:
+            return None
+        if not quote or quote not in hit.text:
             return None
         return Citation(doc_id=hit.doc_id, chunk_id=hit.chunk_id, title=hit.title, quote=quote)
 

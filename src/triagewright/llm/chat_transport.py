@@ -61,6 +61,8 @@ def retry_after_seconds(value: str | None, *, now: datetime | None = None) -> fl
         when = parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
+    if when.tzinfo is None:  # the obsolete asctime form has no zone; HTTP dates are GMT
+        when = when.replace(tzinfo=UTC)
     return max((when - (now or datetime.now(UTC))).total_seconds(), 0.0)
 
 
