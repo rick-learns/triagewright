@@ -99,6 +99,7 @@ REFUND_READ_TOOLS: tuple[ToolName, ...] = (ToolName.SEARCH_KB,)
 _ORDER_ID = re.compile(r"\bord_[a-z0-9]{4,32}\b")
 
 _REFUND_POLICY_DOC = "kb_refund_policy"
+_POLICY_QUERY = "refund policy"
 # Errors the customer can fix by giving other details; anything else is a tool failure.
 _ASK_CUSTOMER = frozenset(
     {ErrorCategory.NOT_FOUND, ErrorCategory.VALIDATION, ErrorCategory.PERMISSION}
@@ -242,7 +243,7 @@ class Coordinator:
         the executor decides the outcome (behavior.md). Code checks both: a model can skip
         a prompt rule. Without a proposal, only the replies code writes are accepted (see
         ``_own_refund_reply``)."""
-        if not _refund_requested(run):
+        if not (_refund_requested(run) or _refund_proposed(run)):
             return None
         citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
         cited = any(c.doc_id == _REFUND_POLICY_DOC for c in citations)
@@ -259,8 +260,12 @@ class Coordinator:
     def _own_refund_reply(self, run: RequestRun, final: FinalizeArgs) -> FinalizeArgs:
         """A refund reply with no proposal behind it is written by code, never the model,
         so no model can deny or settle a refund: a sign-in request for an anonymous ticket,
-        or a question about which order when the records leave it open."""
-        if not _refund_requested(run) or _refund_proposed(run):
+        or a question about which order when the records leave it open. A reply beside a
+        refund proposal is code's too, before the reviewer sees it: the model writes before
+        the executor decides (``_settled`` normally writes it; this covers any other path)."""
+        if _refund_proposed(run):
+            return final.model_copy(update={"reply": prompts.REFUND_OUTCOME_REPLY})
+        if not _refund_requested(run):
             return final
         if run.ticket.customer_id is None:
             reply = prompts.SIGN_IN_FOR_REFUND
@@ -425,15 +430,12 @@ class Coordinator:
     def _refund_reply(
         self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
     ) -> str:
-        """Code states every refund outcome (``_note``), and the model writes before the
-        executor decides, so a reply beside a refund proposal is dropped, whatever triage
-        called the ticket; a security handoff never carries model text. What's left is a
-        reply code wrote (``_own_refund_reply``)."""
+        """Code states every refund outcome (``_note``), and a security handoff never carries
+        model text. What's left is a reply code wrote: ``_own_refund_reply`` replaced any
+        model reply beside a proposal, and a refusal's reply is code's."""
         security = decision is not None and decision.queue is EscalationQueue.SECURITY
         if security:
             return prompts.FALLBACK_REPLY
-        if _refund_proposed(run):  # with or without a note: a policy handoff has none
-            return prompts.REFUND_OUTCOME_REPLY
         return reply
 
     async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
@@ -634,9 +636,10 @@ async def _settled(run: RequestRun) -> FinalizeArgs | None:
     once the turn's own tools are done if no model did."""
     if not _refund_proposed(run):
         return None
-    if _policy_citation(run) is None:
+    if _policy_citation(run) is None and _POLICY_QUERY not in run.kb_queries:
+        # Once a request: a failed or empty lookup isn't repeated, nor is a model's own.
         search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
-        await search.handler({"query": "refund policy"})
+        await search.handler({"query": _POLICY_QUERY})
     citation = _policy_citation(run)
     if citation is None:
         return None

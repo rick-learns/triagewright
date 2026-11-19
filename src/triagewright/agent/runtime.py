@@ -144,6 +144,7 @@ class RequestRun:
     listed_all: bool = False  # whether it was every order (a full page may have more)
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
+    kb_queries: set[str] = field(default_factory=set)  # every search_kb query
     deferred: list[ProposedAction] = field(default_factory=list)
     irreversible_requested: bool = False  # any irreversible proposal, sent or not
     outcomes: list[ActionOutcome] = field(default_factory=list)
@@ -287,6 +288,8 @@ class RequestRun:
         spec = TOOL_SPECS[name]
 
         async def handler(arguments: JsonObject) -> tuple[str, bool]:
+            if name is ToolName.SEARCH_KB:
+                self.kb_queries.add(str(arguments.get("query", "")))
             result = await self.call_tool(name, arguments, caller)
             if name is ToolName.LIST_ORDERS and result.data is not None:
                 with contextlib.suppress(ValidationError):
