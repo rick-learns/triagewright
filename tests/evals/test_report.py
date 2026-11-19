@@ -2,21 +2,33 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from triagewright.contracts.evals import CaseResult, EvalCategory, EvalRunSummary
+from tests.evals.scenarios import make_case
+from triagewright.contracts.evals import (
+    CaseResult,
+    EvalCase,
+    EvalCategory,
+    EvalRunSummary,
+    GradeResult,
+)
 from triagewright.contracts.llm import Usage
 from triagewright.evals.report import (
     Baseline,
     BaselineEntry,
-    EvalReport,
+    ResultsError,
+    build_report,
     judge_report,
     load_baseline,
     percentile,
+    read_results,
     regressions,
     render_markdown,
+    review_status,
     summarize,
+    target_checks,
     updated_baseline,
 )
 from triagewright.evals.runner import CaseRecord, JudgeStatus, Mode
@@ -39,6 +51,7 @@ def rec(
     mode: Mode = "replay",
     judge_status: JudgeStatus = "none",
     judge_usage: Usage | None = None,
+    grades: list[GradeResult] | None = None,
 ) -> CaseRecord:
     return CaseRecord(
         key=case_id,
@@ -51,7 +64,7 @@ def rec(
             expected_escalate=expected,
             escalated=escalated,
             status=None,
-            grades=[],
+            grades=grades or [],
             cost_usd=cost,
             latency_ms=latency,
             error=error,
@@ -210,21 +223,37 @@ def test_judge_report_counts_and_tokens() -> None:
     assert not skipped.configured and skipped.skipped == 1
 
 
+def cases_for(*ids: str, reviewed: int = 0, **expected: Any) -> list[EvalCase]:
+    """Cases for ``ids``; the first ``reviewed`` are marked reviewed."""
+    return [
+        make_case(c, **expected).model_copy(update={"reviewed": n < reviewed})
+        for n, c in enumerate(ids)
+    ]
+
+
+def failing(grader: str, detail: str) -> GradeResult:
+    return GradeResult(grader=grader, kind="deterministic", passed=False, score=0.0, detail=detail)
+
+
 def test_markdown_states_mode_provider_models_and_failures() -> None:
     s = summary_of(
         rec("happy-001"),
-        rec("inject-001", category=EvalCategory.INJECTION, passed=False, unsafe=True),
+        rec(
+            "inject-001",
+            category=EvalCategory.INJECTION,
+            passed=False,
+            unsafe=True,
+            grades=[failing("must_not_call", "called: issue_refund")],
+        ),
         rec("toolfail-001", category=EvalCategory.TOOL_FAILURE, passed=False, error="timed out"),
     )
-    report = EvalReport(
-        summary=s,
-        judge=judge_report([], model=None),
-        baseline_compared=False,
-        filtered=False,
-        regressions=regressions(s, Baseline()),
+    cases = cases_for("happy-001", "inject-001", "toolfail-001", must_not_call=["issue_refund"])
+    report = build_report(
+        s, cases=cases, judge=judge_report([], model=None), baseline=Baseline(), filtered=False
     )
     md = render_markdown(report)
     for line in (
+        "- Git sha: `abc123`",
         "- Mode: replay: latency is estimated",
         "- Provider: replay",
         "- Models: coordinator=gemini-3.5-flash-lite",
@@ -232,14 +261,19 @@ def test_markdown_states_mode_provider_models_and_failures() -> None:
         "| Unsafe actions | 1 |",
         "| Escalation precision | n/a |",
         "| p95 latency, replay (estimated) | 100 ms |",
-        "| injection | 0.0% |",
+        "| injection | 1 | 0.0% | n/a | n/a |",
         "No judge configured: 0 rubric case(s)",
         "**Regression.**",
         "- 1 unsafe action(s)",
         "No baseline for mode replay",
-        "- `toolfail-001` (tool_failure): timed out",
+        "| `toolfail-001` | tool_failure | error | a response | timed out |",
+        "| `inject-001` | injection | must_not_call | never calls issue_refund "
+        "| called: issue_refund |",
+        "0 of 3 selected case(s) are human-reviewed",
+        "Unreviewed: `happy-001`, `inject-001`, `toolfail-001`",
     ):
         assert line in md, line
+    assert "Rendered from" not in md and "Pending" not in md
 
     judged = report.model_copy(
         update={
@@ -248,6 +282,9 @@ def test_markdown_states_mode_provider_models_and_failures() -> None:
             "filtered": True,
             "regressions": [],
             "summary": summary_of(rec("happy-001"), mode="live"),
+            "failures": [],
+            "pending": ["escal-001"],
+            "rendered_from": "var/evals/results.jsonl",
         }
     )
     md = render_markdown(judged)
@@ -255,3 +292,193 @@ def test_markdown_states_mode_provider_models_and_failures() -> None:
     assert "Filtered run: only unsafe actions were gated." in md
     assert "No regression." in md and "## Failures\n\nNone." in md
     assert "| p95 latency, live | 100 ms |" in md
+    assert "- Rendered from `var/evals/results.jsonl`, not a fresh run." in md
+    assert "- Pending: 1 selected case(s) have no result yet: `escal-001`" in md
+
+
+def test_category_table_has_escalation_precision_and_recall() -> None:
+    esc = EvalCategory.ESCALATION_REQUIRED
+    s = summary_of(
+        rec("escal-001", category=esc, expected=True, escalated=True),
+        rec("escal-002", category=esc, expected=True),
+        rec("happy-001", escalated=True, passed=False),
+    )
+    report = build_report(
+        s,
+        cases=cases_for("escal-001", "escal-002", "happy-001"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    assert report.categories[0].model_dump() == {
+        "category": "escalation_required",
+        "n_cases": 2,
+        "pass_rate": 1.0,
+        "escalation_precision": 1.0,
+        "escalation_recall": 0.5,
+    }
+    md = render_markdown(report)
+    assert "| escalation_required | 2 | 100.0% | 100.0% | 50.0% |" in md
+    assert "| happy_path | 1 | 0.0% | 0.0% | n/a |" in md
+    assert "| `happy-001` | happy_path |" not in md  # no grades and no error: nothing listed
+
+
+def test_failures_pair_each_check_with_its_expectation() -> None:
+    s = summary_of(
+        rec(
+            "escal-001",
+            category=EvalCategory.ESCALATION_REQUIRED,
+            passed=False,
+            grades=[
+                failing("status", "got resolved, want one of escalated"),
+                failing("queue", "got None, want billing"),
+                failing("attempts", "raw calls: get_order=1 (want 3)"),
+                failing("citations", "cited nothing, want one of kb_billing"),
+                GradeResult(grader="judge", kind="judge", passed=False, score=0.25),
+            ],
+        ),
+        rec("happy-009", passed=False, grades=[failing("status", "a | pipe")]),
+    )
+    cases = cases_for("happy-009") + cases_for(
+        "escal-001",
+        status_any=["escalated"],
+        escalate=True,
+        queue="billing",
+        attempts={"get_order": 3},
+        citations_any=["kb_billing"],
+        rubric="Names the billing team.",
+    )
+    report = build_report(
+        s, cases=cases, judge=judge_report([], model=None), baseline=Baseline(), filtered=False
+    )
+    checks = {c.grader: (c.expected, c.actual) for c in report.failures[0].checks}
+    assert checks == {
+        "status": ("one of escalated", "got resolved, want one of escalated"),
+        "queue": ("billing", "got None, want billing"),
+        "attempts": ("get_order=3", "raw calls: get_order=1 (want 3)"),
+        "citations": ("cites one of kb_billing", "cited nothing, want one of kb_billing"),
+        "judge": ("Names the billing team.", "failed (score 0.25)"),
+    }
+    md = render_markdown(report)
+    assert "| `happy-009` | happy_path | status | one of resolved | a \\| pipe |" in md
+
+
+def full_summary(
+    mode: Mode = "live",
+    *,
+    passed: int = 10,
+    unsafe: int = 0,
+    p95: float = 100.0,
+    cost: float = 0.001,
+) -> EvalRunSummary:
+    records = [
+        rec(f"happy-{n:03d}", passed=n < passed, latency=p95, cost=cost, unsafe=n < unsafe)
+        for n in range(10)
+    ]
+    return summary_of(*records, mode=mode)
+
+
+def test_targets_met() -> None:
+    review = review_status(cases_for(*(f"happy-{n:03d}" for n in range(50)), reviewed=50))
+    checks = target_checks(full_summary(passed=9), review)
+    assert [(t.target, t.measured, t.goal, t.met) for t in checks] == [
+        ("Pass rate", "90.0%", ">= 90%", True),
+        ("Unsafe actions", "0", "0", True),
+        ("p95 latency, live", "100 ms", "< 8 s", True),
+        ("Cost per ticket", "$0.001000", "< $0.02", True),
+        ("Reviewed cases", "50", ">= 50", True),
+    ]
+
+
+def test_targets_not_met() -> None:
+    review = review_status(cases_for(*(f"happy-{n:03d}" for n in range(50)), reviewed=49))
+    s = full_summary(passed=8, unsafe=1, p95=8000.0, cost=0.02)
+    checks = target_checks(s, review)
+    assert [t.met for t in checks] == [False, False, False, False, False]
+    md = render_markdown(
+        build_report(
+            s,
+            cases=cases_for(*(r.case_id for r in s.results)),
+            judge=judge_report([], model=None),
+            baseline=Baseline(),
+            filtered=False,
+        )
+    )
+    assert "| Pass rate | 80.0% | >= 90% | **not met** |" in md
+    assert "| Reviewed cases | 0 | >= 50 | **not met** |" in md
+
+
+def test_latency_target_is_live_only_and_stub_measures_no_cost() -> None:
+    review = review_status([])
+    replay = target_checks(full_summary("replay", p95=9000.0, cost=0.0), review)
+    assert replay[2].target == "p95 latency, replay (estimated)" and replay[2].met is None
+    assert replay[3].met is True
+    stub = target_checks(full_summary("stub", cost=0.5), review)
+    assert stub[2].met is None and (stub[3].measured, stub[3].met) == ("n/a", None)
+    md = render_markdown(
+        build_report(
+            full_summary("replay", cost=0.0),
+            cases=[],
+            judge=judge_report([], model=None),
+            baseline=Baseline(),
+            filtered=False,
+        )
+    )
+    assert "| p95 latency, replay (estimated) | 100 ms | < 8 s | not measured |" in md
+    assert "Latency is judged on live runs only" in md
+    assert "Cost is $0: the models are free" in md
+
+
+def test_latency_and_cost_are_unmeasured_when_every_case_errored() -> None:
+    s = summary_of(rec("happy-001", passed=False, error="timed out"), mode="live")
+    checks = target_checks(s, review_status([]))
+    assert [(t.measured, t.met) for t in checks[2:4]] == [("n/a", None), ("n/a", None)]
+    report = build_report(
+        s,
+        cases=cases_for("happy-001"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    md = render_markdown(report)
+    assert "| Cost per ticket (judge excluded) | n/a (no responses) |" in md
+    assert "| p95 latency, live | n/a (no responses) |" in md
+    assert "Cost is $0" not in md
+
+
+def test_review_status_counts_reviewed_cases() -> None:
+    status = review_status(cases_for("happy-001", "happy-002", "escal-001", reviewed=2))
+    assert (status.total, status.reviewed, status.unreviewed) == (3, 2, ["escal-001"])
+
+
+def write_lines(path: Path, *records: CaseRecord, tail: str = "") -> None:
+    path.write_text("".join(r.model_dump_json() + "\n" for r in records) + tail)
+
+
+def test_read_results_skips_a_torn_final_line(tmp_path: Path) -> None:
+    path = tmp_path / "results.jsonl"
+    write_lines(path, rec("happy-001"), rec("happy-002"), tail='{"key": "happy-0')
+    records, warnings = read_results(path)
+    assert [r.result.case_id for r in records] == ["happy-001", "happy-002"]
+    assert warnings == [f"{path}:3: skipped a torn final line"]
+
+    write_lines(path, rec("happy-001"), tail="\n\n")
+    assert read_results(path) == ([rec("happy-001")], [])
+
+    whole = rec("happy-002").model_dump_json().replace("happy-002", "caf\u00e9")
+    torn = whole.encode()[: whole.encode().index(b"\xa9")]  # cut inside the UTF-8 for e-acute
+    path.write_bytes(rec("happy-001").model_dump_json().encode() + b"\n" + torn)
+    assert read_results(path) == ([rec("happy-001")], [f"{path}:2: skipped a torn final line"])
+
+    path.write_text(rec("happy-001").model_dump_json())  # complete but unterminated: kept
+    assert read_results(path) == ([rec("happy-001")], [])
+
+
+def test_read_results_rejects_a_bad_line_before_the_end(tmp_path: Path) -> None:
+    path = tmp_path / "results.jsonl"
+    path.write_text('{"torn\n' + rec("happy-001").model_dump_json() + "\n")
+    with pytest.raises(ResultsError, match=r"results\.jsonl:1"):
+        read_results(path)
+    path.write_text(rec("happy-001").model_dump_json() + '\n{"key": 1}\n')  # terminated: corrupt
+    with pytest.raises(ResultsError, match=r"results\.jsonl:2"):
+        read_results(path)
