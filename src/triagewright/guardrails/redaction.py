@@ -68,27 +68,35 @@ _GROUP = re.compile(r"\d+")
 
 
 def _cards(text: str) -> Iterator[_Match]:
-    """Each run's Luhn-valid 13-19 digit windows of whole groups, longest first, left to right.
+    """The Luhn-valid 13-19 digit windows of whole groups that cover the most digits of a run.
 
     So "4111 1111 1111 1111 12/28" redacts the card and keeps the expiry month,
-    and two cards in a row are both redacted.
+    and two cards in a row are both redacted, whatever their group lengths.
     """
     for run in _DIGIT_RUN.finditer(text):
         groups = list(_GROUP.finditer(text, run.start(), run.end()))
-        first = 0
-        while first < len(groups):
-            prefixes: list[str] = []  # digits of groups[first..first+i], at most 19
-            for g in groups[first:]:
-                if len(digits := (prefixes[-1] if prefixes else "") + g.group()) > 19:
+        n = len(groups)
+        # covered[i]: most digits cards can cover in groups[i:]; card_end[i]: the card from
+        # groups[i] in that best cover (exclusive end index), or 0 to skip groups[i].
+        covered, card_end = [0] * (n + 1), [0] * (n + 1)
+        for i in reversed(range(n)):
+            covered[i], digits = covered[i + 1], ""
+            for j in range(i, n):
+                digits += groups[j].group()
+                if len(digits) > 19:
                     break
-                prefixes.append(digits)
-            for i in reversed(range(len(prefixes))):
-                if len(prefixes[i]) >= 13 and luhn_valid(prefixes[i]):
-                    end = groups[first + i].end()
-                    yield _Match(_CARD, groups[first].start(), end, prefixes[i])
-                    first += i
-                    break
-            first += 1
+                total = len(digits) + covered[j + 1]
+                # On a tie the longer card wins, so ">=".
+                if len(digits) >= 13 and total >= covered[i] and luhn_valid(digits):
+                    covered[i], card_end[i] = total, j + 1
+        i = 0
+        while i < n:
+            if not card_end[i]:
+                i += 1
+                continue
+            digits = "".join(g.group() for g in groups[i : card_end[i]])
+            yield _Match(_CARD, groups[i].start(), groups[card_end[i] - 1].end(), digits)
+            i = card_end[i]
 
 
 _SSN_RE = re.compile(r"(?<![\w-])(\d{3})([- ])(\d{2})\2(\d{4})(?![\w-])")
@@ -125,7 +133,7 @@ _GAP_WORDS = (
 )
 _CODE_RE = re.compile(
     rf"\b(?P<label>(?P<qual>{_QUALIFIED})|otp|passcode|pin|codes?)\b"
-    rf"(?P<gap>(?:[\s:#=,.\"'*()\[\]-]|\b(?:{_GAP_WORDS})\b)*?){_CODE_DIGITS}",
+    rf"(?P<gap>(?:[\s:#=,.\"'`*()\[\]-]|\b(?:{_GAP_WORDS})\b)*?){_CODE_DIGITS}",
     re.IGNORECASE,
 )
 # "123456 is your verification code"

@@ -22,6 +22,11 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
         "cards [CARD_NUMBER_1] [CARD_NUMBER_2]",
         [PIIType.CARD_NUMBER, PIIType.CARD_NUMBER],
     ),
+    (
+        "cards 3782 822463 10005 4242 4242 4242 4242",
+        "cards [CARD_NUMBER_1] [CARD_NUMBER_2]",
+        [PIIType.CARD_NUMBER, PIIType.CARD_NUMBER],
+    ),
     ("ssn 123-45-6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("ssn 123 45 6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("my SSN is 123456789", "my SSN is [SSN_1]", [PIIType.SSN]),
@@ -43,6 +48,7 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ("My OTP is 123 456", "My OTP is [ONE_TIME_CODE_1]", []),
     ('{"otp":"123456"}', '{"otp":"[ONE_TIME_CODE_1]"}', []),
     ("OTP **123456**", "OTP **[ONE_TIME_CODE_1]**", []),
+    ("OTP `123456`", "OTP `[ONE_TIME_CODE_1]`", []),
     ("verification code (123456)", "verification code ([ONE_TIME_CODE_1])", []),
 ]
 

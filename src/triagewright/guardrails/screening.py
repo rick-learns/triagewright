@@ -42,11 +42,17 @@ _ANY_TOOL = (
     r"(?:issue_refund|create_escalation|check_refund_eligibility|get_customer|get_account"
     r"|get_order|list_orders|search_kb)"
 )
-# "the previous instructions on the box" are a product's, not the assistant's.
+# "the previous instructions on the box" are a product's, not the assistant's. Only the
+# same clause counts: spaces, not a sentence break, separate the target from the phrase.
 _ON_A_THING = (
-    r"\W+(?:on|in|from|inside|with)\W+(?:the\W+|my\W+|this\W+|that\W+|your\W+)?(?:\w+\W+)?"
+    r" (?:on|in|from|inside|with) (?:the |my |this |that |your )?(?:\w+ )?"
     r"(?:box|label|package|packaging|manual|email|letter|receipt|leaflet|insert|sticker|slip"
     r"|card|form|website|site|page|app|bottle|device)s?\b"
+)
+# A policy check, not a message about one ("the verification email").
+_CHECK = (
+    r"(?:approval|verification|eligibility|policy|security|fraud)\W+"
+    r"(?:checks?|requirements?|process|steps?|rules)"
 )
 _TARGET = (
     r"(?:instructions?|rules|polic(?:y|ies)|guidelines|directives|prompts?|guardrails"
@@ -165,9 +171,10 @@ _RULES: tuple[_Rule, ...] = (
             r"\byou\s+(?:must|should|are\s+(?:required|instructed)\s+to)\W+(?:now\W+)?"
             r"(?:reveal\W+(?:\w+\W+){0,2}?(?:password|credentials?|secrets?|keys?|tokens?"
             rf"|prompt|instructions)|(?:ignore|disregard|override|bypass)\W+(?:\w+\W+){{0,2}}?"
-            rf"(?:{_TARGET}|approval|verification|checks?|limits?)"
-            r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without|regardless"
-            r"|to\W+(?:any|every|all)))\b",
+            rf"(?:{_TARGET}|(?:refund\W+)?limits?|{_CHECK})"
+            r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without\W+(?:\w+\W+){0,2}?"
+            r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?)"
+            r"|regardless\W+of|to\W+(?:any|every|all)))\b",
         ),
     ),
 )
