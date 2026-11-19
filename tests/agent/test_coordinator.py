@@ -1109,3 +1109,34 @@ async def test_a_flagged_refund_ask_mislabelled_by_triage_goes_to_security() -> 
     assert response.status is ResolutionStatus.ESCALATED
     assert s.escalation_args()["queue"] == "security"
     assert "Refunded!" not in response.reply
+
+
+async def test_a_policy_handoff_drops_the_models_refund_reply() -> None:
+    # Over the hard limit: escalated to billing, with no outcome note of its own.
+    *head, _, reviewed = refund_script("ord_c3001", 89900)
+    guessed = finalize("Refunded!", citations=POLICY_CITE)
+    s = stack([*head, guessed, reviewed])
+    response = await s.resolve(refund_ticket("cus_cho03", "ord_c3001"))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "billing"
+    assert "Refunded!" not in response.reply
+    assert response.reply.startswith(prompts.REFUND_OUTCOME_REPLY)
+
+
+async def test_a_product_match_on_a_full_page_is_not_unique() -> None:
+    # One Pebble Speaker order on a one-order page; older orders may have another.
+    s = stack(
+        [
+            triage("refund_request", intent="Refund one speaker"),
+            call("search_kb", {"query": "refund policy"}),
+            call("action"),
+            call("list_orders", {"customer_id": "cus_hal08", "limit": 1}),
+            submit("action", {"summary": "Not sure which."}),
+            finalize("Which order?", "needs_info", POLICY_CITE),
+            review(),
+        ]
+    )
+    body = "I bought two Pebble Speakers and only need one. Can I get a refund for one?"
+    response = await s.resolve(sample_ticket(body, customer_id="cus_hal08"))
+    assert response.status is ResolutionStatus.NEEDS_INFO
+    assert response.reply == prompts.WHICH_ORDER_FOR_REFUND

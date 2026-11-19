@@ -425,7 +425,7 @@ class Coordinator:
         security = decision is not None and decision.queue is EscalationQueue.SECURITY
         if security:
             return prompts.FALLBACK_REPLY
-        if notes:
+        if _refund_proposed(run):  # with or without a note: a policy handoff has none
             return prompts.REFUND_OUTCOME_REPLY
         return reply
 
@@ -601,15 +601,15 @@ def _refund_proposed(run: RequestRun) -> bool:
 def _order_unclear(run: RequestRun) -> bool:
     """The ticket names no order id, and the customer's orders (from ``list_orders``)
     don't narrow to one: by a product the ticket names, else by count. A full page
-    may have more orders behind it, so one order on it is not one order."""
+    may have more orders behind it, so it never narrows to one."""
     ticket = f"{run.ticket.subject}\n{run.ticket.body}"
     if run.listed_orders is None or _ORDER_ID.search(ticket) is not None:
         return False
+    if not run.listed_all:
+        return True  # older orders may match too
     text = ticket.lower()
     named = [o for o in run.listed_orders if any(i.name.lower() in text for i in o.items)]
-    if named:
-        return len(named) != 1
-    return len(run.listed_orders) != 1 or not run.listed_all
+    return len(named or run.listed_orders) != 1
 
 
 def _refund_decidable(run: RequestRun, status: str) -> bool:
