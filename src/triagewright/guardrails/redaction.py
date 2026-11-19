@@ -68,27 +68,29 @@ _GROUP = re.compile(r"\d+")
 
 
 def _cards(text: str) -> Iterator[_Match]:
-    """The Luhn-valid 13-19 digit windows of whole groups that cover the most digits of a run.
+    """Luhn-valid 13-19 digit windows of whole groups, taken left to right.
 
-    So "4111 1111 1111 1111 12/28" redacts the card and keeps the expiry month,
-    and two cards in a row are both redacted, whatever their group lengths.
+    A card starts at the first group that can start one; of the windows from
+    there, the one that leaves the most digits coverable after it wins (ties:
+    the longer card). So "4111 1111 1111 1111 1228 123" keeps the expiry and
+    CVV, and two cards in a row are both redacted, whatever their group lengths.
     """
     for run in _DIGIT_RUN.finditer(text):
         groups = list(_GROUP.finditer(text, run.start(), run.end()))
         n = len(groups)
-        # covered[i]: most digits cards can cover in groups[i:]; card_end[i]: the card from
-        # groups[i] in that best cover (exclusive end index), or 0 to skip groups[i].
+        # covered[i]: digits this scan covers in groups[i:]; card_end[i]: exclusive end of
+        # the card it takes at groups[i], or 0 if no card starts there.
         covered, card_end = [0] * (n + 1), [0] * (n + 1)
         for i in reversed(range(n)):
-            covered[i], digits = covered[i + 1], ""
+            best, digits = -1, ""
             for j in range(i, n):
                 digits += groups[j].group()
                 if len(digits) > 19:
                     break
                 total = len(digits) + covered[j + 1]
-                # On a tie the longer card wins, so ">=".
-                if len(digits) >= 13 and total >= covered[i] and luhn_valid(digits):
-                    covered[i], card_end[i] = total, j + 1
+                if len(digits) >= 13 and total >= best and luhn_valid(digits):
+                    best, card_end[i] = total, j + 1
+            covered[i] = best if card_end[i] else covered[i + 1]
         i = 0
         while i < n:
             if not card_end[i]:

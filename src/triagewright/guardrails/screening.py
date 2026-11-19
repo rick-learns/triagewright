@@ -51,8 +51,10 @@ _ON_A_THING = (
 )
 # A policy check, not a message about one ("the verification email").
 _CHECK = (
-    r"(?:approval|verification|eligibility|policy|security|fraud)\W+"
+    r"(?:(?:approval|verification|eligibility|policy|security|fraud)\W+"
     r"(?:checks?|requirements?|process|steps?|rules)"
+    r"|(?:approval|verification)(?!\W+(?:emails?|messages?|links?|codes?|texts?|letters?"
+    r"|notifications?)\b))"
 )
 _TARGET = (
     r"(?:instructions?|rules|polic(?:y|ies)|guidelines|directives|prompts?|guardrails"
@@ -173,7 +175,7 @@ _RULES: tuple[_Rule, ...] = (
             rf"|prompt|instructions)|(?:ignore|disregard|override|bypass)\W+(?:\w+\W+){{0,2}}?"
             rf"(?:{_TARGET}|(?:refund\W+)?limits?|{_CHECK})"
             r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without\W+(?:\w+\W+){0,2}?"
-            r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?)"
+            r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?|asking)"
             r"|regardless\W+of|to\W+(?:any|every|all)))\b",
         ),
     ),
@@ -187,6 +189,7 @@ _CONFUSABLES = str.maketrans(
     "aeopcyxisjdghkmtbhabehikmnoptyxaeikvoptux",
 )
 _JSON_ESCAPES = (("\\n", "\n"), ("\\r", "\n"), ("\\t", " "), ('\\"', '"'))
+_LINE_BREAKS = re.compile(r"\r\n?|[\v\f\x1c-\x1e\x85\u2028\u2029]")
 _SPACES = re.compile(r"[^\S\n]+")
 
 
@@ -202,7 +205,7 @@ def normalize(text: str) -> str:
     for escaped, plain in _JSON_ESCAPES:
         text = text.replace(escaped, plain)
     text = text.translate(_CONFUSABLES).casefold()
-    return _SPACES.sub(" ", text)
+    return _SPACES.sub(" ", _LINE_BREAKS.sub("\n", text))  # keep line breaks for clauses
 
 
 def screen(text: str, source: ContentSource) -> GuardrailVerdict:
