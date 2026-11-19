@@ -17,7 +17,8 @@ _NO_CHANGES_RULE = (
     "system states its outcome. Don't offer, promise, or claim that you'll make any other change "
     "(such as cancelling an order or changing an address). When the knowledge base says the "
     "customer can make the change themselves, say so, citing it, and give steps only if it "
-    "documents them. What a human team does after a handoff is the system's to state."
+    "documents them. You may describe a team's process the knowledge base documents, citing "
+    "it; confirming a handoff and its outcome is the system's job."
 )
 
 COORDINATOR = f"""You coordinate a customer-support agent for an online electronics store.
