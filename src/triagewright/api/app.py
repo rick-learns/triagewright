@@ -8,7 +8,6 @@ never raw paths, bodies, headers, or tokens.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
@@ -102,14 +101,16 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Lifespan shutdown runs on SIGINT and SIGTERM before uvicorn re-raises the signal,
-        # and on the loop that served requests (it owns the model HTTP pool).
+        # and on the loop that served requests (it owns the model HTTP pool). ``close`` stays
+        # on this thread: SQLite connections may only be closed by the thread that opened them.
+        # Its waits are bounded, and nothing else is served by now.
         try:
             yield
         finally:
             try:
                 await services.aclose()
             finally:
-                await asyncio.to_thread(services.close)  # bounded, blocking joins
+                services.close()
 
     app = FastAPI(title="triagewright", version="0.1.0", lifespan=lifespan)
 

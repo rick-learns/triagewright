@@ -22,5 +22,6 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     app = create_app(services, approver_token=settings.approver_token)
     # uvicorn's access log records client addresses; the app logs its own request lines.
-    # The app's lifespan shutdown releases ``services``.
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port, access_log=False)
+    # The app's lifespan shutdown releases ``services``. One worker: the app object holds them
+    # (WEB_CONCURRENCY would otherwise make uvicorn reject it).
+    uvicorn.run(app, host=settings.api_host, port=settings.api_port, access_log=False, workers=1)
