@@ -276,7 +276,7 @@ class Coordinator(Routing):
                 )
                 span.set_attribute("status", outcome.status.value)
             run.outcomes.append(outcome)
-            failed = outcome.status is ActionStatus.FAILED and outcome.result is not None
+            failed = outcome.status is ActionStatus.FAILED
             if failed and outcome.result is not None and not _needs_info(outcome):
                 run.tool_failures.append(outcome.result.tool)
             run.ensure_time()

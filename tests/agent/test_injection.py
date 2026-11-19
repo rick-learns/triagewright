@@ -117,7 +117,9 @@ def test_many_colliding_metadata_keys_stay_distinct_and_fast() -> None:
     keys = {"[EMAIL]#3": "literal"} | {f"u{i}@x": str(i) for i in range(20_000)}
     started = time.perf_counter()
     redacted = s.coordinator._redact_metadata(keys)
-    assert time.perf_counter() - started < 2
+    # Linear takes well under a second; quadratic probing over 20k keys takes minutes. The
+    # wide bound keeps a loaded machine from failing it.
+    assert time.perf_counter() - started < 10
     assert len(redacted) == len(keys)
     assert redacted["[EMAIL]#3"] == "literal"
     assert redacted["[EMAIL]"] == "0" and redacted["[EMAIL]#4"] == "2"

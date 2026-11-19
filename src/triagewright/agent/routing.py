@@ -96,7 +96,7 @@ class Routing(Replies, RefundRules):
         decision = self._route(run, review, proposed)
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
         if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
-            reply = self._refund_reply(run, reply, decision, notes)
+            reply = self._refund_reply(reply, decision)
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
