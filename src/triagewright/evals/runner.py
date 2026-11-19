@@ -89,9 +89,12 @@ class _Throttle:
 def input_key(
     case: EvalCase, *, mode: Mode, timeout_s: float, stack: str, judge_model: str | None
 ) -> str:
-    """Hash of everything a saved result depends on: the case and how it was run."""
+    """Hash of everything a saved result depends on: the case and how it was run.
+
+    Defaults are left out, so adding an optional contract field keeps old keys.
+    """
     payload = {
-        "case": case.model_dump(mode="json"),
+        "case": case.model_dump(mode="json", exclude_defaults=True),
         "mode": mode,
         "timeout_s": timeout_s,
         "stack": stack,

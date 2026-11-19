@@ -23,7 +23,7 @@ from triagewright.contracts.telemetry import RequestMetrics
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.contracts.world import WorldState
-from triagewright.evals.runner import CaseRecord, RunConfig, load_records, run_cases
+from triagewright.evals.runner import CaseRecord, RunConfig, input_key, load_records, run_cases
 from triagewright.testing import (
     FakeCaseRuntime,
     FakeCaseRuntimeFactory,
@@ -259,3 +259,13 @@ async def test_cost_and_latency_come_from_request_metrics() -> None:
 
     r = (await run(make_case(), measured)).result
     assert (r.cost_usd, r.latency_ms, r.ttft_ms) == (0.002, 1234.0, 210.0)
+
+
+def test_input_key_ignores_defaults_so_new_optional_fields_keep_old_keys() -> None:
+    def key(case: EvalCase) -> str:
+        return input_key(case, mode="replay", timeout_s=30, stack="s", judge_model=None)
+
+    # Pinned: adding an optional field with a default must not change this key.
+    base = make_case(status_any=["resolved"])
+    assert key(base) == "80981ecd7dd7ce7d17f89ffed10f31acd0fc960f89c95b028f9a73aff21e6093"
+    assert key(base) != key(make_case(status_any=["resolved"], min_refund_cents=1))
