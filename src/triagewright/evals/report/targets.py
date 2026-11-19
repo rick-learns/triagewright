@@ -1,4 +1,4 @@
-"""The release targets and the human-review count, judged on one run."""
+"""The release targets and the reviewed-case count, judged on one run."""
 
 from __future__ import annotations
 

@@ -340,7 +340,7 @@ def _report(args: argparse.Namespace) -> int:
 
 
 def _review(cases_dir: Path) -> int:
-    """List unreviewed cases by category. Marking a case reviewed stays a human edit."""
+    """List unreviewed cases by category. Marking a case reviewed stays a manual edit."""
     cases = load_eval_cases(cases_dir)
     status = review_status(cases)
     print(f"{status.reviewed} of {status.total} cases reviewed; checklist: evals/REVIEWING.md")
