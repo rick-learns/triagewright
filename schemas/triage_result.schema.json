@@ -82,6 +82,11 @@
   "$id": "triagewright/triage_result/1.0.0",
   "additionalProperties": false,
   "properties": {
+    "account_change_requested": {
+      "default": false,
+      "title": "Account Change Requested",
+      "type": "boolean"
+    },
     "category": {
       "$ref": "#/$defs/TicketCategory"
     },

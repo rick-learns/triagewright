@@ -770,6 +770,11 @@
     "TriageResult": {
       "additionalProperties": false,
       "properties": {
+        "account_change_requested": {
+          "default": false,
+          "title": "Account Change Requested",
+          "type": "boolean"
+        },
         "category": {
           "$ref": "#/$defs/TicketCategory"
         },
