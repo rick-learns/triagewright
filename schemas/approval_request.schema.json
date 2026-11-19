@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "ApprovalStatus": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "executed"
+      ],
+      "title": "ApprovalStatus",
+      "type": "string"
+    },
+    "GuardrailDecision": {
+      "enum": [
+        "allow",
+        "block",
+        "require_approval"
+      ],
+      "title": "GuardrailDecision",
+      "type": "string"
+    },
+    "GuardrailVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/GuardrailDecision"
+        },
+        "injection_suspected": {
+          "default": false,
+          "title": "Injection Suspected",
+          "type": "boolean"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "GuardrailVerdict",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "get_customer",
+        "get_account",
+        "get_order",
+        "list_orders",
+        "search_kb",
+        "check_refund_eligibility",
+        "issue_refund",
+        "create_escalation"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/approval_request/1.0.0",
+  "additionalProperties": false,
+  "description": "A proposed irreversible action waiting for a human.",
+  "properties": {
+    "approval_id": {
+      "pattern": "^apr_[a-z0-9]{4,32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "arguments": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Arguments",
+      "type": "object"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ApprovalStatus",
+      "default": "pending"
+    },
+    "ticket_id": {
+      "pattern": "^tkt_[a-z0-9]{4,32}$",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolName"
+    },
+    "verdict": {
+      "$ref": "#/$defs/GuardrailVerdict"
+    }
+  },
+  "required": [
+    "approval_id",
+    "ticket_id",
+    "tool",
+    "arguments",
+    "rationale",
+    "verdict",
+    "requested_at"
+  ],
+  "title": "ApprovalRequest",
+  "type": "object"
+}

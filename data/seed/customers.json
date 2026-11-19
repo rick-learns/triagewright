@@ -1,0 +1,110 @@
+[
+  {
+    "customer_id": "cus_ava01",
+    "name": "Ava Lindqvist",
+    "email": "ava.lindqvist@example.com",
+    "tier": "plus",
+    "status": "active",
+    "region": "US",
+    "created_at": "2025-05-11T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_ben02",
+    "name": "Benedikt Ora",
+    "email": "benedikt.ora@example.com",
+    "tier": "standard",
+    "status": "active",
+    "region": "DE",
+    "created_at": "2025-06-05T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_cho03",
+    "name": "Chiamaka Obi",
+    "email": "chiamaka.obi@example.com",
+    "tier": "vip",
+    "status": "active",
+    "region": "GB",
+    "created_at": "2025-06-30T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_dev04",
+    "name": "Devi Raman",
+    "email": "devi.raman@example.com",
+    "tier": "standard",
+    "status": "active",
+    "region": "US",
+    "created_at": "2025-07-25T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_eli05",
+    "name": "Elias Moreau",
+    "email": "elias.moreau@example.com",
+    "tier": "standard",
+    "status": "suspended",
+    "region": "FR",
+    "created_at": "2025-08-19T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_fay06",
+    "name": "Faye Tanaka",
+    "email": "faye.tanaka@example.com",
+    "tier": "plus",
+    "status": "active",
+    "region": "US",
+    "created_at": "2025-09-13T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_gus07",
+    "name": "Gustavo Pell",
+    "email": "gustavo.pell@example.com",
+    "tier": "standard",
+    "status": "active",
+    "region": "BR",
+    "created_at": "2025-10-08T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_hal08",
+    "name": "Halima Yusuf",
+    "email": "halima.yusuf@example.com",
+    "tier": "vip",
+    "status": "active",
+    "region": "US",
+    "created_at": "2025-11-02T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_ivo09",
+    "name": "Ivo Brandt",
+    "email": "ivo.brandt@example.com",
+    "tier": "standard",
+    "status": "closed",
+    "region": "NL",
+    "created_at": "2025-11-27T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_jun10",
+    "name": "June Okafor",
+    "email": "june.okafor@example.com",
+    "tier": "standard",
+    "status": "active",
+    "region": "US",
+    "created_at": "2025-12-22T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_kai11",
+    "name": "Kai Novak",
+    "email": "kai.novak@example.com",
+    "tier": "plus",
+    "status": "active",
+    "region": "CA",
+    "created_at": "2026-01-16T12:00:00Z"
+  },
+  {
+    "customer_id": "cus_lea12",
+    "name": "Lea Marchetti",
+    "email": "lea.marchetti@example.com",
+    "tier": "standard",
+    "status": "active",
+    "region": "IT",
+    "created_at": "2026-02-10T12:00:00Z"
+  }
+]

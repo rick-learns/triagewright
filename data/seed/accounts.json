@@ -1,0 +1,110 @@
+[
+  {
+    "customer_id": "cus_ava01",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-13T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_ben02",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-12T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_cho03",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-11T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_dev04",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": true,
+    "failed_login_attempts": 6,
+    "last_login_at": "2026-06-06T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_eli05",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": true,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-09T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_fay06",
+    "email_verified": true,
+    "two_factor_enabled": true,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-08T12:00:00Z",
+    "plan": "pro"
+  },
+  {
+    "customer_id": "cus_gus07",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-07T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_hal08",
+    "email_verified": true,
+    "two_factor_enabled": true,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-06T12:00:00Z",
+    "plan": "pro"
+  },
+  {
+    "customer_id": "cus_ivo09",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-05T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_jun10",
+    "email_verified": false,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-04T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_kai11",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-03T12:00:00Z",
+    "plan": "basic"
+  },
+  {
+    "customer_id": "cus_lea12",
+    "email_verified": true,
+    "two_factor_enabled": false,
+    "locked": false,
+    "failed_login_attempts": 0,
+    "last_login_at": "2026-06-02T12:00:00Z",
+    "plan": "basic"
+  }
+]

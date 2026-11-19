@@ -1,0 +1,39 @@
+{
+  "$id": "triagewright/tools/search_kb/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "categories": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Categories"
+    },
+    "k": {
+      "default": 5,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "K",
+      "type": "integer"
+    },
+    "query": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "SearchKBInput",
+  "type": "object"
+}

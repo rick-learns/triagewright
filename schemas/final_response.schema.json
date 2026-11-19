@@ -1,0 +1,837 @@
+{
+  "$defs": {
+    "ActionOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ProposedAction"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "attempts": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "$ref": "#/$defs/ActionStatus"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuardrailVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "action",
+        "status"
+      ],
+      "title": "ActionOutcome",
+      "type": "object"
+    },
+    "ActionStatus": {
+      "enum": [
+        "executed",
+        "blocked",
+        "pending_approval",
+        "failed",
+        "skipped"
+      ],
+      "title": "ActionStatus",
+      "type": "string"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text.",
+      "properties": {
+        "chunk_id": {
+          "pattern": "^kb_[a-z0-9_]{2,64}#\\d{1,4}$",
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "doc_id": {
+          "pattern": "^kb_[a-z0-9_]{2,64}$",
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "doc_id",
+        "chunk_id",
+        "title",
+        "quote"
+      ],
+      "title": "Citation",
+      "type": "object"
+    },
+    "ErrorCategory": {
+      "enum": [
+        "validation",
+        "not_found",
+        "permission",
+        "policy",
+        "conflict",
+        "rate_limited",
+        "transient",
+        "timeout",
+        "internal"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    },
+    "EscalationDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "escalate": {
+          "title": "Escalate",
+          "type": "boolean"
+        },
+        "handoff_summary": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Handoff Summary",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority",
+          "default": "normal"
+        },
+        "queue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EscalationQueue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EscalationReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "escalate"
+      ],
+      "title": "EscalationDecision",
+      "type": "object"
+    },
+    "EscalationQueue": {
+      "enum": [
+        "tier1",
+        "tier2",
+        "billing",
+        "security"
+      ],
+      "title": "EscalationQueue",
+      "type": "string"
+    },
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
+    "ExtractedEntities": {
+      "additionalProperties": false,
+      "properties": {
+        "amounts_cents": {
+          "default": [],
+          "items": {
+            "description": "Amount in minor currency units (cents).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Amounts Cents",
+          "type": "array"
+        },
+        "order_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^ord_[a-z0-9]{4,32}$",
+            "type": "string"
+          },
+          "title": "Order Ids",
+          "type": "array"
+        },
+        "product_names": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Product Names",
+          "type": "array"
+        }
+      },
+      "title": "ExtractedEntities",
+      "type": "object"
+    },
+    "GuardrailDecision": {
+      "enum": [
+        "allow",
+        "block",
+        "require_approval"
+      ],
+      "title": "GuardrailDecision",
+      "type": "string"
+    },
+    "GuardrailVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/GuardrailDecision"
+        },
+        "injection_suspected": {
+          "default": false,
+          "title": "Injection Suspected",
+          "type": "boolean"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "GuardrailVerdict",
+      "type": "object"
+    },
+    "JsonObject": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "LoopStop": {
+      "enum": [
+        "completed",
+        "max_turns",
+        "timeout",
+        "refusal",
+        "error"
+      ],
+      "title": "LoopStop",
+      "type": "string"
+    },
+    "ModelCallRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_creation_input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Cache Creation Input Tokens",
+          "type": "integer"
+        },
+        "cache_read_input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Cache Read Input Tokens",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "minimum": 0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "number"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "purpose": {
+          "title": "Purpose",
+          "type": "string"
+        },
+        "stop_reason": {
+          "$ref": "#/$defs/StopReason"
+        },
+        "ttft_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttft Ms"
+        }
+      },
+      "required": [
+        "purpose",
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "latency_ms",
+        "stop_reason"
+      ],
+      "title": "ModelCallRecord",
+      "type": "object"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "ProposedAction": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Arguments",
+          "type": "object"
+        },
+        "rationale": {
+          "maxLength": 500,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "arguments",
+        "rationale"
+      ],
+      "title": "ProposedAction",
+      "type": "object"
+    },
+    "Provider": {
+      "enum": [
+        "anthropic",
+        "openrouter",
+        "replay"
+      ],
+      "title": "Provider",
+      "type": "string"
+    },
+    "RequestMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_usd": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "number"
+        },
+        "model_calls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelCallRecord"
+          },
+          "title": "Model Calls",
+          "type": "array"
+        },
+        "output_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "ttft_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttft Ms"
+        }
+      },
+      "required": [
+        "request_id",
+        "ticket_id"
+      ],
+      "title": "RequestMetrics",
+      "type": "object"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "resolved",
+        "pending_approval",
+        "escalated",
+        "needs_info",
+        "refused"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    },
+    "StopReason": {
+      "enum": [
+        "end_turn",
+        "tool_use",
+        "max_tokens",
+        "stop_sequence",
+        "pause_turn",
+        "refusal"
+      ],
+      "title": "StopReason",
+      "type": "string"
+    },
+    "TicketCategory": {
+      "enum": [
+        "order_status",
+        "shipping",
+        "refund_request",
+        "return",
+        "billing",
+        "account_access",
+        "product_question",
+        "policy_question",
+        "complaint",
+        "other"
+      ],
+      "title": "TicketCategory",
+      "type": "string"
+    },
+    "ToolError": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ErrorCategory"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "default": {},
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Ms"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "category",
+        "message",
+        "retryable"
+      ],
+      "title": "ToolError",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "get_customer",
+        "get_account",
+        "get_order",
+        "list_orders",
+        "search_kb",
+        "check_refund_eligibility",
+        "issue_refund",
+        "create_escalation"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "description": "The envelope every tool call returns. Exactly one of ``data``/``error`` is set.",
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "is_error": {
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "is_error"
+      ],
+      "title": "ToolResult",
+      "type": "object"
+    },
+    "TriageResult": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/TicketCategory"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "entities": {
+          "$ref": "#/$defs/ExtractedEntities",
+          "default": {
+            "amounts_cents": [],
+            "order_ids": [],
+            "product_names": []
+          }
+        },
+        "injection_suspected": {
+          "default": false,
+          "title": "Injection Suspected",
+          "type": "boolean"
+        },
+        "intent": {
+          "maxLength": 300,
+          "title": "Intent",
+          "type": "string"
+        },
+        "missing_info": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Info",
+          "type": "array"
+        },
+        "needs_human": {
+          "title": "Needs Human",
+          "type": "boolean"
+        },
+        "needs_human_reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EscalationReason"
+          },
+          "title": "Needs Human Reasons",
+          "type": "array"
+        },
+        "urgency": {
+          "$ref": "#/$defs/Priority"
+        }
+      },
+      "required": [
+        "category",
+        "intent",
+        "urgency",
+        "needs_human",
+        "confidence"
+      ],
+      "title": "TriageResult",
+      "type": "object"
+    }
+  },
+  "$id": "triagewright/final_response/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionOutcome"
+      },
+      "title": "Actions",
+      "type": "array"
+    },
+    "citations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Citation"
+      },
+      "title": "Citations",
+      "type": "array"
+    },
+    "escalation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EscalationDecision"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "metrics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RequestMetrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mode": {
+      "default": "stub",
+      "enum": [
+        "live",
+        "replay",
+        "stub"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "reply": {
+      "title": "Reply",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ResolutionStatus"
+    },
+    "stop": {
+      "$ref": "#/$defs/LoopStop",
+      "default": "completed"
+    },
+    "ticket_id": {
+      "pattern": "^tkt_[a-z0-9]{4,32}$",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "triage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TriageResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "turns": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Turns",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "ticket_id",
+    "status",
+    "reply"
+  ],
+  "title": "FinalResponse",
+  "type": "object"
+}

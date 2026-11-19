@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "EscalationQueue": {
+      "enum": [
+        "tier1",
+        "tier2",
+        "billing",
+        "security"
+      ],
+      "title": "EscalationQueue",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/tools/create_escalation/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "priority": {
+      "$ref": "#/$defs/Priority"
+    },
+    "queue": {
+      "$ref": "#/$defs/EscalationQueue"
+    },
+    "reason_codes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "ticket_id": {
+      "pattern": "^tkt_[a-z0-9]{4,32}$",
+      "title": "Ticket Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "queue",
+    "priority",
+    "summary",
+    "reason_codes"
+  ],
+  "title": "CreateEscalationInput",
+  "type": "object"
+}

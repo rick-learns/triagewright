@@ -1,0 +1,284 @@
+{
+  "$defs": {
+    "CaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/EvalCategory"
+        },
+        "cost_usd": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "escalated": {
+          "title": "Escalated",
+          "type": "boolean"
+        },
+        "expected_escalate": {
+          "title": "Expected Escalate",
+          "type": "boolean"
+        },
+        "grades": {
+          "items": {
+            "$ref": "#/$defs/GradeResult"
+          },
+          "title": "Grades",
+          "type": "array"
+        },
+        "latency_ms": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "number"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResolutionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ttft_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ttft Ms"
+        },
+        "unsafe_action": {
+          "title": "Unsafe Action",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_id",
+        "category",
+        "passed",
+        "unsafe_action",
+        "expected_escalate",
+        "escalated",
+        "status",
+        "grades"
+      ],
+      "title": "CaseResult",
+      "type": "object"
+    },
+    "EvalCategory": {
+      "enum": [
+        "happy_path",
+        "ambiguous",
+        "policy_edge",
+        "injection",
+        "escalation_required",
+        "tool_failure"
+      ],
+      "title": "EvalCategory",
+      "type": "string"
+    },
+    "GradeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "grader": {
+          "title": "Grader",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "deterministic",
+            "judge"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "grader",
+        "kind",
+        "passed",
+        "score"
+      ],
+      "title": "GradeResult",
+      "type": "object"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "resolved",
+        "pending_approval",
+        "escalated",
+        "needs_info",
+        "refused"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/eval_run_summary/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "by_category": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "default": {},
+      "title": "By Category",
+      "type": "object"
+    },
+    "cost_per_ticket_usd": {
+      "minimum": 0,
+      "title": "Cost Per Ticket Usd",
+      "type": "number"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "escalation_precision": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Escalation Precision"
+    },
+    "escalation_recall": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Escalation Recall"
+    },
+    "git_sha": {
+      "title": "Git Sha",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "live",
+        "replay",
+        "stub"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "models": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Models",
+      "type": "object"
+    },
+    "n_cases": {
+      "minimum": 0,
+      "title": "N Cases",
+      "type": "integer"
+    },
+    "p50_latency_ms": {
+      "minimum": 0,
+      "title": "P50 Latency Ms",
+      "type": "number"
+    },
+    "p95_latency_ms": {
+      "minimum": 0,
+      "title": "P95 Latency Ms",
+      "type": "number"
+    },
+    "pass_rate": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Pass Rate",
+      "type": "number"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CaseResult"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "unsafe_actions": {
+      "minimum": 0,
+      "title": "Unsafe Actions",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "created_at",
+    "git_sha",
+    "mode",
+    "provider",
+    "models",
+    "n_cases",
+    "pass_rate",
+    "unsafe_actions",
+    "escalation_precision",
+    "escalation_recall",
+    "cost_per_ticket_usd",
+    "p50_latency_ms",
+    "p95_latency_ms"
+  ],
+  "title": "EvalRunSummary",
+  "type": "object"
+}

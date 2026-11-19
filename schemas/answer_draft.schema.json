@@ -1,0 +1,76 @@
+{
+  "$defs": {
+    "Citation": {
+      "additionalProperties": false,
+      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text.",
+      "properties": {
+        "chunk_id": {
+          "pattern": "^kb_[a-z0-9_]{2,64}#\\d{1,4}$",
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "doc_id": {
+          "pattern": "^kb_[a-z0-9_]{2,64}$",
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "doc_id",
+        "chunk_id",
+        "title",
+        "quote"
+      ],
+      "title": "Citation",
+      "type": "object"
+    }
+  },
+  "$id": "triagewright/answer_draft/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "citations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Citation"
+      },
+      "title": "Citations",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "grounded": {
+      "title": "Grounded",
+      "type": "boolean"
+    },
+    "unanswerable": {
+      "default": false,
+      "title": "Unanswerable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "answer",
+    "grounded",
+    "confidence"
+  ],
+  "title": "AnswerDraft",
+  "type": "object"
+}

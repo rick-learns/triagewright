@@ -1,0 +1,16 @@
+{
+  "$id": "triagewright/tools/get_order/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "order_id": {
+      "pattern": "^ord_[a-z0-9]{4,32}$",
+      "title": "Order Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "order_id"
+  ],
+  "title": "GetOrderInput",
+  "type": "object"
+}

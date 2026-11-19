@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "ErrorCategory": {
+      "enum": [
+        "validation",
+        "not_found",
+        "permission",
+        "policy",
+        "conflict",
+        "rate_limited",
+        "transient",
+        "timeout",
+        "internal"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/tool_error/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/ErrorCategory"
+    },
+    "details": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "default": {},
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "maxLength": 500,
+      "title": "Message",
+      "type": "string"
+    },
+    "retry_after_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retry After Ms"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "category",
+    "message",
+    "retryable"
+  ],
+  "title": "ToolError",
+  "type": "object"
+}

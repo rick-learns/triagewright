@@ -16,7 +16,7 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| W0.1 bootstrap repo, CI, protection | – | (all, pre-fan-out) | orchestrator | running | – |
+| W0.1 bootstrap repo, CI, protection | – | (all, pre-fan-out) | orchestrator | merged (protection blocked, R3) | direct push 9255512 |
 | W0.2 contracts, fakes, seed, ADR-001 | W0.1 | orchestrator paths | orchestrator | running | – |
 
 ## M1: lanes (fan out after W0.2 merges)
@@ -34,7 +34,7 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 | G2 cases: policy edge + escalation | W0.2 | `evals/cases/policy_edge/**`, `evals/cases/escalation_required/**` | – | todo | – |
 | G3 cases: injection + tool failure | W0.2 | `evals/cases/injection/**`, `evals/cases/tool_failure/**` | – | todo | – |
 | H1 HTTP API + CLI | W0.2 | `src/triagewright/api/**`, `src/triagewright/cli/**`, `tests/api/**`, `tests/cli/**` | – | todo | – |
-| I1 architecture docs | W0.2 | `docs/architecture.md`, `docs/adr/ADR-0[0-9][2-9]-*`, `README.md` | – | todo | – |
+| I1 architecture docs | W0.2 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | todo | – |
 | J1 synthetic data generator | W0.2 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | todo | – |
 
 ## M1 integration

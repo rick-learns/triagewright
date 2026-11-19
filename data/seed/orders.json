@@ -1,0 +1,470 @@
+[
+  {
+    "order_id": "ord_a1001",
+    "customer_id": "cus_ava01",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "HDP-200",
+        "name": "Aurora Headphones",
+        "quantity": 1,
+        "unit_price_cents": 12900
+      }
+    ],
+    "total_cents": 12900,
+    "currency": "USD",
+    "placed_at": "2026-06-03T12:00:00Z",
+    "delivered_at": "2026-06-07T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1001012"
+  },
+  {
+    "order_id": "ord_a1002",
+    "customer_id": "cus_ava01",
+    "status": "shipped",
+    "items": [
+      {
+        "sku": "CBL-005",
+        "name": "USB-C Cable 2m",
+        "quantity": 2,
+        "unit_price_cents": 1200
+      }
+    ],
+    "total_cents": 2400,
+    "currency": "USD",
+    "placed_at": "2026-06-12T12:00:00Z",
+    "delivered_at": null,
+    "carrier": "UPS",
+    "tracking_number": "1Z1002003"
+  },
+  {
+    "order_id": "ord_b2001",
+    "customer_id": "cus_ben02",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "KBD-110",
+        "name": "Clicky Mechanical Keyboard",
+        "quantity": 1,
+        "unit_price_cents": 8900
+      },
+      {
+        "sku": "MSE-020",
+        "name": "Trail Wireless Mouse",
+        "quantity": 1,
+        "unit_price_cents": 2900
+      }
+    ],
+    "total_cents": 11800,
+    "currency": "USD",
+    "placed_at": "2026-04-26T12:00:00Z",
+    "delivered_at": "2026-05-02T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z2001050"
+  },
+  {
+    "order_id": "ord_c3001",
+    "customer_id": "cus_cho03",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "LTP-900",
+        "name": "Nimbus 14 Laptop",
+        "quantity": 1,
+        "unit_price_cents": 89900
+      }
+    ],
+    "total_cents": 89900,
+    "currency": "USD",
+    "placed_at": "2026-06-05T12:00:00Z",
+    "delivered_at": "2026-06-09T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z3001010"
+  },
+  {
+    "order_id": "ord_c3002",
+    "customer_id": "cus_cho03",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "BAG-040",
+        "name": "Commuter Laptop Bag",
+        "quantity": 1,
+        "unit_price_cents": 4900
+      }
+    ],
+    "total_cents": 4900,
+    "currency": "USD",
+    "placed_at": "2026-06-05T12:00:00Z",
+    "delivered_at": "2026-06-09T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z3002010"
+  },
+  {
+    "order_id": "ord_d4001",
+    "customer_id": "cus_dev04",
+    "status": "placed",
+    "items": [
+      {
+        "sku": "SPK-310",
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "unit_price_cents": 5900
+      }
+    ],
+    "total_cents": 5900,
+    "currency": "USD",
+    "placed_at": "2026-06-14T12:00:00Z",
+    "delivered_at": null,
+    "carrier": null,
+    "tracking_number": null
+  },
+  {
+    "order_id": "ord_e5001",
+    "customer_id": "cus_eli05",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "WCH-130",
+        "name": "Pulse Smartwatch",
+        "quantity": 1,
+        "unit_price_cents": 19900
+      }
+    ],
+    "total_cents": 19900,
+    "currency": "USD",
+    "placed_at": "2026-05-26T12:00:00Z",
+    "delivered_at": "2026-05-31T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z5001020"
+  },
+  {
+    "order_id": "ord_f6001",
+    "customer_id": "cus_fay06",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "MON-270",
+        "name": "Vista 27in Monitor",
+        "quantity": 1,
+        "unit_price_cents": 32900
+      }
+    ],
+    "total_cents": 32900,
+    "currency": "USD",
+    "placed_at": "2026-05-21T12:00:00Z",
+    "delivered_at": "2026-05-25T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z6001025"
+  },
+  {
+    "order_id": "ord_f6002",
+    "customer_id": "cus_fay06",
+    "status": "cancelled",
+    "items": [
+      {
+        "sku": "CHR-450",
+        "name": "Ergo Desk Chair",
+        "quantity": 1,
+        "unit_price_cents": 24900
+      }
+    ],
+    "total_cents": 24900,
+    "currency": "USD",
+    "placed_at": "2026-05-28T12:00:00Z",
+    "delivered_at": null,
+    "carrier": null,
+    "tracking_number": null
+  },
+  {
+    "order_id": "ord_g7001",
+    "customer_id": "cus_gus07",
+    "status": "shipped",
+    "items": [
+      {
+        "sku": "CHR-450",
+        "name": "Ergo Desk Chair",
+        "quantity": 1,
+        "unit_price_cents": 24900
+      }
+    ],
+    "total_cents": 24900,
+    "currency": "USD",
+    "placed_at": "2026-06-06T12:00:00Z",
+    "delivered_at": null,
+    "carrier": "FedEx",
+    "tracking_number": "1Z7001009"
+  },
+  {
+    "order_id": "ord_h8001",
+    "customer_id": "cus_hal08",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "SPK-310",
+        "name": "Pebble Speaker",
+        "quantity": 2,
+        "unit_price_cents": 5900
+      }
+    ],
+    "total_cents": 11800,
+    "currency": "USD",
+    "placed_at": "2026-06-08T12:00:00Z",
+    "delivered_at": "2026-06-12T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z8001007"
+  },
+  {
+    "order_id": "ord_h8002",
+    "customer_id": "cus_hal08",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "HDP-200",
+        "name": "Aurora Headphones",
+        "quantity": 1,
+        "unit_price_cents": 12900
+      }
+    ],
+    "total_cents": 12900,
+    "currency": "USD",
+    "placed_at": "2026-05-17T12:00:00Z",
+    "delivered_at": "2026-05-20T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z8002029"
+  },
+  {
+    "order_id": "ord_h8003",
+    "customer_id": "cus_hal08",
+    "status": "returned",
+    "items": [
+      {
+        "sku": "MSE-020",
+        "name": "Trail Wireless Mouse",
+        "quantity": 1,
+        "unit_price_cents": 2900
+      }
+    ],
+    "total_cents": 2900,
+    "currency": "USD",
+    "placed_at": "2026-05-06T12:00:00Z",
+    "delivered_at": "2026-05-10T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z8003040"
+  },
+  {
+    "order_id": "ord_i9001",
+    "customer_id": "cus_ivo09",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "CBL-005",
+        "name": "USB-C Cable 2m",
+        "quantity": 1,
+        "unit_price_cents": 1200
+      }
+    ],
+    "total_cents": 1200,
+    "currency": "USD",
+    "placed_at": "2026-03-17T12:00:00Z",
+    "delivered_at": "2026-03-21T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z9001090"
+  },
+  {
+    "order_id": "ord_j1001",
+    "customer_id": "cus_jun10",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "WCH-130",
+        "name": "Pulse Smartwatch",
+        "quantity": 1,
+        "unit_price_cents": 19900
+      }
+    ],
+    "total_cents": 19900,
+    "currency": "USD",
+    "placed_at": "2026-06-10T12:00:00Z",
+    "delivered_at": "2026-06-13T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1001005"
+  },
+  {
+    "order_id": "ord_j1002",
+    "customer_id": "cus_jun10",
+    "status": "shipped",
+    "items": [
+      {
+        "sku": "MSE-020",
+        "name": "Trail Wireless Mouse",
+        "quantity": 1,
+        "unit_price_cents": 2900
+      }
+    ],
+    "total_cents": 2900,
+    "currency": "USD",
+    "placed_at": "2026-06-13T12:00:00Z",
+    "delivered_at": null,
+    "carrier": "UPS",
+    "tracking_number": "1Z1002002"
+  },
+  {
+    "order_id": "ord_k1101",
+    "customer_id": "cus_kai11",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "KBD-110",
+        "name": "Clicky Mechanical Keyboard",
+        "quantity": 1,
+        "unit_price_cents": 8900
+      }
+    ],
+    "total_cents": 8900,
+    "currency": "USD",
+    "placed_at": "2026-06-01T12:00:00Z",
+    "delivered_at": "2026-06-04T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1101014"
+  },
+  {
+    "order_id": "ord_k1102",
+    "customer_id": "cus_kai11",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "CBL-005",
+        "name": "USB-C Cable 2m",
+        "quantity": 3,
+        "unit_price_cents": 1200
+      }
+    ],
+    "total_cents": 3600,
+    "currency": "USD",
+    "placed_at": "2026-06-01T12:00:00Z",
+    "delivered_at": "2026-06-04T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1102014"
+  },
+  {
+    "order_id": "ord_k1103",
+    "customer_id": "cus_kai11",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "SPK-310",
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "unit_price_cents": 5900
+      }
+    ],
+    "total_cents": 5900,
+    "currency": "USD",
+    "placed_at": "2026-05-26T12:00:00Z",
+    "delivered_at": "2026-05-29T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1103020"
+  },
+  {
+    "order_id": "ord_l1201",
+    "customer_id": "cus_lea12",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "MON-270",
+        "name": "Vista 27in Monitor",
+        "quantity": 1,
+        "unit_price_cents": 32900
+      },
+      {
+        "sku": "CBL-005",
+        "name": "USB-C Cable 2m",
+        "quantity": 1,
+        "unit_price_cents": 1200
+      }
+    ],
+    "total_cents": 34100,
+    "currency": "USD",
+    "placed_at": "2026-05-15T12:00:00Z",
+    "delivered_at": "2026-05-17T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z1201031"
+  },
+  {
+    "order_id": "ord_l1202",
+    "customer_id": "cus_lea12",
+    "status": "placed",
+    "items": [
+      {
+        "sku": "BAG-040",
+        "name": "Commuter Laptop Bag",
+        "quantity": 1,
+        "unit_price_cents": 4900
+      }
+    ],
+    "total_cents": 4900,
+    "currency": "USD",
+    "placed_at": "2026-06-15T12:00:00Z",
+    "delivered_at": null,
+    "carrier": null,
+    "tracking_number": null
+  },
+  {
+    "order_id": "ord_d4002",
+    "customer_id": "cus_dev04",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "MSE-020",
+        "name": "Trail Wireless Mouse",
+        "quantity": 1,
+        "unit_price_cents": 2900
+      }
+    ],
+    "total_cents": 2900,
+    "currency": "USD",
+    "placed_at": "2026-06-07T12:00:00Z",
+    "delivered_at": "2026-06-10T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z4002008"
+  },
+  {
+    "order_id": "ord_g7002",
+    "customer_id": "cus_gus07",
+    "status": "delivered",
+    "items": [
+      {
+        "sku": "HDP-200",
+        "name": "Aurora Headphones",
+        "quantity": 1,
+        "unit_price_cents": 12900
+      }
+    ],
+    "total_cents": 12900,
+    "currency": "USD",
+    "placed_at": "2026-04-16T12:00:00Z",
+    "delivered_at": "2026-04-21T12:00:00Z",
+    "carrier": "UPS",
+    "tracking_number": "1Z7002060"
+  },
+  {
+    "order_id": "ord_b2002",
+    "customer_id": "cus_ben02",
+    "status": "shipped",
+    "items": [
+      {
+        "sku": "SPK-310",
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "unit_price_cents": 5900
+      }
+    ],
+    "total_cents": 5900,
+    "currency": "USD",
+    "placed_at": "2026-06-09T12:00:00Z",
+    "delivered_at": null,
+    "carrier": "DHL",
+    "tracking_number": "1Z2002006"
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "$id": "triagewright/tools/list_orders/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "customer_id": {
+      "pattern": "^cus_[a-z0-9]{4,32}$",
+      "title": "Customer Id",
+      "type": "string"
+    },
+    "limit": {
+      "default": 10,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "customer_id"
+  ],
+  "title": "ListOrdersInput",
+  "type": "object"
+}

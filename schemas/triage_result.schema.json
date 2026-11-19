@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
+    "ExtractedEntities": {
+      "additionalProperties": false,
+      "properties": {
+        "amounts_cents": {
+          "default": [],
+          "items": {
+            "description": "Amount in minor currency units (cents).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Amounts Cents",
+          "type": "array"
+        },
+        "order_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^ord_[a-z0-9]{4,32}$",
+            "type": "string"
+          },
+          "title": "Order Ids",
+          "type": "array"
+        },
+        "product_names": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Product Names",
+          "type": "array"
+        }
+      },
+      "title": "ExtractedEntities",
+      "type": "object"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "TicketCategory": {
+      "enum": [
+        "order_status",
+        "shipping",
+        "refund_request",
+        "return",
+        "billing",
+        "account_access",
+        "product_question",
+        "policy_question",
+        "complaint",
+        "other"
+      ],
+      "title": "TicketCategory",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/triage_result/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/TicketCategory"
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "entities": {
+      "$ref": "#/$defs/ExtractedEntities",
+      "default": {
+        "amounts_cents": [],
+        "order_ids": [],
+        "product_names": []
+      }
+    },
+    "injection_suspected": {
+      "default": false,
+      "title": "Injection Suspected",
+      "type": "boolean"
+    },
+    "intent": {
+      "maxLength": 300,
+      "title": "Intent",
+      "type": "string"
+    },
+    "missing_info": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Info",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "needs_human_reasons": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EscalationReason"
+      },
+      "title": "Needs Human Reasons",
+      "type": "array"
+    },
+    "urgency": {
+      "$ref": "#/$defs/Priority"
+    }
+  },
+  "required": [
+    "category",
+    "intent",
+    "urgency",
+    "needs_human",
+    "confidence"
+  ],
+  "title": "TriageResult",
+  "type": "object"
+}
