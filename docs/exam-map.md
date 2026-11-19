@@ -51,7 +51,7 @@ repository builds.
 | 2.1 Tool interfaces | `src/triagewright/contracts/tools.py` (`TOOL_SPECS`) | Eight tools, each with a description, side-effect class, and Pydantic input and output models. `search_kb`'s `categories` field documents the opt-in for untrusted pages. |
 | 2.2 Structured error responses | `src/triagewright/contracts/tools.py` (`ToolResult`, `ToolError`, `ErrorCategory`), `src/triagewright/mcp_server/server.py` | Every recognized tool returns a `ToolResult` envelope with either `data` or a `ToolError` (category, message, `retryable`, optional `retry_after_ms`, and `details`). Handlers don't raise for tool failures; only an unknown tool name is an MCP `INVALID_PARAMS` error. The MCP `CallToolResult` carries the same JSON as `structuredContent`. Access failures (`transient`, `timeout`) are distinct from `not_found` and from valid empty results. |
 | 2.3 Tool distribution and tool choice | `src/triagewright/agent/coordinator.py` (`READ_TOOLS`, `REFUND_READ_TOOLS`), `src/triagewright/agent/subagents.py` (`ACTION_TOOLS`) | Each agent gets only its tools: the answer subagent only `search_kb`, the action subagent read tools plus `propose_action`. `create_escalation` is code-owned (`CODE_OWNED_TOOLS`). When the runtime has to prompt for a result, it forces the output tool with `ToolChoice(type="tool")`. |
-| 2.4 MCP servers in agent workflows | `src/triagewright/mcp_server/`, `src/triagewright/wiring.py` (`BackgroundMcpGateway`), `compose.yaml` | A real MCP server on the official SDK over stdio or streamable HTTP, with trusted call context in `_meta`. In-process for tests and evals, HTTP in Compose. |
+| 2.4 MCP servers in agent workflows | `src/triagewright/mcp_server/`, `src/triagewright/wiring/gateway.py` (`BackgroundMcpGateway`), `compose.yaml` | A real MCP server on the official SDK over stdio or streamable HTTP, with trusted call context in `_meta`. In-process for tests and evals, HTTP in Compose. |
 | 2.5 Built-in tools | – | Not demonstrated: the agent doesn't use Claude Code's built-in tools. |
 
 ## 3. Claude Code Configuration & Workflows
@@ -103,7 +103,7 @@ Related task statements: 4.4, 4.6, and 5.5.
 | Topic | Where | Notes |
 | --- | --- | --- |
 | Eval cases | `evals/cases/`, `src/triagewright/contracts/evals.py` | 54 cases in six categories, including injection and tool-failure cases with injected faults. |
-| Evidence-based grading | `src/triagewright/evals/graders.py`, `src/triagewright/wiring.py` (`EvalStackFactory`) | Graders read the gateway call log and ledger from an isolated per-case stack, not the agent's claims. |
+| Evidence-based grading | `src/triagewright/evals/graders.py`, `src/triagewright/wiring/evals.py` (`EvalStackFactory`) | Graders read the gateway call log and ledger from an isolated per-case stack, not the agent's claims. |
 | Release gate | `src/triagewright/evals/report.py` (`regressions`), `evals/baseline.json` | Unsafe actions always fail; pass rate, cost, and p95 latency (not for stub runs) compare with the same mode's baseline. A filtered run checks only unsafe actions. |
 | Tracing and metrics | `src/triagewright/observability/telemetry.py`, `src/triagewright/contracts/telemetry.py` | OpenTelemetry spans per request, turn, subagent, model, tool, and guardrail step; tokens, cost, TTFT, latency, and pacing per request. |
 | Safe error spans | `docs/adr/ADR-006-span-errors-without-exception-messages.md` | Error type and HTTP status only, never exception messages. |

@@ -203,7 +203,7 @@ Fakes for every port live in `triagewright.testing.fakes`.
 | Input | `contracts.llm.ModelRequest` (Messages-shaped: system, messages, tools, `tool_choice`, `max_tokens`, `purpose`) |
 | Output | `contracts.llm.ModelResponse` (content blocks, `stop_reason`, `Usage`, `latency_ms`, `ttft_ms`) |
 | Errors | `triagewright.llm.errors`: `ModelConfigError` (non-free model, missing key), `ModelAuthError` (401/403), `ModelRequestError` (other 4xx), `ModelUnavailableError` (429, 5xx, timeout, network after retries), `ModelResponseError` (untranslatable), `ReplayMissError` (no recording) |
-| Owner | `triagewright.llm.openai_compat` (`GeminiClient`, `OpenRouterClient`), `triagewright.llm.replay` (`ReplayClient`, `RecordingClient`), built by `triagewright.llm.factory.build_model_clients`; `wiring.RoleRouter` routes by `purpose` |
+| Owner | `triagewright.llm.openai_compat` (`GeminiClient`, `OpenRouterClient`), `triagewright.llm.replay` (`ReplayClient`, `RecordingClient`), built by `triagewright.llm.factory.build_model_clients`; `triagewright.wiring.models.RoleRouter` routes by `purpose` |
 
 ### ToolGateway (lane A, MCP)
 
@@ -213,7 +213,7 @@ Fakes for every port live in `triagewright.testing.fakes`.
 | Input | `contracts.tools.ToolName`, JSON arguments matching the tool's input model, `contracts.tools.CallContext` |
 | Output | `contracts.tools.ToolResult` (exactly one of `data` or `error`); `ToolSpec` list |
 | Errors | Never raises for tool failures. `ToolError` with an `ErrorCategory` (`validation`, `not_found`, `permission`, `policy`, `conflict`, `rate_limited`, `transient`, `timeout`, `internal`), `retryable`, and optional `retry_after_ms`. Does not retry. |
-| Owner | `triagewright.mcp_server.gateway` (`InProcessToolGateway`, `McpToolGateway`), `wiring.BackgroundMcpGateway`; server side `triagewright.mcp_server.server` and `triagewright.mcp_server.service` |
+| Owner | `triagewright.mcp_server.gateway` (`InProcessToolGateway`, `McpToolGateway`), `triagewright.wiring.gateway.BackgroundMcpGateway`; server side `triagewright.mcp_server.server` and `triagewright.mcp_server.service` |
 
 ### Retriever (lane C, RAG)
 
@@ -283,10 +283,10 @@ Fakes for every port live in `triagewright.testing.fakes`.
 | Input | Case id, `contracts.world.WorldState`, `as_of`, `contracts.evals.ToolFault` list |
 | Output | An isolated stack; `ToolCallRecord` log, `WorldState` ledger, pending `ApprovalRequest`s |
 | Errors | `FileNotFoundError` for a missing KB directory; model errors surface through the resolver |
-| Owner | `triagewright.wiring.EvalStackFactory` and `CaseStack`; the fake is in `triagewright.testing.fakes` |
+| Owner | `triagewright.wiring.evals.EvalStackFactory` and `CaseStack`; the fake is in `triagewright.testing.fakes` |
 
-The composition root is `triagewright.wiring`: `build_services` for the API and
-CLI, `case_runtime_factory` for evals, and `judge_client_factory` for the eval
+The composition root is the `triagewright.wiring` package, one module per lane:
+`build_services` (`triagewright.wiring.services`) for the API and CLI, `case_runtime_factory` for evals, and `judge_client_factory` for the eval
 judge.
 
 ## 4. Guardrails
@@ -404,7 +404,7 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   change: replay by default, Gemini free tier as the preferred live provider,
   OpenRouter `:free` as the fallback,
   and no paid model anywhere (ADR-002).
-- **MCP connection.** `wiring.BackgroundMcpGateway` turns a failed or stalled
+- **MCP connection.** `triagewright.wiring.gateway.BackgroundMcpGateway` turns a failed or stalled
   connect into a retryable `transient` result and reconnects on the next call.
 
 ## 7. Evals and the release gate
@@ -413,7 +413,7 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   (happy path, ambiguous, policy edge, injection, escalation required, tool
   failure), in the `contracts.evals.EvalCase` format, with expectations taken
   from `docs/contracts/behavior.md`.
-- **Isolation.** `wiring.EvalStackFactory` builds a fresh stack per case: an
+- **Isolation.** `triagewright.wiring.evals.EvalStackFactory` builds a fresh stack per case: an
   in-memory world with the case's `as_of` clock and `ToolFault`s, its own
   approval store, and the case's recordings.
 - **Graders.** Deterministic graders run first
@@ -429,6 +429,14 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   runs skip the latency check but still compare pass rate and cost. A run
   filtered to some cases checks only unsafe actions. Live and replay numbers
   are never compared.
+- **Targets.** The report (`var/evals/report.md` by default, plus JSON) also has a targets
+  table: at least 90% pass, 0 unsafe actions, p95 under 8 s (live runs
+  only), under $0.02 per ticket (not in stub mode), and at least 50
+  human-reviewed cases (`evals/REVIEWING.md`). Each target is shown as met,
+  not met, or not measured; the exit code comes from regressions only.
+  `triagewright-evals report` re-renders the report from an existing results
+  file; cases with no matching result are listed as pending, and then only
+  unsafe actions are gated.
 - **CI.** CI runs with `TW_LLM_PROVIDER=replay` and never calls a model. Its
   `evals-smoke` job validates every case file
   (`triagewright-evals smoke`); tests use scripted model clients and fakes.
