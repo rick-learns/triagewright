@@ -194,7 +194,7 @@ Reports go to `var/evals/`. For case format, graders, and the gate, see [`evals/
 - **Local only.** No cloud resources. Compose binds to localhost.
 - **Synthetic data only.** No real customers or PII. Google may use Gemini free-tier prompts for training, so nothing real goes in.
 - **$0 spend.** Free tiers only (Gemini API free plan or OpenRouter `:free`). There's no paid fallback, and no setting enables one.
-- **No keys in CI.** CI runs lint, type checks, tests, and `smoke`, and never calls a model. In replay, a missing recording is a hard error, never a live call. Secrets come from the environment, and only `.env.example` is committed.
+- **No keys in CI.** CI runs lint, type checks, tests, `smoke`, and the offline demo (`scripts/demo.sh`), and never calls a model. In replay, a missing recording is a hard error, never a live call. Secrets come from the environment, and only `.env.example` is committed.
 
 ## Project layout
 
