@@ -873,6 +873,19 @@
       ],
       "default": null
     },
+    "handoff_id": {
+      "anyOf": [
+        {
+          "pattern": "^esc_[a-z0-9]{4,32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Handoff Id"
+    },
     "metrics": {
       "anyOf": [
         {

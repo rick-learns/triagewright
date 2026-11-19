@@ -52,6 +52,7 @@ class Replies:
             triage=run.models_triage() if run.triage else None,
             actions=list(run.outcomes),
             escalation=decision,
+            handoff_id=run.handoff.escalation_id if run.handoff else None,
             stop=stop,
             turns=run.turns.get("coordinator", 0),
             mode=self._mode,

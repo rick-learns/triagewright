@@ -274,6 +274,16 @@ async def test_an_account_change_the_reviewer_s_screen_flags_goes_to_security() 
     assert response.reply.startswith(prompts.FALLBACK_REPLY)
 
 
+async def test_a_reviewer_injection_reason_blocks_the_deferred_refund() -> None:
+    reviewed = {"escalate": True, "queue": "security", "reasons": ["injection_suspected"]}
+    s = stack(refund_script("ord_a1001", 5000, **reviewed))
+    response = await s.resolve(refund_ticket("cus_ava01", "ord_a1001"))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "security"
+    assert s.approvals.list_pending() == []
+    assert [o.status for o in response.actions] == [ActionStatus.BLOCKED]
+
+
 async def test_a_triage_approval_need_with_no_action_keeps_the_review() -> None:
     guard = FlaggingGuardrails("ignore previous instructions")
     asks = triage("other", needs_human=True, reasons=["approval_required"], injection=True)

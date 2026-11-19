@@ -134,7 +134,8 @@ unless triage found a human need code didn't handle: `approval_required` once
 the request's one action is pending approval (that queue is the human step) or
 blocked (nothing to approve), and `injection_suspected` when code suspected
 injection before the reviewer did and the draft refuses (the injection rows
-above decide). Its `handoff_summary` must let a human act without rereading the
+above decide). A reviewer escalation that names `injection_suspected` blocks
+the request's deferred writes, just as a guardrail screen would. Its `handoff_summary` must let a human act without rereading the
 ticket. That means stating:
 
 - the customer's goal

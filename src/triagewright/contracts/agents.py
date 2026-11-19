@@ -17,6 +17,7 @@ from triagewright.contracts.common import (
     ApprovalId,
     Cents,
     Contract,
+    EscalationId,
     JsonObject,
     OrderId,
     RequestId,
@@ -208,6 +209,9 @@ class FinalResponse(Contract):
     triage: TriageResult | None = None
     actions: list[ActionOutcome] = []
     escalation: EscalationDecision | None = None
+    # Set only once ``create_escalation`` stored the handoff: a failed write leaves the
+    # status ``escalated`` (a human must take over) with no id, and the reply says so.
+    handoff_id: EscalationId | None = None
     stop: LoopStop = LoopStop.COMPLETED
     turns: Annotated[int, Field(ge=0)] = 0
     metrics: RequestMetrics | None = None
