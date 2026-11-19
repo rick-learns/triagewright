@@ -19,6 +19,10 @@ case's world and injected faults, as `triagewright-evals run` does. The model's 
 scripted, so what's being shown is everything code does around them: grounding, routing,
 guardrails, approvals, and tracing.
 
+The animation at the top of the README is this run, rendered by
+[`docs/assets/demo_svg.py`](assets/demo_svg.py) into `docs/assets/demo.svg`
+(`uv run python docs/assets/demo_svg.py` re-renders it after a change to the demo).
+
 ## Presenter script
 
 About 4 minutes. Each scene prints a numbered header. Scroll back to it as you talk.
