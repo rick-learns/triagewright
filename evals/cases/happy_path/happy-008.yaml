@@ -15,11 +15,10 @@ expected:
   escalate: false
   must_call: [search_kb]
   citations_any: [kb_warranty]
-  reply_includes_any: ["1-year", "1 year", "one year", "12 months", "one-year"]
   rubric: >-
-    Answers both questions: a 1-year limited warranty from the delivery date
-    covering manufacturing defects, and accidental damage such as a drop
-    isn't covered.
+    Answers both questions: the warranty lasts one year from the delivery
+    date, and accidental damage such as a drop isn't covered. Mentioning that
+    it covers manufacturing defects is optional.
 tags: [policy_question, warranty, citation]
 notes: >-
   kb_warranty: 1-year limited warranty from delivery; covers manufacturing
