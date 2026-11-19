@@ -1263,12 +1263,35 @@ async def test_code_cites_the_refund_policy_not_the_first_page_seen() -> None:
     assert [c.doc_id for c in response.citations] == ["kb_refund_policy"]
 
 
-async def test_a_proposal_without_a_refund_ask_leaves_the_reply_to_the_model() -> None:
-    _, search, act, propose, reviewed = refund_script("ord_h8001", 11800)
-    reply = finalize("I've passed your complaint on.", citations=POLICY_CITE)
-    s = stack([triage("complaint"), search, act, propose, reply, reviewed])
+async def test_a_refund_proposed_on_a_ticket_triage_missed_is_settled_too() -> None:
+    _, _, act, propose, reviewed = refund_script("ord_h8001", 11800)
+    s = stack([triage("complaint"), act, propose, reviewed])
     response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
-    assert response.reply.startswith("I've passed your complaint on.")
+    assert response.status is ResolutionStatus.PENDING_APPROVAL
+    assert len(s.requests("coordinator")) == 1
+    assert [c.chunk_id for c in response.citations] == [REFUND_POLICY]
+
+
+async def test_a_model_reply_beside_a_refund_proposal_is_replaced() -> None:
+    # Triage missed the ask and the policy search failed, so the model finalizes, uncited.
+    error = ToolError(category=ErrorCategory.INTERNAL, message="down", retryable=False)
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error)
+    _, _, act, propose, reviewed = refund_script("ord_h8001", 11800)
+    claim = finalize("Your refund was issued.")
+    s = stack([triage("complaint"), act, propose, claim, reviewed], faults=[fault])
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    assert response.status is ResolutionStatus.PENDING_APPROVAL
+    assert "was issued" not in response.reply
+    assert response.reply.startswith(prompts.REFUND_OUTCOME_REPLY)
+
+
+async def test_code_searches_for_the_policy_only_after_the_turn() -> None:
+    # The coordinator searched in the same turn as `action`: no second search.
+    triaged, search, act, propose, reviewed = refund_script("ord_h8001", 11800)
+    s = stack([triaged, together(act, search), propose, reviewed])
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    assert response.status is ResolutionStatus.PENDING_APPROVAL
+    assert len(s.calls(ToolName.SEARCH_KB)) == 1
 
 
 async def test_a_failed_policy_search_leaves_the_finalize_to_the_model() -> None:
@@ -1290,7 +1313,8 @@ async def test_a_failed_policy_search_leaves_the_finalize_to_the_model() -> None
             "Delivered orders can be refunded within 30 days",
         ),
         ("No heading. Second.", "No heading"),
-        ("## Only a heading", ""),
+        ("## Only a heading", "Only a heading"),
+        (" \n ", ""),
     ],
 )
 def test_the_policy_quote_is_the_first_sentence_of_prose(text: str, quote: str) -> None:

@@ -282,10 +282,6 @@ class Coordinator:
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, "action subagent refused"
                 ) from None
-            if _refund_requested(run) and _refund_proposed(run) and not _policy_citation(run):
-                # Code cites the policy itself, so the reply settles without another turn.
-                search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
-                await search.handler({"query": "refund policy"})
             return as_data(canonical_json(result.model_dump(mode="json")), flagged), False
 
         reads = REFUND_READ_TOOLS if _refund_requested(run) else READ_TOOLS
@@ -411,7 +407,7 @@ class Coordinator:
     ) -> FinalResponse:
         decision = self._route(run, review, proposed)
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
-        if run.triage is not None and _refund_requested(run):
+        if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
             reply = self._refund_reply(run, reply, decision, notes)
         if decision is not None:
             status = ResolutionStatus.ESCALATED
@@ -429,12 +425,15 @@ class Coordinator:
     def _refund_reply(
         self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
     ) -> str:
-        """Code states every refund outcome (``_note``), and a security handoff never carries
-        model text. No model writes a reply beside a proposal: code settles it (``_settled``).
-        What's left is a reply code wrote (``_own_refund_reply``)."""
+        """Code states every refund outcome (``_note``), and the model writes before the
+        executor decides, so a reply beside a refund proposal is dropped, whatever triage
+        called the ticket; a security handoff never carries model text. What's left is a
+        reply code wrote (``_own_refund_reply``)."""
         security = decision is not None and decision.queue is EscalationQueue.SECURITY
         if security:
             return prompts.FALLBACK_REPLY
+        if _refund_proposed(run):  # with or without a note: a policy handoff has none
+            return prompts.REFUND_OUTCOME_REPLY
         return reply
 
     async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
@@ -628,12 +627,16 @@ def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool
     return not other_need
 
 
-def _settled(run: RequestRun) -> FinalizeArgs | None:
-    """A refund request is settled once a refund is proposed and the policy is cited: the
-    executor decides the outcome and code states it (``_note``), so a model's reply would
-    only guess at it. Code writes the reply and the citation instead."""
-    if not (_refund_requested(run) and _refund_proposed(run)):
+async def _settled(run: RequestRun) -> FinalizeArgs | None:
+    """A ticket is settled once a refund is proposed and the policy is cited: the executor
+    decides the outcome and code states it (``_note``), so a model's reply would only guess
+    at it. Code writes the reply and the citation instead, searching for the policy itself
+    once the turn's own tools are done if no model did."""
+    if not _refund_proposed(run):
         return None
+    if _policy_citation(run) is None:
+        search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
+        await search.handler({"query": "refund policy"})
     citation = _policy_citation(run)
     if citation is None:
         return None
@@ -652,9 +655,13 @@ def _policy_citation(run: RequestRun) -> Citation | None:
 
 
 def first_sentence(text: str) -> str:
-    """The first sentence of a chunk's first line of prose (chunks open with a heading)."""
-    lines = [line for line in text.splitlines() if line.strip() and not line.startswith("#")]
-    return lines[0].split(". ")[0][:400] if lines else ""
+    """The first sentence of a chunk's first line of prose (chunks open with a heading), or
+    its heading when it has no prose."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    prose = [line for line in lines if not line.startswith("#")] or [
+        line.lstrip("# ") for line in lines
+    ]
+    return prose[0].split(". ")[0][:400] if prose else ""
 
 
 def _refund_proposed(run: RequestRun) -> bool:

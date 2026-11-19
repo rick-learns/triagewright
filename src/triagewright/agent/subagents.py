@@ -8,7 +8,7 @@ untrusted content before the coordinator records it.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 from pydantic import Field, ValidationError
@@ -60,7 +60,7 @@ async def _subagent[T: Contract](
     payload: Contract,
     output: type[T],
     tools: list[LocalTool],
-    settle: Callable[[], T | None] | None = None,
+    settle: Callable[[], Awaitable[T | None]] | None = None,
 ) -> tuple[T, bool]:
     with run.telemetry.span(f"subagent.{name.value}", SpanKind.SUBAGENT) as span:
         result = await run.run_loop(
@@ -109,7 +109,7 @@ async def action(run: RequestRun) -> tuple[ActionResult, bool]:
     tools = [run.business_tool(name, "action") for name in payload.allowed_tools]
     tools.append(_propose_tool(run))
 
-    def proposed() -> ActionSummary | None:
+    async def proposed() -> ActionSummary | None:
         # A queued proposal is the action's result: code decides it after the review.
         if len(run.deferred) > deferred_start:
             return ActionSummary(summary=prompts.ACTION_PROPOSED)

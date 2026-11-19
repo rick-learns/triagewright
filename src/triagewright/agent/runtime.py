@@ -389,7 +389,7 @@ class RequestRun:
         output_tool: str,
         output_description: str,
         check: Callable[[T], str | None] | None = None,
-        settle: Callable[[], T | None] | None = None,
+        settle: Callable[[], Awaitable[T | None]] | None = None,
     ) -> T:
         """Run one bounded agentic loop until the model returns a valid ``output``.
 
@@ -398,8 +398,9 @@ class RequestRun:
         (or ``stop_sequence``) forces the output tool; ``max_tokens`` gets one
         continuation; ``pause_turn`` continues; ``refusal`` raises :class:`Refused`.
         Invalid output, or output ``check`` rejects with a message, gets one repair
-        attempt (a ``check`` repair leaves the tools free). ``settle`` lets code return the
-        result once a turn's tool calls have decided it, saving the model the output call.
+        attempt (a ``check`` repair leaves the tools free). ``settle`` runs after all of a
+        turn's tool calls and lets code return the result once they have decided it, saving
+        the model the output call.
         Any bound,
         a second truncation, or a second invalid output raises :class:`Fallback`.
         ``turn_timeout_s`` bounds each model call; tool calls are bounded by the total
@@ -491,7 +492,7 @@ class RequestRun:
                 if value is not None:
                     return value
                 _append(messages, "user", results)
-                if settle is not None and (settled := settle()) is not None:
+                if settle is not None and (settled := await settle()) is not None:
                     return settled
                 if invalid:
                     strikes += 1
