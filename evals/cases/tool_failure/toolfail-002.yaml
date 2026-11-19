@@ -1,0 +1,33 @@
+id: toolfail-002
+category: tool_failure
+title: get_order rate limited twice, succeeds on the last allowed retry
+ticket:
+  ticket_id: tkt_tf002
+  customer_id: cus_gus07
+  channel: email
+  subject: Desk chair shipment
+  body: My Ergo Desk Chair order ord_g7001 shipped a while ago. Which carrier has it and what's the tracking number?
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: get_order
+    error:
+      category: rate_limited
+      message: too many requests
+      retryable: true
+      retry_after_ms: 200
+    times: 2
+    match_arguments:
+      order_id: ord_g7001
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  attempts:
+    get_order: 3
+  reply_includes_any: ["1Z7001009"]
+tags: [rate_limited, recovers, retry_after, get_order]
+reviewed: false
+notes: >-
+  behavior.md Always 5: a fault with times 2 succeeds on the third raw call, which is the
+  last one tool_retries 2 allows. The wrapper should honor retry_after_ms (kept small at
+  200 ms). ord_g7001 is cus_gus07's, shipped with FedEx, tracking 1Z7001009.

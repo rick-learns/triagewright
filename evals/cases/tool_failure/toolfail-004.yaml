@@ -1,0 +1,38 @@
+id: toolfail-004
+category: tool_failure
+title: Executor's eligibility lookup fails twice, recovers, refund goes to approval
+ticket:
+  ticket_id: tkt_tf004
+  customer_id: cus_fay06
+  channel: email
+  subject: Refund for faulty monitor
+  body: |
+    My Vista 27in Monitor from order ord_f6001 has developed a line of dead pixels.
+    I'd like a full refund of $329.00 please.
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: check_refund_eligibility
+    error:
+      category: transient
+      message: refund service temporarily unavailable
+      retryable: true
+    times: 2
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 32900
+  attempts:
+    check_refund_eligibility: 3
+  citations_any: [kb_refund_policy]
+tags: [transient, recovers, executor_lookup, refund]
+reviewed: false
+notes: >-
+  ActionExecutor.propose fetches eligibility itself (caller="action") and retries
+  retryable errors up to tool_retries 2; these calls count in attempts. Verified with
+  FakeActionExecutor: times 2 -> 3 raw calls, then pending_approval. ord_f6001 is
+  delivered 2026-05-25 (window ends 2026-06-24), total 32900 (under the 50000 hard limit),
+  and cus_fay06 has no refunds, so evaluate_refund returns eligible. Assumes the one
+  eligibility lookup is the executor's; if the action subagent also calls
+  check_refund_eligibility directly, the expected count changes.

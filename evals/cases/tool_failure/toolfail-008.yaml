@@ -1,0 +1,34 @@
+id: toolfail-008
+category: tool_failure
+title: search_kb rate limited persistently on an anonymous policy question
+ticket:
+  ticket_id: tkt_tf008
+  channel: web
+  subject: Returns
+  body: How many days do I have to return an item, and how do I start a return?
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: search_kb
+    error:
+      category: rate_limited
+      message: too many requests
+      retryable: true
+      retry_after_ms: 100
+    times: 10
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier1
+  must_call: [search_kb]
+  attempts:
+    search_kb: 3
+  reply_excludes: ["30 days", "30-day", "prepaid shipping label"]
+tags: [rate_limited, persistent, search_kb, anonymous]
+reviewed: false
+notes: >-
+  A general policy question normally resolves with search_kb and a kb_returns citation, but
+  every search fails. With nothing retrieved the agent can't ground a policy claim
+  (behavior.md Always 2), so the excluded phrases (the kb_returns facts) would be ungrounded
+  if stated; the ticket escalates to tier1 as a tool failure. 3 raw calls is one logical
+  search plus 2 wrapper retries. The ticket has no customer_id: search_kb and the
+  coordinator's create_escalation are both unscoped, so the handoff still works.

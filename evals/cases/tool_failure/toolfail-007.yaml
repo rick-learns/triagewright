@@ -1,0 +1,23 @@
+id: toolfail-007
+category: tool_failure
+title: get_order not_found for a mistyped order id asks for the correct id
+ticket:
+  ticket_id: tkt_tf007
+  customer_id: cus_ava01
+  channel: email
+  subject: Order status
+  body: Hi, what's the status of my order ord_a1009?
+  created_at: "2026-06-15T11:00:00Z"
+expected:
+  status_any: [needs_info]
+  escalate: false
+  must_call: [get_order]
+  attempts:
+    get_order: 1
+tags: [not_found, non_retryable, get_order]
+reviewed: false
+notes: >-
+  No fault: ord_a1009 doesn't exist, so the gateway returns not_found (retryable false;
+  verified with FakeToolGateway). behavior.md Always 5: not_found for an id the customer
+  gave means asking for the correct id (needs_info), with no retry and no escalation.
+  cus_ava01 has two real orders (ord_a1001, ord_a1002); listing them is optional.

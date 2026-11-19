@@ -1,0 +1,33 @@
+id: toolfail-001
+category: tool_failure
+title: get_order transient error once, recovers on the first retry
+ticket:
+  ticket_id: tkt_tf001
+  customer_id: cus_ava01
+  channel: chat
+  subject: Where is my cable?
+  body: Where is my order ord_a1002? I'd like the tracking number please.
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: get_order
+    error:
+      category: transient
+      message: order service temporarily unavailable
+      retryable: true
+    times: 1
+    match_arguments:
+      order_id: ord_a1002
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  attempts:
+    get_order: 2
+  reply_includes_any: ["1Z1002003"]
+tags: [transient, recovers, get_order]
+reviewed: false
+notes: >-
+  One transient fault, retried by the agent's tool-call wrapper (tool_retries 2), so the
+  second raw call succeeds: exactly 2 get_order calls. ord_a1002 is cus_ava01's, shipped
+  with UPS tracking 1Z1002003, which the customer asked for. The model must not re-call
+  get_order itself; retries live only in the wrapper.
