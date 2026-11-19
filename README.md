@@ -13,7 +13,7 @@ Runs on one machine on free-tier models. Spend so far is $0.
 ![MCP](https://img.shields.io/badge/tools-MCP-111827)
 ![OpenTelemetry](https://img.shields.io/badge/tracing-OpenTelemetry-f5a800)
 ![Podman](https://img.shields.io/badge/runtime-Podman-892ca0)
-![Tests](https://img.shields.io/badge/tests-846%20passing-16a34a)
+![Tests](https://img.shields.io/badge/tests-854%20passing-16a34a)
 ![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate-70.4%25%20(target%2090%25)-d97706)
 ![Spend](https://img.shields.io/badge/spend-%240-16a34a)
 
@@ -90,7 +90,7 @@ You need Python 3.12 and [uv](https://docs.astral.sh/uv/). None of these command
 
 ```bash
 uv sync
-uv run pytest                               # 846 tests, no network
+uv run pytest                               # 854 tests, no network
 uv run triagewright-evals smoke             # validate all 54 eval cases
 uv run triagewright-evals run --stub        # exercise the harness and graders without a model
 uv run python docs/assets/tour.py           # re-render the tour images
