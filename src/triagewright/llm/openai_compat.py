@@ -18,8 +18,22 @@ Signatures are not part of ``ModelRequest``, so fingerprints don't change.
 
 from __future__ import annotations
 
+# Kept so every name the single module exposed before the split still imports from here.
+import asyncio as asyncio
+import json as json
+import logging as logging
+import re as re
+import time as time
 from collections import OrderedDict
+from collections.abc import Awaitable as Awaitable
+from collections.abc import Callable as Callable
+from datetime import UTC as UTC
+from datetime import datetime as datetime
+from email.utils import parsedate_to_datetime as parsedate_to_datetime
 from typing import Any
+from typing import ClassVar as ClassVar
+
+import httpx as httpx
 
 from triagewright.config import is_free_model as is_free_model
 from triagewright.contracts.common import canonical_json as canonical_json
