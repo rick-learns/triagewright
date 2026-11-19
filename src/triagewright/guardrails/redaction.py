@@ -68,17 +68,27 @@ _GROUP = re.compile(r"\d+")
 
 
 def _cards(text: str) -> Iterator[_Match]:
-    """The longest leading groups of each run that form a Luhn-valid 13-19 digit number.
+    """Each run's Luhn-valid 13-19 digit windows of whole groups, longest first, left to right.
 
-    So "4111 1111 1111 1111 12/28" redacts the card and keeps the expiry month.
+    So "4111 1111 1111 1111 12/28" redacts the card and keeps the expiry month,
+    and two cards in a row are both redacted.
     """
     for run in _DIGIT_RUN.finditer(text):
         groups = list(_GROUP.finditer(text, run.start(), run.end()))
-        for last in range(len(groups), 0, -1):
-            digits = "".join(g.group() for g in groups[:last])
-            if 13 <= len(digits) <= 19 and luhn_valid(digits):
-                yield _Match(_CARD, run.start(), groups[last - 1].end(), digits)
-                break
+        first = 0
+        while first < len(groups):
+            prefixes: list[str] = []  # digits of groups[first..first+i], at most 19
+            for g in groups[first:]:
+                if len(digits := (prefixes[-1] if prefixes else "") + g.group()) > 19:
+                    break
+                prefixes.append(digits)
+            for i in reversed(range(len(prefixes))):
+                if len(prefixes[i]) >= 13 and luhn_valid(prefixes[i]):
+                    end = groups[first + i].end()
+                    yield _Match(_CARD, groups[first].start(), end, prefixes[i])
+                    first += i
+                    break
+            first += 1
 
 
 _SSN_RE = re.compile(r"(?<![\w-])(\d{3})([- ])(\d{2})\2(\d{4})(?![\w-])")
@@ -115,7 +125,7 @@ _GAP_WORDS = (
 )
 _CODE_RE = re.compile(
     rf"\b(?P<label>(?P<qual>{_QUALIFIED})|otp|passcode|pin|codes?)\b"
-    rf"(?P<gap>(?:[\s:#=,.-]|\b(?:{_GAP_WORDS})\b)*?){_CODE_DIGITS}",
+    rf"(?P<gap>(?:[\s:#=,.\"'*()\[\]-]|\b(?:{_GAP_WORDS})\b)*?){_CODE_DIGITS}",
     re.IGNORECASE,
 )
 # "123456 is your verification code"
@@ -142,9 +152,11 @@ def _codes(text: str) -> Iterator[_Match]:
         yield _Match(_CODE, m.start("code"), m.end("code"), _digits(m.group("code")))
 
 
+# RFC 5322 atext. A leading apostrophe or backtick is a quote around the address.
 _LOCAL_CHARS = r"A-Za-z0-9!#$%&'*+/=?^_`{|}~\-"
+_LOCAL_FIRST = r"A-Za-z0-9!#$%&*+/=?^_{|}~\-"
 _EMAIL_RE = re.compile(
-    rf"(?<![\w.{_LOCAL_CHARS}])[A-Za-z0-9_](?:[{_LOCAL_CHARS}.]{{0,62}}[{_LOCAL_CHARS}])?"
+    rf"(?<![.{_LOCAL_FIRST}])[{_LOCAL_FIRST}](?:[{_LOCAL_CHARS}.]{{0,62}}[{_LOCAL_CHARS}])?"
     r"@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24}(?![\w-])"
 )
 

@@ -42,6 +42,12 @@ _ANY_TOOL = (
     r"(?:issue_refund|create_escalation|check_refund_eligibility|get_customer|get_account"
     r"|get_order|list_orders|search_kb)"
 )
+# "the previous instructions on the box" are a product's, not the assistant's.
+_ON_A_THING = (
+    r"\W+(?:on|in|from|inside|with)\W+(?:the\W+|my\W+|this\W+|that\W+|your\W+)?(?:\w+\W+)?"
+    r"(?:box|label|package|packaging|manual|email|letter|receipt|leaflet|insert|sticker|slip"
+    r"|card|form|website|site|page|app|bottle|device)s?\b"
+)
 _TARGET = (
     r"(?:instructions?|rules|polic(?:y|ies)|guidelines|directives|prompts?|guardrails"
     r"|restrictions|programming|constraints|safeguards)"
@@ -57,7 +63,7 @@ _RULES: tuple[_Rule, ...] = (
             # customer's own ("my earlier return instructions").
             r"\b(?:ignore|disregard|forget|override|bypass)\W+(?:(?:any|of|the|these|those)\W+){0,2}"
             r"(?:(?:all|your|previous|prior|above|earlier|preceding|system|initial|original"
-            rf"|safety|developer)\W+){{1,3}}{_TARGET}\b",
+            rf"|safety|developer)\W+){{1,3}}{_TARGET}\b(?!{_ON_A_THING})",
             r"\b(?:new|updated|revised|real|actual|true)\s+system\s+(?:instructions?|prompt)\b",
         ),
     ),
@@ -97,8 +103,10 @@ _RULES: tuple[_Rule, ...] = (
             r"^\W*(?:system|assistant|developer)\s*:",
             r"\[\s*/?\s*(?:system|admin|inst|sys)\s*\]",
             r"<\|?\s*/?\s*(?:system|im_start|im_end|endoftext|assistant)\s*\|?>",
-            r"\bsystem\s+(?:note|message|notice|override|instruction|alert|directive)s?\s*"
-            r"(?::|to\s+(?:all\s+|any\s+|the\s+)?(?:ai|llm|assistant|bot|model)s?\b)",
+            # A label, so only at the start of a line ("I got a system message: ..." passes).
+            r"^\W*system\s+(?:note|message|notice|override|instruction|alert|directive)s?\s*:",
+            r"\bsystem\s+(?:note|message|notice|override|instruction|alert|directive)s?\s+"
+            r"(?:to|for)\s+(?:all\s+|any\s+|the\s+)?(?:ai|llm|assistant|bot|model)s?\b",
             r"\b(?:note|message|instructions?|notice|attention)\s+(?:to|for)\s+(?:all\s+|any\s+"
             r"|the\s+)?(?:ai|llm|chatbot|bot|assistant|language\s+model|model)s?\b",
             r"\b(?:tool_use|function_call|tool_calls?)\b",
@@ -144,7 +152,7 @@ _RULES: tuple[_Rule, ...] = (
             r"\b(?:dear|attention|hey|hello|hi)\W+(?:the\W+)?(?:ai|llm|assistant|bot|model)s?\b",
             r"\b(?:ai|llm)\s+(?:assistants?|agents?|models?|bots?)\s*(?::|,\s*(?:you|please)\b)",
             r"\bif\s+you\s+are\s+an?\s+(?:ai|assistant|bot|language\s+model|llm)\b",
-            r"\blanguage\s+models?\s+(?:reading|processing|must|should|will)\b",
+            r"\blanguage\s+models?\s+(?:reading|processing)\s+this\b",
         ),
     ),
     _Rule(
@@ -152,9 +160,14 @@ _RULES: tuple[_Rule, ...] = (
         "indirect content directs the reader past policy",
         _INDIRECT,
         _rx(
+            # Only a directive that bypasses policy: "you should approve the refund only
+            # after you verify eligibility" is policy, and passes.
             r"\byou\s+(?:must|should|are\s+(?:required|instructed)\s+to)\W+(?:now\W+)?"
-            r"(?:reveal|ignore|disregard|override|bypass|grant\W+(?:\w+\W+)?refunds?"
-            r"|approve\W+(?:\w+\W+)?refunds?)\b",
+            r"(?:reveal\W+(?:\w+\W+){0,2}?(?:password|credentials?|secrets?|keys?|tokens?"
+            rf"|prompt|instructions)|(?:ignore|disregard|override|bypass)\W+(?:\w+\W+){{0,2}}?"
+            rf"(?:{_TARGET}|approval|verification|checks?|limits?)"
+            r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without|regardless"
+            r"|to\W+(?:any|every|all)))\b",
         ),
     ),
 )

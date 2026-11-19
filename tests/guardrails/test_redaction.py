@@ -17,11 +17,18 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ("amex 378282246310005", "amex [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
     ("card 4111 1111 1111 1111 12/28", "card [CARD_NUMBER_1] 12/28", [PIIType.CARD_NUMBER]),
     ("card 4111\u00a01111\u00a01111\u00a01111", "card [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
+    (
+        "cards 4111 1111 1111 1111 5555 5555 5555 4444",
+        "cards [CARD_NUMBER_1] [CARD_NUMBER_2]",
+        [PIIType.CARD_NUMBER, PIIType.CARD_NUMBER],
+    ),
     ("ssn 123-45-6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("ssn 123 45 6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("my SSN is 123456789", "my SSN is [SSN_1]", [PIIType.SSN]),
     ("mail Ann.Lee+x@mail.example.com now", "mail [EMAIL_1] now", [PIIType.EMAIL]),
     ("mail _name@example.com", "mail [EMAIL_1]", [PIIType.EMAIL]),
+    ("mail +tag@example.com", "mail [EMAIL_1]", [PIIType.EMAIL]),
+    ("mail 'name@example.com'", "mail '[EMAIL_1]'", [PIIType.EMAIL]),
     ("mail o'connor@example.com", "mail [EMAIL_1]", [PIIType.EMAIL]),
     ("call (555) 123-4567", "call [PHONE_1]", [PIIType.PHONE]),
     ("call 555.123.4567 or +1 555 987 6543", "call [PHONE_1] or [PHONE_2]", [PIIType.PHONE] * 2),
@@ -34,6 +41,9 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ("2FA code 004321 didn't work", "2FA code [ONE_TIME_CODE_1] didn't work", []),
     ("123456 is your verification code", "[ONE_TIME_CODE_1] is your verification code", []),
     ("My OTP is 123 456", "My OTP is [ONE_TIME_CODE_1]", []),
+    ('{"otp":"123456"}', '{"otp":"[ONE_TIME_CODE_1]"}', []),
+    ("OTP **123456**", "OTP **[ONE_TIME_CODE_1]**", []),
+    ("verification code (123456)", "verification code ([ONE_TIME_CODE_1])", []),
 ]
 
 # Lookalikes that must stay as they are.
