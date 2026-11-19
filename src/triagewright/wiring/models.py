@@ -1,4 +1,4 @@
-"""Model clients for the agent: one HTTP pool and pacer per process, routed by purpose."""
+"""Model clients for the agent, routed by purpose: one HTTP pool per factory, pacers by quota."""
 
 from __future__ import annotations
 
