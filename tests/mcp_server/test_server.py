@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any, cast
 
 import mcp_types
 import pytest
-from mcp import Client, MCPError
-from mcp.server import Server
-from mcp.server.context import ServerRequestContext
+from mcp import Client, MCPError, StdioServerParameters
 
 from tests.mcp_server.conftest import ctx, new_service
 from triagewright.config import Settings
@@ -162,28 +161,27 @@ def test_parse_result_rejects_malformed_or_inconsistent_results() -> None:
         assert parsed.error and parsed.error.category is ErrorCategory.INTERNAL, raw
 
 
-async def test_gateway_refuses_a_server_without_the_contract_tools() -> None:
-    async def no_tools(
-        ctx: ServerRequestContext[Any], params: mcp_types.PaginatedRequestParams | None
-    ) -> mcp_types.ListToolsResult:
-        return mcp_types.ListToolsResult(tools=[])
-
-    gw = McpToolGateway(Client(Server("other", on_list_tools=no_tools), mode="legacy"))
-    with pytest.raises(RuntimeError, match="contract tools"):
-        async with gw:
-            pass  # pragma: no cover
-
-
-def test_from_settings_picks_the_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TW_APPROVAL_KEY", "k" * 32)
-    monkeypatch.setenv("TW_DB_PATH", "/tmp/elsewhere.sqlite")  # noqa: S108
-    http = Settings(_env_file=None, mcp_transport="http", mcp_url="http://mcp:8765/mcp")
+def test_from_settings_picks_the_transport(tmp_path: Path) -> None:
+    http = Settings(
+        _env_file=None, mcp_transport="http", mcp_url="http://mcp:8765/mcp", approval_key="k" * 32
+    )
     assert McpToolGateway.from_settings(http)._client.server == "http://mcp:8765/mcp"
-    stdio = McpToolGateway.from_settings(Settings(_env_file=None, mcp_transport="stdio"))
-    assert stdio._client.server == stdio_server_parameters()
-    params = stdio_server_parameters()
+    stdio = Settings(
+        _env_file=None,
+        mcp_transport="stdio",
+        approval_key="s" * 40,
+        db_path=tmp_path / "db.sqlite",
+        refund_window_days=14,
+    )
+    params = McpToolGateway.from_settings(stdio)._client.server
+    assert isinstance(params, StdioServerParameters) and params.env is not None
     assert params.args[-2:] == ["--transport", "stdio"]
-    assert params.env and params.env["TW_DB_PATH"] == "/tmp/elsewhere.sqlite"  # noqa: S108
-    assert all(k.startswith("TW_") for k in params.env)
+    # The child gets the resolved settings, not just whatever is in os.environ.
+    assert params.env["TW_APPROVAL_KEY"] == "s" * 40
+    assert params.env["TW_DB_PATH"] == str(tmp_path / "db.sqlite")
+    assert params.env["TW_REFUND_WINDOW_DAYS"] == "14"
+    assert Path(params.env["TW_SEED_DIR"]).is_absolute()
     with pytest.raises(ValueError, match="inprocess"):
         McpToolGateway.from_settings(Settings(_env_file=None))
+    with pytest.raises(ValueError, match="TW_APPROVAL_KEY"):
+        stdio_server_parameters(Settings(_env_file=None))

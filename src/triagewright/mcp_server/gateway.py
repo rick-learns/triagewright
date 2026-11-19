@@ -7,7 +7,7 @@ eval ``ToolFault``s before the call leaves the gateway, like
 
 from __future__ import annotations
 
-import os
+import logging
 import sys
 import time
 from collections.abc import Sequence
@@ -19,6 +19,7 @@ from typing import Any, Self, cast
 import anyio
 import httpx
 import mcp_types
+from anyio.abc import TaskGroup, TaskStatus
 from mcp import Client, MCPError, StdioServerParameters
 from pydantic import ValidationError
 
@@ -40,6 +41,8 @@ from triagewright.contracts.world import WorldState
 from triagewright.mcp_server.server import CTX_META_KEY
 from triagewright.mcp_server.service import ToolService
 from triagewright.mcp_server.store import MockSystems
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -143,12 +146,18 @@ class McpToolGateway(_RecordingGateway):
     ``CallContext`` travels in the request ``_meta`` under ``CTX_META_KEY``.
     Transport failures (connection lost, timeout) become retryable ``transient``
     or ``timeout`` results; a lost ``issue_refund`` response is safe to retry
-    because the server dedupes on the idempotency key.
+    because the server dedupes on the idempotency key. The SDK session runs in
+    its own task, so a dead transport fails calls instead of cancelling the
+    caller. It doesn't reconnect: once the session is lost, every call is
+    ``transient`` until the owner opens a new gateway.
     """
 
     def __init__(self, client: Client, *, faults: Sequence[ToolFault] = ()) -> None:
         super().__init__(faults)
         self._client = client
+        self._stop = anyio.Event()
+        self._lost = anyio.Event()
+        self._tg: TaskGroup | None = None
 
     @classmethod
     def from_settings(
@@ -158,19 +167,18 @@ class McpToolGateway(_RecordingGateway):
         if settings.mcp_transport == "http":
             return cls(Client(settings.mcp_url), faults=faults)
         if settings.mcp_transport == "stdio":
-            return cls(Client(stdio_server_parameters()), faults=faults)
+            return cls(Client(stdio_server_parameters(settings)), faults=faults)
         raise ValueError("mcp_transport=inprocess uses InProcessToolGateway")
 
     async def __aenter__(self) -> Self:
-        await self._client.__aenter__()
+        tg = anyio.create_task_group()
+        await tg.__aenter__()
         try:
-            listed = await self._client.list_tools()
-            served = {t.name for t in listed.tools}
-            if served != set(TOOL_SPECS):
-                raise RuntimeError(f"MCP server tools {sorted(served)} != contract tools")
+            await tg.start(self._run_session)
         except BaseException:
-            await self._client.__aexit__(None, None, None)  # not exc_info: keep the error plain
+            await tg.__aexit__(None, None, None)
             raise
+        self._tg = tg
         return self
 
     async def __aexit__(
@@ -179,9 +187,47 @@ class McpToolGateway(_RecordingGateway):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        await self._client.__aexit__(exc_type, exc, tb)
+        self._stop.set()
+        if self._tg is not None:
+            await self._tg.__aexit__(None, None, None)
+
+    async def _run_session(
+        self, *, task_status: TaskStatus[None] = anyio.TASK_STATUS_IGNORED
+    ) -> None:
+        started = False
+        try:
+            async with self._client:
+                task_status.started()
+                started = True
+                await self._stop.wait()
+        except Exception:
+            if not started:
+                raise
+            logger.warning("MCP session lost", exc_info=True)
+        finally:
+            self._lost.set()
 
     async def _send(self, name: ToolName, arguments: JsonObject, ctx: CallContext) -> ToolResult:
+        done: list[ToolResult] = []
+
+        async def call() -> None:
+            done.append(await self._call_tool(name, arguments, ctx))
+            tg.cancel_scope.cancel()
+
+        async def watch() -> None:
+            await self._lost.wait()
+            tg.cancel_scope.cancel()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(call)
+            tg.start_soon(watch)
+        if done:
+            return done[0]
+        return ToolResult.fail(name, ErrorCategory.TRANSIENT, "MCP connection lost")
+
+    async def _call_tool(
+        self, name: ToolName, arguments: JsonObject, ctx: CallContext
+    ) -> ToolResult:
         meta = cast(mcp_types.RequestParamsMeta, {CTX_META_KEY: ctx.model_dump(mode="json")})
         try:
             raw = await self._client.call_tool(name.value, dict(arguments), meta=meta)
@@ -215,10 +261,21 @@ def _parse_result(name: ToolName, raw: mcp_types.CallToolResult) -> ToolResult:
     return result
 
 
-def stdio_server_parameters() -> StdioServerParameters:
-    """Launch this package's MCP server over stdio, passing the ``TW_*`` settings through."""
+def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
+    """Launch this package's MCP server over stdio with the server-side ``settings``."""
+    if settings.approval_key is None:
+        raise ValueError("TW_APPROVAL_KEY is required to launch the MCP server")
+    env = {
+        "TW_APPROVAL_KEY": settings.approval_key.get_secret_value(),
+        "TW_DB_PATH": str(settings.db_path.resolve()),
+        "TW_SEED_DIR": str(settings.seed_dir.resolve()),
+        "TW_KB_DIR": str(settings.kb_dir.resolve()),
+        "TW_REFUND_HARD_LIMIT_CENTS": str(settings.refund_hard_limit_cents),
+        "TW_REFUND_WINDOW_DAYS": str(settings.refund_window_days),
+        "TW_MAX_REFUNDS_PER_CUSTOMER_30D": str(settings.max_refunds_per_customer_30d),
+    }
     return StdioServerParameters(
         command=sys.executable,
         args=["-m", "triagewright.mcp_server", "--transport", "stdio"],
-        env={k: v for k, v in os.environ.items() if k.startswith("TW_")},
+        env=env,
     )

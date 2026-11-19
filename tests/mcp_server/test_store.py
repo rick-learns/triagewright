@@ -47,6 +47,21 @@ def test_transaction_rolls_back_on_error() -> None:
     assert systems.ledger().refunds == seed_world().refunds
 
 
+def test_failed_commit_rolls_back_and_frees_the_connection(tmp_path: Path) -> None:
+    path = tmp_path / "mock.sqlite"
+    MockSystems.open(path, seed=seed_world()).close()
+    writer = MockSystems(sqlite3.connect(path, isolation_level=None, timeout=0.05))
+    reader = sqlite3.connect(path, isolation_level=None)
+    reader.execute("BEGIN")
+    reader.execute("SELECT * FROM refunds").fetchall()  # a shared lock blocks COMMIT
+    with pytest.raises(sqlite3.OperationalError, match="locked"), writer.transaction():
+        writer.add_refund(_refund())
+    reader.execute("COMMIT")
+    with writer.transaction():  # not stuck inside the failed transaction
+        writer.add_refund(_refund())
+    assert writer.ledger().refunds == [*seed_world().refunds, _refund()]
+
+
 def test_unknown_schema_version_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "mock.sqlite"
     conn = sqlite3.connect(path)

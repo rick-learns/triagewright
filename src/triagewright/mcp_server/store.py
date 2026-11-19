@@ -92,10 +92,11 @@ class MockSystems:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             yield
+            self._conn.execute("COMMIT")
         except BaseException:
-            self._conn.execute("ROLLBACK")
+            if self._conn.in_transaction:  # also after a failed (busy) COMMIT
+                self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
 
     # ---- reads ----
 

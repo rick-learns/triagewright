@@ -4,7 +4,7 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -73,8 +73,13 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def http_server(tmp_path: Path) -> Iterator[str]:
+def http_server(tmp_path: Path) -> Iterator[tuple[str, Callable[[], None]]]:
     port = _free_port()
+
+    def stop() -> None:
+        proc.terminate()
+        proc.wait(timeout=10)
+
     args = ["-m", "triagewright.mcp_server", "--transport", "http", "--port", str(port)]
     proc = subprocess.Popen(  # noqa: S603
         [sys.executable, *args],
@@ -93,18 +98,20 @@ def http_server(tmp_path: Path) -> Iterator[str]:
                 if proc.poll() is not None or time.monotonic() > deadline:
                     raise RuntimeError("MCP HTTP server did not start") from None
                 time.sleep(0.1)
-        yield f"http://127.0.0.1:{port}/mcp"
+        yield f"http://127.0.0.1:{port}/mcp", stop
     finally:
-        proc.terminate()
-        proc.wait(timeout=10)
+        stop()
 
 
 @pytest.mark.integration
 @pytest.mark.anyio
-async def test_streamable_http_end_to_end(http_server: str) -> None:
+async def test_streamable_http_end_to_end(
+    http_server: tuple[str, Callable[[], None]],
+) -> None:
     from tests.mcp_server.test_behavior import signed_refund
 
-    async with McpToolGateway(Client(http_server)) as gw:
+    url, stop_server = http_server
+    async with McpToolGateway(Client(url)) as gw:
         order = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
         assert order.data and order.data["order_id"] == "ord_a1001"
         foreign = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_c3001"}, ctx())
@@ -116,3 +123,20 @@ async def test_streamable_http_end_to_end(http_server: str) -> None:
         args = signed_refund(SUBPROCESS_KEY.encode())
         first = await gw.call(ToolName.ISSUE_REFUND, args, hal)
         assert not first.is_error and await gw.call(ToolName.ISSUE_REFUND, args, hal) == first
+
+        stop_server()  # a dead transport fails calls; it never cancels the caller
+        with anyio.fail_after(10):
+            lost = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+            again = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+        for result in (lost, again):
+            assert result.error and result.error.category is ErrorCategory.TRANSIENT
+            assert result.error.retryable
+        assert len(gw.calls) == 7
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_connect_failure_raises_on_enter() -> None:
+    gw = McpToolGateway(Client(f"http://127.0.0.1:{_free_port()}/mcp"))
+    with anyio.fail_after(10), pytest.raises(Exception):  # noqa: B017, PT011
+        await gw.__aenter__()

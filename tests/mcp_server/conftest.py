@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from mcp import Client, StdioServerParameters
+from mcp import Client
 
+from triagewright.config import Settings
 from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.ports import ToolGateway
 from triagewright.contracts.tools import CallContext, Caller, ToolCallRecord
@@ -101,12 +101,15 @@ async def open_harness(
             yield Harness(gw, TEST_APPROVAL_KEY, lambda: gw.calls, service.systems.ledger)
     elif kind == "mcp-stdio":
         env = subprocess_env(tmp_path)
-        params = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "triagewright.mcp_server", "--transport", "stdio"],
-            env=env,
-            cwd=str(REPO_ROOT),
+        settings = Settings(
+            _env_file=None,
+            mcp_transport="stdio",
+            approval_key=env["TW_APPROVAL_KEY"],
+            db_path=Path(env["TW_DB_PATH"]),
+            seed_dir=Path(env["TW_SEED_DIR"]),
+            kb_dir=Path(env["TW_KB_DIR"]),
         )
+        gateway = McpToolGateway.from_settings(settings, faults=faults)
 
         def ledger() -> WorldState:
             systems = MockSystems.open(env["TW_DB_PATH"], seed=WorldState())
@@ -115,7 +118,7 @@ async def open_harness(
             finally:
                 systems.close()
 
-        async with McpToolGateway(Client(params), faults=faults) as gw:
+        async with gateway as gw:
             yield Harness(gw, SUBPROCESS_KEY.encode(), lambda: gw.calls, ledger)
     else:  # pragma: no cover
         raise ValueError(kind)
