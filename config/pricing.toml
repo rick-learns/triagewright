@@ -1,3 +1,39 @@
 # Model prices in USD per million tokens. Owned by lane E (observability).
-# Every entry needs a `source` (URL + date checked). Unknown models are an error.
-# Lane E fills this in; it is intentionally empty in Wave 0.
+# Every entry needs a `source` (URL + date checked). Unknown models are an error,
+# never a guessed price. Replay responses are priced under the provider that
+# recorded them; a `provider = "replay"` lookup falls back to gemini, then openrouter.
+#
+# Fields: provider, model, input_per_mtok_usd, output_per_mtok_usd,
+# cache_read_per_mtok_usd (default 0), cache_write_per_mtok_usd (default 0), source.
+
+# ---- Gemini API free tier (the key's project has no billing linked) ----
+
+[[model]]
+provider = "gemini"
+model = "gemini-3.5-flash-lite"
+input_per_mtok_usd = 0.0
+output_per_mtok_usd = 0.0
+source = "https://ai.google.dev/gemini-api/docs/pricing (free tier), checked 2026-11-19"
+
+[[model]]
+provider = "gemini"
+model = "gemini-3.8-flash"
+input_per_mtok_usd = 0.0
+output_per_mtok_usd = 0.0
+source = "https://ai.google.dev/gemini-api/docs/pricing (free tier), checked 2026-11-19"
+
+# ---- OpenRouter `:free` variants ----
+
+[[model]]
+provider = "openrouter"
+model = "google/gemma-4-31b-it:free"
+input_per_mtok_usd = 0.0
+output_per_mtok_usd = 0.0
+source = "https://openrouter.ai/google/gemma-4-31b-it:free (free variant), checked 2026-11-19"
+
+[[model]]
+provider = "openrouter"
+model = "nvidia/nemotron-3-ultra-550b-a55b:free"
+input_per_mtok_usd = 0.0
+output_per_mtok_usd = 0.0
+source = "https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free (free variant), checked 2026-11-19"
