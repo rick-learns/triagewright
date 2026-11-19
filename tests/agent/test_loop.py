@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import pytest
 
 from tests.agent.helpers import (
@@ -21,8 +24,15 @@ from triagewright.agent import prompts
 from triagewright.contracts.agents import LoopConfig, LoopStop, ResolutionStatus
 from triagewright.contracts.common import JsonObject
 from triagewright.contracts.evals import ToolFault
-from triagewright.contracts.llm import StopReason, TextBlock, ToolChoice
+from triagewright.contracts.llm import (
+    ModelRequest,
+    ModelResponse,
+    StopReason,
+    TextBlock,
+    ToolChoice,
+)
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
+from triagewright.pacing import CALL_BUDGET
 from triagewright.testing import model_response, sample_ticket
 
 pytestmark = pytest.mark.anyio
@@ -197,6 +207,51 @@ async def test_handoff_gets_one_attempt_even_after_the_budget() -> None:
     response = await s.resolve(sample_ticket())
     assert response.stop is LoopStop.TIMEOUT
     assert len(s.calls(ToolName.CREATE_ESCALATION)) == 1
+
+
+class PacedModel(TimedModel):
+    """Waits ``pace_s`` for a rate-limit slot before each call, as ``llm.ratelimit`` does:
+    on the fake clock if given, else for real (most of the reported wait)."""
+
+    def __init__(self, responses: list[ModelResponse], pace_s: float, **kw: Any) -> None:
+        super().__init__(responses, **kw)
+        self.pace_s = pace_s
+
+    async def complete(self, request: ModelRequest) -> ModelResponse:
+        budget = CALL_BUDGET.get()
+        assert budget is not None
+        budget.paced(self.pace_s)
+        if self.clock is not None:
+            self.clock.now += self.pace_s
+        else:
+            await asyncio.sleep(self.pace_s * 0.75)
+        return await super().complete(request)
+
+
+async def test_pacing_waits_are_not_counted_against_the_turn_timeout() -> None:
+    model = PacedModel([triage(), finalize(), review()], pace_s=0.2)
+    s = stack(model=model, config=LoopConfig(turn_timeout_s=0.05))
+    response = await s.resolve(sample_ticket())
+    assert response.status is ResolutionStatus.RESOLVED and model.calls == 3
+
+
+async def test_pacing_waits_are_not_counted_against_the_total_timeout() -> None:
+    clock = FakeClock()
+    model = PacedModel([triage(), finalize(), review()], pace_s=20, clock=clock)
+    s = stack(model=model, clock=clock, config=LoopConfig(total_timeout_s=30))
+    response = await s.resolve(sample_ticket())
+    assert response.status is ResolutionStatus.RESOLVED and clock.now == 60
+
+
+async def test_pacing_beyond_its_budget_escalates() -> None:
+    clock = FakeClock()
+    model = PacedModel([triage(), finalize(), review()], pace_s=20, clock=clock)
+    s = stack(model=model, clock=clock, config=LoopConfig(max_pacing_s=50))
+    response = await s.resolve(sample_ticket())
+    assert response.status is ResolutionStatus.ESCALATED
+    assert response.stop is LoopStop.TIMEOUT
+    assert model.calls == 2  # the reviewer's call, at 60s of pacing, was never sent
+    assert s.escalation_args()["reason_codes"] == ["loop_limit"]
 
 
 # ---- retries -----------------------------------------------------------------------

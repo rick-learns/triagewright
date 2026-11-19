@@ -102,9 +102,8 @@ def test_requests_per_minute_defaults_to_the_free_tier_quota() -> None:
 
 def test_clients_on_one_model_share_a_pacer() -> None:
     settings = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="k" * 20)
-    limits = RateLimits(settings.requests_per_minute())
-    first = build_model_clients(settings, limits=limits)
-    second = build_model_clients(settings, limits=limits)
+    first = build_model_clients(settings)  # the process-wide default
+    second = build_model_clients(settings, limits=RateLimits.shared(15))
     pacers = {
         id(c._limiter)  # type: ignore[attr-defined]
         for clients in (first, second)

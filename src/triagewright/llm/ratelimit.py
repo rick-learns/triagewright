@@ -6,11 +6,19 @@ per minute per key. One ticket makes several calls in a row, so a burst of
 tickets trips the quota and the 429s turn into handoffs. Pacing below the
 quota on our side avoids that.
 
-``RateLimiter`` is a sliding window: at most ``per_minute`` request starts in
-any ``window_s`` span. A single ticket's calls go through at once; only the
-excess waits. Reservations are taken under a thread lock and waited out with
-the caller's ``sleep``, so one limiter serves clients on any event loop or
-thread in the process (the CLI, the API, and eval cases all share it).
+``RateLimiter`` is a sliding window over *admissions*: at most ``per_minute``
+requests are admitted in any ``window_s`` span. A slot is charged only when a
+caller is admitted, never while it waits, so a caller cancelled while waiting
+costs nothing, and one that wakes late rechecks the window. A single ticket's
+calls go through at once; only the excess waits. The window is guarded by a
+thread lock and waits use the caller's ``sleep``, so one limiter serves clients
+on any event loop or thread.
+
+Quotas are per model and project, so a process shares one limiter per model:
+``RateLimits.shared`` is that registry.
+
+Each wait is reported to the current ``triagewright.pacing.CALL_BUDGET``
+before sleeping, so it stays off the caller's deadlines.
 """
 
 from __future__ import annotations
@@ -20,6 +28,9 @@ import threading
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
+from typing import ClassVar
+
+from triagewright.pacing import CALL_BUDGET
 
 Clock = Callable[[], float]
 Sleep = Callable[[float], Awaitable[None]]
@@ -43,37 +54,55 @@ class RateLimiter:
         self._clock = clock
         self._sleep = sleep
         self._lock = threading.Lock()
-        self._starts: deque[float] = deque()  # reserved start times, ascending
+        self._admitted: deque[float] = deque()  # admission times, ascending
 
-    def reserve(self) -> float:
-        """Reserve the next start slot. Returns how long to wait for it (0 if none)."""
+    def try_admit(self) -> float:
+        """Admit now and return 0, or return how long until a slot may free up."""
         with self._lock:
             now = self._clock()
-            while self._starts and self._starts[0] <= now - self._window_s:
-                self._starts.popleft()
-            slot = now
-            if len(self._starts) >= self.per_minute:
-                slot = max(slot, self._starts[-self.per_minute] + self._window_s)
-            if self._starts:
-                slot = max(slot, self._starts[-1])  # keep the queue in order
-            self._starts.append(slot)
-            return slot - now
+            while self._admitted and self._admitted[0] <= now - self._window_s:
+                self._admitted.popleft()
+            if len(self._admitted) < self.per_minute:
+                self._admitted.append(now)
+                return 0.0
+            return self._admitted[0] + self._window_s - now
 
     async def acquire(self) -> float:
-        """Wait for a slot. Returns the seconds waited."""
-        wait = self.reserve()
-        if wait > 0:
+        """Wait until admitted, reporting waits to ``CALL_BUDGET``. Returns the seconds waited."""
+        started = self._clock()
+        while (wait := self.try_admit()) > 0:
+            budget = CALL_BUDGET.get()
+            if budget is not None:
+                budget.paced(wait)
+            before = self._clock()
             await self._sleep(wait)
-        return wait
+            late = self._clock() - before - wait
+            if budget is not None and late > 0:
+                budget.paced(late)
+        return self._clock() - started
 
 
 class RateLimits:
     """One limiter per model, shared by every client built with it."""
 
+    _registry: ClassVar[dict[int, RateLimits]] = {}
+    _registry_lock: ClassVar[threading.Lock] = threading.Lock()
+
     def __init__(self, per_minute: int | None) -> None:
         self.per_minute = per_minute
         self._lock = threading.Lock()
         self._limiters: dict[str, RateLimiter] = {}
+
+    @classmethod
+    def shared(cls, per_minute: int | None) -> RateLimits:
+        """The process-wide limits for this quota: the API, CLI, eval cases, and judge all
+        draw on the same project quota, so they must share one window per model."""
+        if per_minute is None:
+            return cls(None)
+        with cls._registry_lock:
+            if per_minute not in cls._registry:
+                cls._registry[per_minute] = cls(per_minute)
+            return cls._registry[per_minute]
 
     def for_model(self, model: str) -> RateLimiter | None:
         if self.per_minute is None:

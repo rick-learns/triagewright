@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -37,6 +38,7 @@ from triagewright.llm.openai_compat import (
     tool_use_id,
 )
 from triagewright.llm.ratelimit import RateLimiter
+from triagewright.pacing import CallBudget
 
 pytestmark = pytest.mark.anyio
 
@@ -415,8 +417,14 @@ async def test_gemini_retry_info_in_the_body_sets_the_delay() -> None:
 
 
 async def test_a_limiter_paces_every_attempt() -> None:
-    sleeps = Sleeps()
     clock = [0.0]
+
+    class AdvancingSleeps(Sleeps):
+        async def __call__(self, seconds: float) -> None:
+            await super().__call__(seconds)
+            clock[0] += seconds
+
+    sleeps = AdvancingSleeps()
     limiter = RateLimiter(1, window_s=60, clock=lambda: clock[0], sleep=sleeps)
     responses = iter([httpx.Response(503), httpx.Response(200, json=chat(OK))])
     http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: next(responses)))
@@ -428,8 +436,24 @@ async def test_a_limiter_paces_every_attempt() -> None:
         sleep=sleeps,
         limiter=limiter,
     )
-    await client.complete(request())
-    assert sleeps.calls == [0.5, 60.0]  # the backoff, then the retry waits for a slot
+    response = await client.complete(request())
+    assert sleeps.calls == [0.5, 59.5]  # the backoff, then the retry waits for a slot
+    assert response.paced_ms == 59500.0  # reported apart from latency
+
+
+async def test_a_retry_that_cannot_fit_the_deadline_fails_at_once() -> None:
+    async def complete(timeout_s: float) -> list[float]:
+        sleeps = Sleeps()
+        responses = iter([gemini_quota_429("13s"), httpx.Response(200, json=chat(OK))])
+        client = gemini(lambda req: next(responses), sleeps)
+        async with asyncio.timeout(timeout_s) as deadline:
+            with CallBudget(deadline).installed():
+                await client.complete(request())
+        return sleeps.calls
+
+    with pytest.raises(ModelUnavailableError, match="HTTP 429"):
+        await complete(10)  # 13 s + another attempt don't fit in 10 s
+    assert await complete(20) == [13.0]
 
 
 async def test_retry_after_beyond_the_cap_fails_fast() -> None:

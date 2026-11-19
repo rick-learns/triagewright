@@ -39,6 +39,12 @@
           "title": "Output Tokens",
           "type": "integer"
         },
+        "paced_ms": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Paced Ms",
+          "type": "number"
+        },
         "provider": {
           "$ref": "#/$defs/Provider"
         },
@@ -143,6 +149,12 @@
       "minimum": 0,
       "title": "Output Tokens",
       "type": "integer"
+    },
+    "paced_ms": {
+      "default": 0.0,
+      "minimum": 0,
+      "title": "Paced Ms",
+      "type": "number"
     },
     "request_id": {
       "title": "Request Id",

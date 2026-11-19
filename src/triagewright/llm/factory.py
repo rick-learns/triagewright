@@ -53,7 +53,7 @@ def build_model_clients(
 ) -> ModelClients:
     """Clients for every role. A passed ``http_client`` is the caller's to close.
 
-    Pass one ``limits`` to every call that should share a quota (a process's clients do).
+    ``limits`` defaults to the process-wide ``RateLimits.shared`` for the settings' quota.
     """
     provider = settings.llm_provider
     models = settings.models()
@@ -81,7 +81,7 @@ def build_model_clients(
     http = http_client or httpx.AsyncClient(
         timeout=httpx.Timeout(settings.turn_timeout_s, connect=10.0)
     )
-    limits = limits or RateLimits(settings.requests_per_minute())
+    limits = limits or RateLimits.shared(settings.requests_per_minute())
     live = {role: _live_client(settings, model, http, limits) for role, model in models.items()}
     clients: dict[str, ModelClient] = dict(live)
     if settings.record:

@@ -82,6 +82,19 @@ def test_live_metrics_use_wall_time_and_token_totals() -> None:
     assert m.cost_usd == pytest.approx(sum(c.cost_usd for c in m.model_calls))
 
 
+def test_pacing_waits_are_reported_apart_from_live_latency() -> None:
+    clock = FakeClock()
+    tel = telemetry(clock)
+    clock.advance(4000 + 300)  # 4 s waiting for a rate-limit slot, then the call
+    paced = response(latency_ms=300, ttft_ms=50).model_copy(update={"paced_ms": 4000})
+    tel.record_model_call(request("triage"), paced, started_ms=0)
+    clock.advance(10)
+    m = tel.finish()
+    assert m.latency_ms == pytest.approx(310) and m.paced_ms == 4000
+    assert m.ttft_ms == pytest.approx(4050)  # the first token still came 4.05 s in
+    assert m.model_calls[0].paced_ms == 4000
+
+
 def test_replay_swaps_measured_model_time_for_recorded_latency() -> None:
     clock = FakeClock()
     tel = telemetry(clock, replay=True)

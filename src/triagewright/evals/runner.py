@@ -33,6 +33,7 @@ from triagewright.evals.judge import (
     judge_failure,
     judge_recordings,
 )
+from triagewright.pacing import CallBudget
 
 Mode = Literal["live", "replay", "stub"]
 
@@ -148,8 +149,10 @@ async def run_case(
     error: str | None = None
     started = time.perf_counter()
     try:
-        async with asyncio.timeout(timeout_s):
-            response = await runtime.resolver.resolve(case.ticket)
+        # Rate-limit waits don't count against the case timeout (see triagewright.pacing).
+        async with asyncio.timeout(timeout_s) as deadline:
+            with CallBudget(deadline).installed():
+                response = await runtime.resolver.resolve(case.ticket)
     except TimeoutError:
         error = f"timed out after {timeout_s:g}s"
     except Exception as exc:
@@ -183,10 +186,11 @@ async def run_case(
             try:
                 recordings = judge_recordings(judge.recordings_dir, case.id)
                 client = judge.factory(case_id=case.id, recordings=recordings)
-                async with asyncio.timeout(timeout_s):  # bounds the model call
-                    grade, judge_reply = await grade_rubric(
-                        client, case, response, model=judge.model
-                    )
+                async with asyncio.timeout(timeout_s) as deadline:  # bounds the model call
+                    with CallBudget(deadline).installed():
+                        grade, judge_reply = await grade_rubric(
+                            client, case, response, model=judge.model
+                        )
             except TimeoutError:
                 grade = judge_failure(f"judge timed out after {timeout_s:g}s")
             except Exception as exc:  # e.g. the factory can't open the recordings

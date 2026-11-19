@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     max_tokens: int = 1024
     tool_retries: int = 2
     retry_backoff_s: float = 0.5
+    max_pacing_s: float = 120.0
 
     # ---- policy ----
     refund_hard_limit_cents: int = 50_000
@@ -172,6 +173,7 @@ class Settings(BaseSettings):
             max_tokens=self.max_tokens,
             tool_retries=self.tool_retries,
             retry_backoff_s=self.retry_backoff_s,
+            max_pacing_s=self.max_pacing_s,
         )
 
     def policy_config(self) -> PolicyConfig:

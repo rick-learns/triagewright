@@ -59,6 +59,7 @@ from triagewright.contracts.tools import (
     ToolResult,
 )
 from triagewright.contracts.world import EscalationReason
+from triagewright.pacing import CallBudget, PacingRefusedError
 
 _HANDOFF_FLOOR_S = 1.0
 
@@ -142,6 +143,7 @@ class RequestRun:
     outcomes: list[ActionOutcome] = field(default_factory=list)
     tool_failures: list[ToolName] = field(default_factory=list)
     turns: dict[str, int] = field(default_factory=dict)
+    paced_s: float = 0.0  # rate-limit waits so far; off the request clock
 
     # ---- time ------------------------------------------------------------------
 
@@ -153,7 +155,13 @@ class RequestRun:
         budget = self.config.total_timeout_s
         if not handoff:
             budget -= self.config.handoff_reserve_s
-        return budget - (self.clock() - self.started)
+        return budget - (self.clock() - self.started - self.paced_s)
+
+    def _pace(self, wait: float) -> None:
+        """A rate-limit wait: allowed up to ``max_pacing_s`` a request, and off the clock."""
+        if self.paced_s + wait > self.config.max_pacing_s:
+            raise PacingRefusedError(f"pacing would exceed {self.config.max_pacing_s:g}s")
+        self.paced_s += wait
 
     def ensure_time(self) -> float:
         left = self.remaining()
@@ -328,8 +336,16 @@ class RequestRun:
             f"model.{purpose}", SpanKind.MODEL_CALL, {"model": request.model}
         ) as span:
             try:
-                async with asyncio.timeout(min(self.config.turn_timeout_s, left)):
-                    response = await self.model.complete(request)
+                async with asyncio.timeout(min(self.config.turn_timeout_s, left)) as deadline:
+                    with CallBudget(deadline, on_wait=self._pace).installed():
+                        response = await self.model.complete(request)
+            except PacingRefusedError:
+                span.set_error("pacing")
+                raise Fallback(
+                    LoopStop.TIMEOUT,
+                    EscalationReason.LOOP_LIMIT,
+                    f"{purpose} model call would wait too long for a rate-limit slot",
+                ) from None
             except TimeoutError:
                 span.set_error("timeout")
                 raise Fallback(

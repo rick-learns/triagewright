@@ -79,6 +79,7 @@ from triagewright.llm.errors import (
     ModelUnavailableError,
 )
 from triagewright.llm.ratelimit import RateLimiter
+from triagewright.pacing import CALL_BUDGET
 
 log = logging.getLogger(__name__)
 
@@ -334,17 +335,19 @@ class OpenAICompatClient:
             raise ModelConfigError(f"client for {self.model!r} got a request for {request.model!r}")
         body = self._wire_body(request)
         started = time.perf_counter()
+        paced_s = 0.0
         attempt = 0
         while True:
             if self._limiter is not None:
                 waited = await self._limiter.acquire()
+                paced_s += waited
                 if waited > 0:
                     log.info("%s %s paced %.2fs", self.provider, self.model, waited)
             try:
                 data = await self._post(body)
             except ModelUnavailableError as exc:
                 delay = self._delay(attempt, exc.retry_after_s)
-                if attempt >= self._max_retries or delay is None:
+                if attempt >= self._max_retries or delay is None or not _fits(delay):
                     raise
                 attempt += 1
                 log.warning(
@@ -358,10 +361,11 @@ class OpenAICompatClient:
                 )
                 await self._sleep(delay)
                 continue
-            latency_ms = (time.perf_counter() - started) * 1000
+            latency_ms = max(time.perf_counter() - started - paced_s, 0.0) * 1000
             response = from_chat_response(
                 data, request=request, provider=self.provider, latency_ms=latency_ms
             )
+            response = response.model_copy(update={"paced_ms": paced_s * 1000})
             self._remember(data, request, response)
             return response
 
@@ -402,6 +406,19 @@ class OpenAICompatClient:
                 raise ModelResponseError(f"{where}: response is not JSON")
             return data
         raise _status_error(where, status, data, resp.headers.get("retry-after"))
+
+
+# The least time worth leaving a retry after its backoff.
+MIN_ATTEMPT_S = 2.0
+
+
+def _fits(delay: float) -> bool:
+    """Whether a retry after ``delay`` still leaves an attempt's time before the deadline."""
+    budget = CALL_BUDGET.get()
+    deadline = budget.deadline() if budget is not None else None
+    if deadline is None:
+        return True
+    return asyncio.get_running_loop().time() + delay + MIN_ATTEMPT_S <= deadline
 
 
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)s")

@@ -24,6 +24,7 @@ from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.contracts.world import WorldState
 from triagewright.evals.runner import CaseRecord, RunConfig, input_key, load_records, run_cases
+from triagewright.pacing import CALL_BUDGET
 from triagewright.testing import (
     FakeCaseRuntime,
     FakeCaseRuntimeFactory,
@@ -208,6 +209,18 @@ async def test_timeout_fails_the_case_but_still_grades_safety() -> None:
     assert r.error == "timed out after 0.02s" and not r.passed and r.status is None
     assert r.latency_ms >= 20 and not r.unsafe_action
     assert {g.grader: g.passed for g in r.grades}["status"] is False
+
+
+async def test_pacing_waits_are_not_counted_against_the_case_timeout() -> None:
+    async def paced(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        budget = CALL_BUDGET.get()
+        assert budget is not None
+        budget.paced(0.2)  # what llm.ratelimit reports before it sleeps
+        await asyncio.sleep(0.15)
+        return respond(t)
+
+    record = await run(make_case(), paced, timeout_s=0.05)
+    assert record.result.error is None
 
 
 async def test_resolver_error_fails_the_case() -> None:

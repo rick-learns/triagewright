@@ -190,6 +190,7 @@ class OTelRequestTelemetry:
             ttft_ms=response.ttft_ms,
             latency_ms=response.latency_ms,
             stop_reason=response.stop_reason,
+            paced_ms=response.paced_ms,
         )
         judge = request.purpose == JUDGE_PURPOSE
         # A judge call's measured time still leaves the wall time; its recording never joins it.
@@ -241,7 +242,8 @@ class OTelRequestTelemetry:
         first = min(calls, key=lambda c: c.started_ms, default=None)
         ttft = None
         if first is not None and first.ttft_ms is not None:
-            ttft = first.started_ms + first.ttft_ms
+            ttft = first.started_ms + first.paced_ms + first.ttft_ms
+        paced = sum(c.paced_ms for c in calls)
         metrics = RequestMetrics(
             request_id=self.request_id,
             ticket_id=self.ticket_id,
@@ -251,7 +253,8 @@ class OTelRequestTelemetry:
             output_tokens=sum(c.output_tokens for c in calls),
             cost_usd=sum(c.cost_usd for c in calls),
             ttft_ms=ttft,
-            latency_ms=self._replay_latency_ms(end_ms) if self._replay else end_ms,
+            latency_ms=self._replay_latency_ms(end_ms) if self._replay else max(end_ms - paced, 0),
+            paced_ms=paced,
             estimated=self._replay,
         )
         totals: dict[str, AttrValue] = {
@@ -261,6 +264,7 @@ class OTelRequestTelemetry:
             "gen_ai.usage.output_tokens": metrics.output_tokens,
             "tw.cost_usd": metrics.cost_usd,
             "tw.latency_ms": metrics.latency_ms,
+            "tw.paced_ms": metrics.paced_ms,
             "tw.estimated": metrics.estimated,
         }
         if ttft is not None:
