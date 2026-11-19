@@ -146,6 +146,6 @@ def test_zero_cost_does_not_claim_the_models_are_free() -> None:
     )
     md = render_markdown(report)
     assert (
-        "Cost is $0: the models are free, or no billable usage was recorded (the results "
-        "can't tell which), so the cost target is met trivially." in md
+        "Cost is $0: the models are free, or the tickets it counts (errored cases and the "
+        "judge are excluded) recorded no billable usage, so the cost target is met trivially." in md
     )
