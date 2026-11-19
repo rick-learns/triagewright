@@ -44,12 +44,13 @@ DEFAULT_MODELS: dict[Provider, dict[str, str]] = {
 }
 DEFAULT_MODELS[Provider.REPLAY] = DEFAULT_MODELS[Provider.GEMINI]
 
-# Gemini families with a free tier: numbered Flash and Flash-Lite (and their
-# previews), and Gemma. No ``-latest`` aliases (they drift) and no Pro or
-# other paid-only models.
+# Gemini families with a free tier: numbered Flash and Flash-Lite, and Gemma.
+# No ``-latest`` aliases (they drift) and no Pro or other paid-only models.
+# Previews retire quickly, so only the ones listed here are allowed.
 _GEMINI_FREE = re.compile(
-    r"(?!.*-latest$)(?:gemini-\d+(?:\.\d+)?-flash(?:-lite)?(?:-preview)?|gemma-\d+[a-z0-9.-]*)"
+    r"(?!.*-latest$)(?:gemini-\d+(?:\.\d+)?-flash(?:-lite)?|gemma-\d+[a-z0-9.-]*)"
 )
+_GEMINI_FREE_PREVIEWS = frozenset({"gemini-3-flash-preview"})
 
 
 def is_free_model(provider: Provider, model: str) -> bool:
@@ -57,7 +58,7 @@ def is_free_model(provider: Provider, model: str) -> bool:
     if provider is Provider.OPENROUTER:
         return model.endswith(":free")
     if provider is Provider.GEMINI:
-        return _GEMINI_FREE.fullmatch(model) is not None
+        return model in _GEMINI_FREE_PREVIEWS or _GEMINI_FREE.fullmatch(model) is not None
     return is_free_model(Provider.GEMINI, model) or is_free_model(Provider.OPENROUTER, model)
 
 

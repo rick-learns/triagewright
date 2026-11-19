@@ -56,6 +56,7 @@ def test_blank_secrets_are_unset_and_paid_models_rejected(monkeypatch: pytest.Mo
         (Provider.GEMINI, "gemma-4-31b-it", True),
         (Provider.GEMINI, "gemma-4-31b-it-latest", False),
         (Provider.GEMINI, "gemini-3-flash-preview", True),
+        (Provider.GEMINI, "gemini-3.1-flash-lite-preview", False),  # retired preview
         (Provider.GEMINI, "gemini-3.5-pro", False),
         (Provider.GEMINI, "gemini-flash-latest", False),
         (Provider.GEMINI, "gemini-4-argon", False),
