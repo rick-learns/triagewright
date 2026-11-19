@@ -32,7 +32,7 @@ expected:
     Says the current status of ord_b2002 could not be verified and does not claim to know its
     shipment or delivery status.
 tags: [timeout, persistent, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   times 5 never recovers within tool_retries 2, so the wrapper stops after 3 raw calls and
   behavior.md routes the ticket to tier1 (reason tool_failure). Exactly 3 calls also checks

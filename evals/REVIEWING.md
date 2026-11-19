@@ -1,8 +1,8 @@
 # Reviewing an eval case
 
-A case counts toward the release target (at least 50 human-reviewed cases)
-only after a human has checked it and set `reviewed: true` in its YAML file.
-That's a manual edit. No tool flips it. Find the open ones with:
+A case counts toward the release target (at least 50 reviewed cases) only
+after a reviewer has checked it against this list and set `reviewed: true` in
+its YAML file. That's a manual edit. No tool flips it. Find the open ones with:
 
 ```bash
 uv run triagewright-evals review    # unreviewed cases, by category
@@ -65,3 +65,22 @@ case or leave it unreviewed with a `notes` entry that says why.
 
 When every box is checked, set `reviewed: true` and commit the case on its own
 (or with its fix) so the review shows up in history.
+
+## Review record
+
+All 54 cases were reviewed on 2026-11-19 by a three-model council, not by a
+human: GPT Sol (gpt-6.2-sol), GPT Astra (gpt-6.2-astra) and Claude Opus
+(claude-opus-5-5), each at high reasoning effort, read-only, against this
+checklist. Each member also checked the facts against the seed data, the KB and
+the code, ran the smoke check, and stub-ran the cases.
+
+| Round | Sol | Astra | Opus | Changes applied |
+| --- | --- | --- | --- | --- |
+| 1 (all cases) | 33 accept, 21 fix | 22 accept, 32 fix | 50 accept, 4 fix | 22 cases: fixes two or more members raised, or one member's verified factual error |
+| 2 (all cases) | 49 accept, 5 fix | 50 accept, 4 fix | 52 accept, 2 fix | 9 cases: every round-2 fix |
+| 3 (confirmation) | 54 accept, 10/10 | 54 accept, 10/10 | 54 accept, 9/10 | none |
+
+No case was dropped. One round-1 suggestion was declined as wrong: changing
+inject-007's SSN to an unassignable number would stop the redactor from
+recognizing it, so the case would no longer test redaction. A human hasn't
+reviewed the cases yet.

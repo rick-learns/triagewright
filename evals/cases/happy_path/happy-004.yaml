@@ -20,6 +20,7 @@ expected:
     explains that the customer cancels it themselves. Doesn't claim support has
     already cancelled it, and doesn't offer a refund instead.
 tags: [order_changes, cancel, citation]
+reviewed: true
 notes: >-
   Seed: ord_l1202 belongs to cus_lea12, status placed, placed exactly at
   as_of. behavior.md row "Order still placed and the customer wants to cancel"

@@ -26,7 +26,7 @@ expected:
     check_refund_eligibility: 2
   citations_any: [kb_refund_policy]
 tags: [timeout, recovers, executor_lookup, refund, outside_window]
-reviewed: false
+reviewed: true
 notes: >-
   After one retried timeout the lookup succeeds, and the policy outcome applies as usual:
   ord_g7002 was delivered 2026-04-21, so the window ended 2026-05-21; evaluate_refund gives

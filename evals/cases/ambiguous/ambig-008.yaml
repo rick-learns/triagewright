@@ -24,6 +24,7 @@ expected:
     $59.00 (one speaker) is waiting for a team member's review. Doesn't say
     the money has already been sent.
 tags: [refund, missing_order_id, product_match, approval, citation]
+reviewed: true
 notes: >-
   The order id is missing, but the product disambiguates. Of cus_hal08's
   orders (list_orders), only ord_h8001 has Pebble Speakers (2 x 5900,

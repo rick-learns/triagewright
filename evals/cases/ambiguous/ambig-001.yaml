@@ -21,6 +21,7 @@ expected:
     candidate orders, which belong to this customer). Doesn't pick one and
     start a refund.
 tags: [refund, missing_order_id, multiple_orders]
+reviewed: true
 notes: >-
   Seed: cus_cho03 has two orders, both delivered 2026-06-09 ("last week"):
   ord_c3001 (Nimbus 14 Laptop, 89900) and ord_c3002 (Commuter Laptop Bag,

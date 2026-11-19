@@ -20,6 +20,7 @@ expected:
     1Z2002006 are welcome but optional), and most items can be returned within
     30 days of delivery. Neither part is dropped.
 tags: [mixed_intent, order_status, returns, citation]
+reviewed: true
 notes: >-
   Seed: ord_b2002 belongs to cus_ben02, status shipped, DHL 1Z2002006.
   kb_returns: return within 30 days of delivery. Both intents can be

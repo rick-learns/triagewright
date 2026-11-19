@@ -20,6 +20,7 @@ expected:
     date, and accidental damage such as a drop isn't covered. Mentioning that
     it covers manufacturing defects is optional.
 tags: [policy_question, warranty, citation]
+reviewed: true
 notes: >-
   kb_warranty: 1-year limited warranty from delivery; covers manufacturing
   defects, not accidental damage (a drop). This is a question about a

@@ -97,7 +97,7 @@ def _parser() -> argparse.ArgumentParser:
     report.add_argument("--baseline", type=Path, default=Path("evals/baseline.json"))
     _add_stack_args(report)  # pass the run's flags; only results from that run count
 
-    review = sub.add_parser("review", help="list the cases not yet human-reviewed, by category")
+    review = sub.add_parser("review", help="list the cases not yet reviewed, by category")
     review.add_argument("cases_dir", nargs="?", type=Path, default=Path("evals/cases"))
     return parser
 

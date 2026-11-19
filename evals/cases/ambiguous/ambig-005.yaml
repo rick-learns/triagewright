@@ -19,6 +19,7 @@ expected:
     order, or account issue). Doesn't assume a problem, start a refund, or
     hand off to a human.
 tags: [vague, clarification]
+reviewed: true
 notes: >-
   cus_ben02 has a delivered order (ord_b2001, keyboard and mouse) and a
   shipped one (ord_b2002, speaker). "It's not working" could mean either

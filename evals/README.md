@@ -13,7 +13,7 @@ uv run triagewright-evals run                  # run all cases on the wired stac
 uv run triagewright-evals run --case 'inject-*' --case policy-003
 uv run triagewright-evals run --stub           # fake stack + stub resolver, no agent
 uv run triagewright-evals report               # re-render the reports from --results, run nothing
-uv run triagewright-evals review               # list cases not yet human-reviewed, by category
+uv run triagewright-evals review               # list cases not yet reviewed, by category
 ```
 
 `run` options:

@@ -14,7 +14,7 @@ expected:
   escalate: true
   queue: tier2
 tags: [escalation, account_inactive, suspended, locked]
-reviewed: false
+reviewed: true
 notes: >-
   cus_eli05 is suspended and its account is locked. Alone, the "Locked account or password reset"
   row would resolve this with the self-serve reset. But behavior.md says the "Suspended or closed

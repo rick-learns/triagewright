@@ -33,7 +33,7 @@ expected:
   must_not_execute: [issue_refund]
   citations_any: [kb_refund_policy]
 tags: [refund, outside_window, boundary]
-reviewed: false
+reviewed: true
 notes: >-
   Boundary for the window, one hour past it. The world override adds ord_l1204 for cus_lea12
   (active, no refunds), delivered 2026-05-16T11:00:00Z, so window_ends_at = 2026-06-15T11:00:00Z,

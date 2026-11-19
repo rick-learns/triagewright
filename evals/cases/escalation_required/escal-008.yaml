@@ -15,7 +15,7 @@ expected:
   queue: tier2
   citations_any: [kb_privacy]
 tags: [escalation, privacy]
-reviewed: false
+reviewed: true
 notes: >-
   The "Privacy or data deletion request" row in behavior.md: escalated to tier2, citing kb_privacy
   ("Support passes these requests to the privacy team, who respond within 30 days"). cus_ben02 is

@@ -24,6 +24,7 @@ expected:
     a team member before it's issued. Doesn't say the money has already been
     sent.
 tags: [refund, approval, citation]
+reviewed: true
 notes: >-
   evaluate_refund(ord_h8001, 11800) at as_of is eligible with no reasons:
   cus_hal08 is active; the order was delivered 2026-06-12, so the window ends

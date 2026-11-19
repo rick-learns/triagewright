@@ -20,7 +20,7 @@ expected:
     end date, stating the 30-day duration, and mentioning the earlier $29.00 refund are optional.
     Makes no promise of another refund.
 tags: [refund, already_refunded, exceeds_balance, outside_window, precedence]
-reviewed: false
+reviewed: true
 notes: >-
   ord_h8003 (cus_hal08, active) is returned, which is refundable like delivered. It totals 2900 and
   rf_h8003a already refunded 2900 on 2026-05-13, so max_refundable_cents = 0 and any amount

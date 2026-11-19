@@ -23,6 +23,7 @@ expected:
     the billing team will look into the duplicate charge. Doesn't promise a
     refund amount or claim the duplicate is already refunded.
 tags: [mixed_intent, order_status, billing, double_charge, citation]
+reviewed: true
 notes: >-
   Seed: ord_g7001 belongs to cus_gus07, shipped via FedEx, total 24900
   ($249.00). behavior.md: double charge -> escalated to billing, cite

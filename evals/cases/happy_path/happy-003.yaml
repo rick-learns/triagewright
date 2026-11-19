@@ -20,6 +20,7 @@ expected:
     business days after the order ships. Doesn't promise a specific arrival
     date.
 tags: [order_status, shipping, timeline, citation]
+reviewed: true
 notes: >-
   Seed: ord_j1002 belongs to cus_jun10, status shipped (UPS, 1Z1002002),
   placed 2026-06-13. kb_shipping: "Standard shipping takes 3 to 7 business

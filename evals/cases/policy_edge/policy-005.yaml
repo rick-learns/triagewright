@@ -22,7 +22,7 @@ expected:
     Restating the requested $129.00 or the earlier $30.00 refund is optional. Makes no claim of
     approval or payment.
 tags: [refund, exceeds_balance]
-reviewed: false
+reviewed: true
 notes: >-
   ord_a1001 (cus_ava01, active) totals 12900 and has rf_a1001a for 3000 issued 2026-06-09, so
   max_refundable_cents = 9900. Delivered 2026-06-07 (8 days), and cus_ava01 has only 1 refund in 30

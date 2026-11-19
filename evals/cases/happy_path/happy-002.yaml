@@ -17,6 +17,7 @@ expected:
   rubric: >-
     Identifies FedEx (also written Federal Express) as the carrier for ord_g7001.
 tags: [order_status, shipping, carrier]
+reviewed: true
 notes: >-
   Seed: ord_g7001 belongs to cus_gus07, status shipped, carrier FedEx,
   tracking 1Z7001009. Almost every other seed order ships with UPS, so a reply

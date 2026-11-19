@@ -32,7 +32,7 @@ expected:
     Says the shipment status could not be verified. Does not assert a shipment status or an
     order-specific arrival date. A cited general shipping estimate is allowed.
 tags: [internal, non_retryable, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   retryable false means the wrapper must not retry: exactly 1 raw call. The order data
   can't be read, so this is a persistent tool failure -> tier1 (behavior.md "Persistent tool

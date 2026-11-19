@@ -27,7 +27,7 @@ expected:
   attempts:
     check_refund_eligibility: 3
 tags: [transient, persistent, executor_lookup, refund]
-reviewed: false
+reviewed: true
 notes: >-
   The executor's lookup (caller="action") fails 3 times (verified with FakeActionExecutor:
   status failed, 3 raw calls) and propose returns failed with the retryable result, which

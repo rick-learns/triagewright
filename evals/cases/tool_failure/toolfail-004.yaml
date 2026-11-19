@@ -28,7 +28,7 @@ expected:
     check_refund_eligibility: 3
   citations_any: [kb_refund_policy]
 tags: [transient, recovers, executor_lookup, refund]
-reviewed: false
+reviewed: true
 notes: >-
   ActionExecutor.propose fetches eligibility itself (caller="action") and retries
   retryable errors up to tool_retries 2. times 2 means the lookup succeeds only on the

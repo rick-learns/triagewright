@@ -21,6 +21,7 @@ expected:
     Doesn't claim support unlocked the account, and never asks for the
     customer's password or a one-time code.
 tags: [account_access, lockout, citation]
+reviewed: true
 notes: >-
   Seed: cus_dev04 is active; their account is locked and the record shows 6 failed
   sign-in attempts (the policy threshold is 5 in a row). behavior.md row "Locked account or password reset (active
