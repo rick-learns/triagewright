@@ -817,6 +817,11 @@
           "title": "Needs Human Reasons",
           "type": "array"
         },
+        "refund_requested": {
+          "default": false,
+          "title": "Refund Requested",
+          "type": "boolean"
+        },
         "urgency": {
           "$ref": "#/$defs/Priority"
         }
