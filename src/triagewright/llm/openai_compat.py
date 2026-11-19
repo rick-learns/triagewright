@@ -3,7 +3,8 @@
 The layer is split by concern: :mod:`triagewright.llm.chat_wire` translates
 ``ModelRequest`` to the wire and the wire back to ``ModelResponse``, and
 :mod:`triagewright.llm.chat_transport` holds :class:`OpenAICompatClient` (HTTP,
-the retry policy, error mapping). Their names are re-exported here.
+the retry policy, error mapping). Their names, and the project names the
+old single module imported, are re-exported here.
 
 Gemini 3 rejects a tool-call turn sent back without its ``thought_signature``
 (``tool_calls[].extra_content.google``). The contract has no field for it, so
@@ -20,7 +21,20 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any
 
-from triagewright.contracts.llm import ModelRequest, ModelResponse, Provider, ToolUseBlock
+from triagewright.config import is_free_model as is_free_model
+from triagewright.contracts.common import canonical_json as canonical_json
+from triagewright.contracts.common import stable_id as stable_id
+from triagewright.contracts.llm import ContentBlock as ContentBlock
+from triagewright.contracts.llm import Message as Message
+from triagewright.contracts.llm import ModelRequest as ModelRequest
+from triagewright.contracts.llm import ModelResponse as ModelResponse
+from triagewright.contracts.llm import Provider as Provider
+from triagewright.contracts.llm import StopReason as StopReason
+from triagewright.contracts.llm import TextBlock as TextBlock
+from triagewright.contracts.llm import ToolChoice as ToolChoice
+from triagewright.contracts.llm import ToolResultBlock as ToolResultBlock
+from triagewright.contracts.llm import ToolUseBlock as ToolUseBlock
+from triagewright.contracts.llm import Usage as Usage
 from triagewright.llm.chat_transport import _DURATION as _DURATION
 from triagewright.llm.chat_transport import _ERROR_CODE as _ERROR_CODE
 from triagewright.llm.chat_transport import MIN_ATTEMPT_S as MIN_ATTEMPT_S
@@ -46,6 +60,14 @@ from triagewright.llm.chat_wire import signature_key as signature_key
 from triagewright.llm.chat_wire import thought_signatures as thought_signatures
 from triagewright.llm.chat_wire import to_chat_request as to_chat_request
 from triagewright.llm.chat_wire import tool_use_id as tool_use_id
+from triagewright.llm.errors import ModelAuthError as ModelAuthError
+from triagewright.llm.errors import ModelConfigError as ModelConfigError
+from triagewright.llm.errors import ModelError as ModelError
+from triagewright.llm.errors import ModelRequestError as ModelRequestError
+from triagewright.llm.errors import ModelResponseError as ModelResponseError
+from triagewright.llm.errors import ModelUnavailableError as ModelUnavailableError
+from triagewright.llm.ratelimit import RateLimiter as RateLimiter
+from triagewright.pacing import CALL_BUDGET as CALL_BUDGET
 
 
 class GeminiClient(OpenAICompatClient):

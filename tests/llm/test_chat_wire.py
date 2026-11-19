@@ -23,6 +23,8 @@ from triagewright.llm.chat_wire import (
     tool_use_id,
 )
 
+pytestmark = pytest.mark.anyio
+
 
 def test_multi_tool_turn_translates_to_wire() -> None:
     a, b = tool_use_id(request(), 0), tool_use_id(request(), 1)
