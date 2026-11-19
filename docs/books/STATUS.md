@@ -85,7 +85,8 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | merged | [#24](https://github.com/rick-learns/triagewright/pull/24) |
 
 Second wave (refactors; RF4–RF6 launched 10:31 UTC, RF1 at 10:38 UTC). RF1 moved ahead of Q5 because the live
-fixes wait for the free-tier quota to reset; the agent core is handed to RF1 until it merges.
+fixes wait for the free-tier quota to reset; `src/triagewright/agent/**` and `tests/agent/**`
+are handed to RF1 until it merges (`llm/**` and `tests/llm/**` are RF4's).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
