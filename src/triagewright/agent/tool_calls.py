@@ -161,10 +161,13 @@ class ToolCalls(RunState):
         return _search_key(arguments) in self.kb_searches
 
     def cite(self, chunk_id: str, quote: str) -> Citation | None:
-        """A citation only for a trusted hit seen in this request whose text holds the quote."""
+        """A citation only for a trusted, unflagged hit seen in this request whose text holds
+        the quote."""
         hit = self.kb_hits.get(chunk_id)
         quote = quote.strip()
-        if hit is None or not hit.trusted or not quote or quote not in hit.text:
+        if hit is None or not hit.trusted or chunk_id in self.planted_in:
+            return None
+        if not quote or quote not in hit.text:
             return None
         return Citation(doc_id=hit.doc_id, chunk_id=hit.chunk_id, title=hit.title, quote=quote)
 

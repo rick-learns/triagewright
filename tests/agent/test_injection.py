@@ -7,6 +7,7 @@ import time
 import pytest
 
 from tests.agent.helpers import (
+    SHIPPING,
     TIPS,
     FakeClock,
     FlaggingGuardrails,
@@ -312,3 +313,30 @@ async def test_kb_text_is_screened_and_untrusted_docs_are_not_cited() -> None:
     assert args["queue"] == "security"
     assert f"possible prompt injection; planted in {TIPS.chunk_id}" in str(args["summary"])
     assert "pair it" not in response.reply
+
+
+async def test_a_flagged_trusted_kb_chunk_is_not_cited() -> None:
+    guard = FlaggingGuardrails("3 to 7 business days", sources=[ContentSource.KB_DOCUMENT])
+    s = stack(
+        [
+            triage("shipping"),
+            call("search_kb", {"query": SHIPPING.text}),
+            finalize("It ships soon.", citations=[(SHIPPING.chunk_id, SHIPPING.text[:40])]),
+            review(),
+        ],
+        guardrails=guard,
+    )
+    response = await s.resolve(sample_ticket("How long does shipping take?"))
+    assert response.citations == []
+    assert f"planted in {SHIPPING.chunk_id}" in str(s.escalation_args()["summary"])
+
+
+async def test_a_fallback_names_where_the_injection_was_planted() -> None:
+    guard = FlaggingGuardrails("1z1002003", sources=[ContentSource.TOOL_OUTPUT])
+    s = stack([triage(), call("get_order", {"order_id": "ord_a1002"})], guardrails=guard)
+    s.coordinator._config = s.coordinator._config.model_copy(update={"max_turns": 1})
+    response = await s.resolve(sample_ticket())
+    assert response.stop is LoopStop.MAX_TURNS
+    summary = str(s.escalation_args()["summary"])
+    assert "possible prompt injection; planted in get_order" in summary
+    assert summary.index("Why escalated") < summary.index("Facts checked")
