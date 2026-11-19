@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import signal
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -205,21 +209,64 @@ def test_main_serves_the_app_on_the_configured_host_and_port(
     settings = Settings(_env_file=None, api_host="127.0.0.1", api_port=9123)
     served: dict[str, object] = {}
     monkeypatch.setattr(api, "get_settings", lambda: settings)
-    closed: list[str] = []
+    monkeypatch.setattr(api, "load_services", lambda s: stack.services)
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: served.update(app=app, **kw))
+    api.main()
+    assert served["host"] == "127.0.0.1" and served["port"] == 9123
+    assert served["access_log"] is False
 
-    async def serve(server: uvicorn.Server) -> None:
-        served.update(host=server.config.host, port=server.config.port)
-        served.update(access_log=server.config.access_log)
+
+def test_lifespan_shutdown_releases_the_services(stack: Stack) -> None:
+    closed: list[str] = []
 
     async def aclose() -> None:
         closed.append("aclose")
 
     services = dataclasses.replace(
-        stack.services, aclose=aclose, close=lambda: closed.append("close")
+        stack.services, close=lambda: closed.append("close"), aclose=aclose
     )
-    monkeypatch.setattr(api, "load_services", lambda s: services)
-    monkeypatch.setattr(uvicorn.Server, "serve", serve)
-    api.main()
-    assert served["host"] == "127.0.0.1" and served["port"] == 9123
-    assert served["access_log"] is False
+    with TestClient(create_app(services, approver_token=None)) as client:
+        assert client.get("/healthz").status_code == 200
+        assert closed == []
     assert closed == ["aclose", "close"]
+
+
+_SERVE = """
+import asyncio, sys
+import uvicorn
+from triagewright.api import Services, create_app
+
+log = open(sys.argv[1], "a", buffering=1)
+
+async def aclose():
+    log.write("aclose-start\\n")
+    await asyncio.sleep(0.2)  # a real suspension: a signal must not cut it short
+    log.write("aclose-done\\n")
+
+services = Services(None, None, None, lambda: log.write("close\\n"), aclose=aclose)
+app = create_app(services, approver_token=None)
+uvicorn.run(app, host="127.0.0.1", port=0, log_level="info")
+"""
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+def test_a_signal_runs_the_full_teardown(tmp_path: Path, sig: signal.Signals) -> None:
+    script, log = tmp_path / "serve.py", tmp_path / "teardown.log"
+    script.write_text(_SERVE)
+    proc = subprocess.Popen(  # noqa: S603
+        [sys.executable, str(script), str(log)], stderr=subprocess.PIPE, text=True
+    )
+    try:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            if "Application startup complete" in line:
+                break
+        else:
+            raise AssertionError("server did not start")
+        proc.send_signal(sig)
+        proc.wait(timeout=10)
+    finally:
+        proc.kill()
+        proc.wait()
+    assert log.read_text().split() == ["aclose-start", "aclose-done", "close"]

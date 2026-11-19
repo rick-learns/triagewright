@@ -160,7 +160,8 @@ class SearchKBInput(Contract):
         Field(
             description=(
                 "Only search these categories. User-submitted pages (category"
-                " 'community') are searched only when listed here."
+                " 'community') are searched only when listed here: list it only when the"
+                " customer explicitly asks about the community tips."
             )
         ),
     ] = None

@@ -8,10 +8,12 @@ never raw paths, bodies, headers, or tokens.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -96,7 +98,20 @@ def create_app(
     clock: Callable[[], datetime] = _utcnow,
 ) -> FastAPI:
     """Build the API on the given ports. ``approver_token`` unset disables decisions (503)."""
-    app = FastAPI(title="triagewright", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Lifespan shutdown runs on SIGINT and SIGTERM before uvicorn re-raises the signal,
+        # and on the loop that served requests (it owns the model HTTP pool).
+        try:
+            yield
+        finally:
+            try:
+                await services.aclose()
+            finally:
+                await asyncio.to_thread(services.close)  # bounded, blocking joins
+
+    app = FastAPI(title="triagewright", version="0.1.0", lifespan=lifespan)
 
     @app.middleware("http")
     async def request_context(

@@ -12,7 +12,7 @@ from __future__ import annotations
 import hmac
 import importlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 
 from pydantic import SecretStr, ValidationError
@@ -40,8 +40,9 @@ class Services:
     approvals: ApprovalStore
     # Teardown: await ``aclose`` on the event loop that served requests (it owns the HTTP pool),
     # then call ``close`` (connections, stores, trace flush).
-    aclose: Callable[[], Awaitable[None]] = _no_async_cleanup
     close: Callable[[], None] = _no_cleanup
+    _: KW_ONLY
+    aclose: Callable[[], Awaitable[None]] = _no_async_cleanup
 
 
 class WiringUnavailableError(RuntimeError):

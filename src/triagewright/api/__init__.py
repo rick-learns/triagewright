@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import uvicorn
@@ -23,15 +22,5 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     app = create_app(services, approver_token=settings.approver_token)
     # uvicorn's access log records client addresses; the app logs its own request lines.
-    config = uvicorn.Config(app, host=settings.api_host, port=settings.api_port, access_log=False)
-
-    async def serve() -> None:
-        try:
-            await uvicorn.Server(config).serve()
-        finally:
-            await services.aclose()  # on the loop that used the HTTP pool
-
-    try:
-        asyncio.run(serve())
-    finally:
-        services.close()
+    # The app's lifespan shutdown releases ``services``.
+    uvicorn.run(app, host=settings.api_host, port=settings.api_port, access_log=False)
