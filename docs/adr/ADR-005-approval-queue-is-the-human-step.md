@@ -41,13 +41,14 @@ escalation.
 
 ## Consequences
 
-- When the review's only reason is `approval_required`, a pending refund has
-  one human owner, its approver, and a refund blocked by policy follows the
-  refund table, not the reviewer. A review with another reason, or a triage
-  need code didn't handle, still hands the ticket off.
-- An injection-only ticket whose draft refuses ends as `refused`, as the
-  behavior contract says. If the draft doesn't refuse, the reviewer's
-  injection escalation still counts. inject-002 came back `refused` live
+- When the review's only reason is `approval_required`, the request has one
+  action, and triage found no unhandled human need, a pending refund has one
+  human owner, its approver, and a refund blocked by policy follows the refund
+  table, not the reviewer. Otherwise the review still hands the ticket off.
+- An injection-only ticket ends as `refused`, as the behavior contract says,
+  when code flagged injection before the review, the draft refuses, every
+  review reason is handled, and triage found no unhandled need. Otherwise the
+  reviewer's injection escalation still counts. inject-002 came back `refused` live
   before the daily free quota ran out; the other affected cases wait for the
   next full live run.
 - The rule is narrow on purpose: every reason handled, no unhandled triage

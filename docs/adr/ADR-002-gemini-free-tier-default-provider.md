@@ -18,7 +18,7 @@ demand".
 - `Provider.GEMINI` (`src/triagewright/contracts/llm.py`) is the preferred
   live provider, and the one recordings are planned with. `Provider.OPENROUTER`
   with `:free` models is the fallback. Both live adapters can record.
-  `Provider.REPLAY` stays the default provider overall, so nothing calls the
+  `Provider.REPLAY` stays the default provider overall, so no model call goes over the
   network unless `TW_LLM_PROVIDER` selects a live provider (in the environment
   or `.env`). Default replay serves eval-case recordings only.
 - There is no paid fallback. `config.is_free_model(provider, model)` decides
