@@ -65,8 +65,12 @@ Code, not the model, owns every refund outcome. A refund ask is triage's
 `refund_request` category or its `refund_requested` flag (a money-back ask under
 another category; refund-policy questions and status checks on earlier refunds
 are not asks). For a signed-in customer, the reply must follow an `issue_refund`
-proposal, so the table above decides, and code states the outcome: the model's
-reply is written before the executor runs, so it is replaced. The only
+proposal, so the table above decides, and code states the outcome. Once a
+refund is proposed (on any ticket, whatever triage called it), code writes the
+reply and the refund-policy citation itself, looking the policy up once after
+the turn's own tools if no model found it: a model's reply would be written
+before the executor runs, so it could only guess, and any model reply beside a
+refund proposal is replaced before the reviewer sees it. The only
 proposal-free replies are written by code: a sign-in request when the ticket has
 no customer, or "which order?" when the ticket names no order and neither a
 product it names nor the order count picks one. A refund ask with injection
