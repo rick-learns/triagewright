@@ -115,7 +115,10 @@ class ModelResponse(Contract):
 class Recording(Contract):
     """One recorded model call, stored as JSONL in ``evals/fixtures/recordings/<case_id>.jsonl``.
 
-    Replay looks up by ``fingerprint`` within the case file. Identical
+    The agent's calls go to ``<case_id>.jsonl`` and the eval judge's to
+    ``<case_id>.judge.jsonl``, each with its own sequence, so judge calls
+    never shift agent replay. Replay looks up by ``fingerprint`` within the
+    file. Identical
     fingerprints are served in ``sequence`` order. A miss is an error, never a
     live call. The fingerprint covers the model id, so switching models means
     re-recording. Determinism rests on ``common.canonical_json`` for all

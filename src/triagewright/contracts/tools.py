@@ -4,8 +4,11 @@ Every tool returns a :class:`ToolResult`.
 
 Scoping: every call carries a :class:`CallContext` whose ``customer_id`` comes
 from the ticket, never from model arguments. Private tools (all but
-``search_kb``) fail with ``permission`` when it is missing, and records owned
-by another customer are reported as ``not_found``, exactly like missing ones.
+:data:`UNSCOPED_TOOLS`) fail with ``permission`` when it is missing, and
+records owned by another customer are reported as ``not_found``, exactly like
+missing ones. ``create_escalation`` is code-owned: only ``caller="coordinator"``
+may call it, and only for ``ctx.ticket_id``, so anonymous tickets can still be
+handed off.
  Over MCP it travels as a
 ``CallToolResult`` whose ``isError`` equals ``ToolResult.is_error``, whose
 ``structuredContent`` is ``ToolResult.model_dump(mode="json")``, and whose single
@@ -330,7 +333,10 @@ IRREVERSIBLE_TOOLS: frozenset[ToolName] = frozenset(
 )
 
 # Tools that need no customer scope. Every other tool fails closed without ctx.customer_id.
-UNSCOPED_TOOLS: frozenset[ToolName] = frozenset({ToolName.SEARCH_KB})
+UNSCOPED_TOOLS: frozenset[ToolName] = frozenset({ToolName.SEARCH_KB, ToolName.CREATE_ESCALATION})
+
+# Tools only coordinator code may call. Models can never propose them.
+CODE_OWNED_TOOLS: frozenset[ToolName] = frozenset({ToolName.CREATE_ESCALATION})
 
 
 def proposal_model(tool: ToolName) -> type[BaseModel]:

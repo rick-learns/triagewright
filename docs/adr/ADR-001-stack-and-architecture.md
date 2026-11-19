@@ -1,6 +1,6 @@
 # ADR-001: Stack and architecture
 
-- Status: Proposed (council round 2)
+- Status: Proposed (council round 3)
 - Date: 2026-11-19
 
 ## Context
@@ -28,7 +28,7 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 - **The owner chose OpenRouter as the only live provider** (2026-11-19).
   Adapters: `openrouter` and `replay`. The OpenRouter adapter translates
   to and from its OpenAI-compatible chat API and refuses model ids without
-  `:free` unless `TW_OPENROUTER_FREE_ONLY=false`. Defaults:
+  `:free`; settings reject any other model id, with no opt-out. Defaults:
   `google/gemma-4-31b-it:free` for every role and
   `nvidia/nemotron-3-ultra-550b-a55b:free` for the judge, both with tool
   calling. Free models are rate-limited (20 requests/min, and a daily cap),
@@ -69,7 +69,12 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   the proposed status.
 - After the escalation reviewer decides to escalate, coordinator code (not a
   model) calls `create_escalation` from the `EscalationDecision`, with the
-  ticket id from the trusted context. The call is idempotent per ticket.
+  ticket id from the trusted context. `create_escalation` is code-owned: the
+  gateway accepts it only from `caller="coordinator"` for `ctx.ticket_id`,
+  and the executor refuses it as a model proposal, so a model can't claim
+  the ticket's one escalation first. It needs no customer scope, so
+  anonymous tickets can still be handed off. It's idempotent per ticket, so
+  the security handoff is decided before any other escalation.
   `LoopConfig.handoff_reserve_s` is held back from the total budget for it.
   If the write still fails, the reply says the request was logged for
   review and does not promise a follow-up time.
@@ -88,7 +93,10 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 ### 4. Guardrails are code, not prompts
 
 - **Customer scope.** Every tool call carries a `CallContext` set by code
-  from the ticket: `customer_id` never comes from model arguments. All tools
+  from the ticket: `customer_id` never comes from model arguments. The ticket
+  API is a trusted internal ingress, like a helpdesk webhook: it binds to
+  localhost, and the helpdesk (not the customer) asserts `customer_id`. The
+  MCP server isn't published outside the Compose network. All tools
   except `search_kb` fail with `permission` when it's missing, and another
   customer's records are reported as `not_found`, exactly like missing ones.
   So no other customer's data can enter a transcript.
@@ -113,21 +121,30 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   fakes, and the eval cases all use it.
 - **One executor.** `ActionExecutor` (lane D) is the only path from a
   proposed write to the gateway. `propose` validates the arguments, fetches
-  eligibility itself, and runs `Guardrails.check_action`. Irreversible tools
-  never run in-request: `issue_refund` is stored as an `ApprovalRequest`
-  with the exact arguments and an idempotency key derived from the approval
-  id, and the request ends in `pending_approval`.
+  eligibility itself (retrying retryable errors, and returning a persistent
+  error as `failed` with the tool result), and runs
+  `Guardrails.check_action`. Irreversible tools never run in-request:
+  `issue_refund` is stored as an `ApprovalRequest` with the exact arguments
+  and an idempotency key derived from the approval id, and the request ends
+  in `pending_approval`. Lane B proposes irreversible actions only after the
+  request's last `screen`, so no approval is stored for a flagged request.
+  Submitting an existing approval id returns the stored one unchanged.
 - **Human approval.** The API and CLI authenticate the reviewer with
-  `TW_APPROVER_TOKEN`, then call `ActionExecutor.decide`. On approval it loads
-  the stored arguments (never fresh model output), re-checks eligibility,
-  signs an HMAC token over the approval id, order, amount, and idempotency
+  `TW_APPROVER_TOKEN` (unset disables decisions), then call
+  `ActionExecutor.decide`. On approval it loads the stored arguments (never
+  fresh model output), signs an HMAC token over the approval id, order, amount, and idempotency
   key (`TW_APPROVAL_KEY`), and calls the gateway as `caller="human"`. The
   approval is marked `executed` only on confirmed success. After a failure
   it stays `approved`, and a retry reuses the same idempotency key.
 - **Defense in depth.** The MCP server refuses `issue_refund` unless the
-  token verifies and the caller is `human`. It re-applies `evaluate_refund`
-  and dedupes by idempotency key. A forged or replayed approval id can't
-  issue a refund, even over the HTTP transport.
+  token verifies and the caller is `human`. Then it checks ownership, then
+  the idempotency key (an already-committed refund is returned as success,
+  so a retry after a lost response works), and only for a new write, in the
+  same transaction as the insert,
+  re-applies `evaluate_refund`. A forged or replayed approval id can't issue
+  a refund, even over the HTTP transport. `TW_APPROVAL_KEY` (at least 32
+  characters, blank means unset) is required whenever MCP runs out of
+  process.
 
 ### 5. MCP server over the mock business systems
 
@@ -144,7 +161,9 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 - Every raw call is logged as a `ToolCallRecord` (including retries and
   faults). Graders read this log, not the agent's own report.
 - Eval faults (`ToolFault`) are injected at the gateway. A
-  `CaseRuntimeFactory` builds one isolated stack per eval case: a fresh
+  `CaseRuntimeFactory.build(case_id=...)` builds one isolated stack per
+  eval case, bound to that case's recordings (judge calls use a separate
+  file): a fresh
   SQLite database with the case's merged world, its `as_of` clock and
   faults, and an inspectable call log, ledger, and approval list. Eval knobs
   never appear on the production ticket API. `triagewright.testing` has a

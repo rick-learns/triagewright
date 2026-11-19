@@ -2,17 +2,17 @@
 
 Secrets are ``SecretStr`` and never logged. The provider defaults to ``replay``
 so nothing calls the network unless you opt in. The only live provider is
-OpenRouter, restricted to ``:free`` models unless ``TW_OPENROUTER_FREE_ONLY``
-is turned off (ADR-001, "Model provider").
+OpenRouter, and every model id must be a ``:free`` model (owner decision,
+ADR-001). Blank secrets count as unset.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from triagewright.contracts.agents import LoopConfig
@@ -31,7 +31,6 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("OPENROUTER_API_KEY", "TW_OPENROUTER_API_KEY")
     )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_free_only: bool = True  # adapter refuses model ids without ":free"
     recordings_dir: Path = Path("evals/fixtures/recordings")
     record: bool = False  # live calls also append to recordings_dir
 
@@ -59,10 +58,12 @@ class Settings(BaseSettings):
     max_refunds_per_customer_30d: int = 2
 
     # ---- approvals ----
-    # HMAC key shared by the executor and the MCP server; required unless the
-    # MCP transport is in-process (wiring then makes an ephemeral key).
+    # HMAC key shared by the executor and the MCP server, at least 32 chars.
+    # Required unless the MCP transport is in-process (wiring then makes an
+    # ephemeral key); the MCP server refuses to start over stdio/http without it.
     approval_key: SecretStr | None = None
-    # Bearer token the API/CLI require before accepting an approval decision.
+    # Bearer token the API/CLI require for approval decisions. Unset means
+    # decisions are disabled.
     approver_token: SecretStr | None = None
 
     # ---- data and storage ----
@@ -84,6 +85,23 @@ class Settings(BaseSettings):
     # ---- API ----
     api_host: str = "127.0.0.1"
     api_port: int = 8080
+
+    @field_validator("openrouter_api_key", "approval_key", "approver_token", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: Any) -> Any:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _check(self) -> Settings:
+        paid = [m for m in self.models().values() if not m.endswith(":free")]
+        if paid:
+            raise ValueError(f"only OpenRouter :free models are allowed, got {paid}")
+        key = self.approval_key
+        if key is not None and len(key.get_secret_value()) < 32:
+            raise ValueError("TW_APPROVAL_KEY must be at least 32 characters")
+        if self.mcp_transport != "inprocess" and key is None:
+            raise ValueError("TW_APPROVAL_KEY is required when TW_MCP_TRANSPORT is not inprocess")
+        return self
 
     def loop_config(self) -> LoopConfig:
         return LoopConfig(

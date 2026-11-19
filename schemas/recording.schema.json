@@ -422,7 +422,7 @@
   },
   "$id": "triagewright/recording/1.0.0",
   "additionalProperties": false,
-  "description": "One recorded model call, stored as JSONL in ``evals/fixtures/recordings/<case_id>.jsonl``.\n\nReplay looks up by ``fingerprint`` within the case file. Identical\nfingerprints are served in ``sequence`` order. A miss is an error, never a\nlive call. The fingerprint covers the model id, so switching models means\nre-recording. Determinism rests on ``common.canonical_json`` for all\nmodel-visible content and ``common.stable_id`` for all model-visible ids.",
+  "description": "One recorded model call, stored as JSONL in ``evals/fixtures/recordings/<case_id>.jsonl``.\n\nThe agent's calls go to ``<case_id>.jsonl`` and the eval judge's to\n``<case_id>.judge.jsonl``, each with its own sequence, so judge calls\nnever shift agent replay. Replay looks up by ``fingerprint`` within the\nfile. Identical\nfingerprints are served in ``sequence`` order. A miss is an error, never a\nlive call. The fingerprint covers the model id, so switching models means\nre-recording. Determinism rests on ``common.canonical_json`` for all\nmodel-visible content and ``common.stable_id`` for all model-visible ids.",
   "properties": {
     "case_id": {
       "anyOf": [

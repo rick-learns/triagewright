@@ -185,6 +185,7 @@ class FinalResponse(Contract):
     citation candidates, and a proposed status among resolved/needs_info/refused;
     ``actions`` and ``escalation`` come from executor and gateway records, and a
     pending approval or a created escalation overrides the proposed status.
+    If both apply, ``escalated`` wins over ``pending_approval``.
     """
 
     request_id: RequestId

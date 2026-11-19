@@ -80,7 +80,9 @@ class Guardrails(Protocol):
 class ApprovalStore(Protocol):
     """Lane D. Human-in-the-loop approvals for irreversible actions."""
 
-    def submit(self, request: ApprovalRequest) -> ApprovalRequest: ...
+    def submit(self, request: ApprovalRequest) -> ApprovalRequest:
+        """Insert if absent. If ``approval_id`` exists, return the stored request unchanged."""
+        ...
 
     def get(self, approval_id: str) -> ApprovalRequest | None: ...
 
@@ -95,24 +97,37 @@ class ApprovalStore(Protocol):
 class ActionExecutor(Protocol):
     """Lane D. The only path from a proposed write to the gateway.
 
-    ``propose``: validates ``action.arguments`` against
-    ``tools.proposal_model(tool)`` (a model-supplied ``approval_id`` or token
-    is a validation error). It builds the :class:`PolicyContext` itself from
-    ``ctx`` and its own clock, fetching ``check_refund_eligibility`` for
-    refunds, then runs ``Guardrails.check_action``. ``allow`` runs the call;
-    ``require_approval`` submits an :class:`ApprovalRequest` with the exact
-    arguments and idempotency key and returns ``pending_approval``; ``block``
-    returns ``blocked``. It never runs an irreversible tool.
+    ``propose``: blocks ``tools.CODE_OWNED_TOOLS``, then validates
+    ``action.arguments`` against ``tools.proposal_model(tool)`` (a
+    model-supplied ``approval_id`` or token is a validation error). It builds
+    the :class:`PolicyContext` itself from ``ctx`` and its own clock. For
+    refunds it calls ``check_refund_eligibility`` (``caller="action"``,
+    counted in ``ExpectedOutcome.attempts``), retrying retryable errors up to
+    ``LoopConfig.tool_retries`` times; a persistent error returns ``failed``
+    with that ``ToolResult``, so lane B maps it like any tool error
+    (``not_found`` -> needs_info, retryable -> tool_failure). Then
+    ``Guardrails.check_action``: ``allow`` runs the call; ``require_approval``
+    submits an :class:`ApprovalRequest` with the exact arguments and
+    idempotency key and returns ``pending_approval`` (or the stored status if
+    that approval already exists); ``block`` returns ``blocked``. It never
+    runs an irreversible tool.
+
+    Lane B calls ``propose`` for irreversible actions only after the last
+    ``screen`` of the request, so ``injection_suspected`` is final and no
+    approval is ever stored for a request that turns out to be flagged.
 
     ``decide``: the one path the API and CLI use after a human decision. It
     records the decision; if approved it runs ``execute_approved``.
 
     ``execute_approved``: loads the stored request (never fresh model
-    arguments), requires status ``approved``, re-checks eligibility, signs
-    ``policy.approval_token``, and calls the gateway with ``caller="human"``.
-    It marks the approval ``executed`` only on confirmed success. After a
-    failure the approval stays ``approved``, and calling this again retries
-    with the same idempotency key.
+    arguments), requires status ``approved``, signs ``policy.approval_token``,
+    and calls the gateway with ``caller="human"``. It does not pre-check
+    eligibility: the MCP server checks, in order, token, ownership,
+    idempotency key (an already-committed refund is returned as success), and
+    only then eligibility for a new write. So a retry after a lost response
+    succeeds instead of failing on the now-spent balance. The approval is
+    marked ``executed`` only on confirmed success; after a failure it stays
+    ``approved``, and calling this again retries with the same key.
     """
 
     async def propose(
@@ -188,5 +203,7 @@ class CaseRuntimeFactory(Protocol):
     """
 
     def build(
-        self, *, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
-    ) -> CaseRuntime: ...
+        self, *, case_id: str, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
+    ) -> CaseRuntime:
+        """``case_id`` selects the case's recordings (see ``llm.Recording``)."""
+        ...

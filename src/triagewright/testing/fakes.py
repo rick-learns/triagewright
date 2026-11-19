@@ -49,6 +49,7 @@ from triagewright.contracts.rag import Chunk, KBDocument, RetrievalQuery, Retrie
 from triagewright.contracts.telemetry import AttrValue, RequestMetrics, SpanKind
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import (
+    CODE_OWNED_TOOLS,
     IRREVERSIBLE_TOOLS,
     TOOL_SPECS,
     UNSCOPED_TOOLS,
@@ -294,7 +295,7 @@ class FakeToolGateway:
     def _create_escalation(
         self, name: ToolName, req: CreateEscalationInput, ctx: CallContext
     ) -> ToolResult:
-        if req.ticket_id != ctx.ticket_id:
+        if ctx.caller != "coordinator" or req.ticket_id != ctx.ticket_id:
             return ToolResult.fail(name, ErrorCategory.PERMISSION, "ticket out of scope")
         for esc in self.escalations:
             if esc.ticket_id == req.ticket_id:
@@ -322,6 +323,10 @@ class FakeToolGateway:
         )
         if not signed or ctx.caller != "human":
             return ToolResult.fail(name, ErrorCategory.PERMISSION, "valid approval required")
+        # Order: ownership, then idempotency (a committed retry succeeds), then policy.
+        order = self.orders.get(req.order_id)
+        if order is None or order.customer_id != ctx.customer_id:
+            return ToolResult.fail(name, ErrorCategory.NOT_FOUND, req.order_id)
         for r in self.refunds:
             if r.idempotency_key == req.idempotency_key:
                 same = (r.order_id, r.amount_cents) == (req.order_id, req.amount_cents)
@@ -329,7 +334,7 @@ class FakeToolGateway:
                     return ToolResult.ok(name, r)
                 return ToolResult.fail(name, ErrorCategory.CONFLICT, "idempotency key reused")
         elig = self._eligibility(req.order_id, req.amount_cents, ctx)
-        if elig is None:
+        if elig is None:  # pragma: no cover - ownership was checked above
             return ToolResult.fail(name, ErrorCategory.NOT_FOUND, req.order_id)
         if not elig.eligible:
             return ToolResult.fail(name, ErrorCategory.POLICY, ", ".join(elig.reasons))
@@ -388,8 +393,7 @@ class InMemoryApprovalStore:
         self.items: dict[str, ApprovalRequest] = {}
 
     def submit(self, request: ApprovalRequest) -> ApprovalRequest:
-        self.items[request.approval_id] = request
-        return request
+        return self.items.setdefault(request.approval_id, request)
 
     def get(self, approval_id: str) -> ApprovalRequest | None:
         return self.items.get(approval_id)
@@ -426,16 +430,34 @@ class FakeActionExecutor:
         *,
         now: datetime,
         approval_key: bytes = TEST_APPROVAL_KEY,
+        tool_retries: int = 2,
     ) -> None:
         self.gateway = gateway
         self.guardrails = guardrails
         self.approvals = approvals
         self.now = now
         self._key = approval_key
+        self._retries = tool_retries
+
+    async def _call_with_retries(
+        self, name: ToolName, arguments: JsonObject, ctx: CallContext
+    ) -> tuple[ToolResult, int]:
+        attempts = 0
+        while True:
+            attempts += 1
+            result = await self.gateway.call(name, arguments, ctx)
+            retryable = result.error is not None and result.error.retryable
+            if not retryable or attempts > self._retries:
+                return result, attempts
 
     async def propose(
         self, action: ProposedAction, ctx: CallContext, *, injection_suspected: bool
     ) -> ActionOutcome:
+        if action.tool in CODE_OWNED_TOOLS:
+            verdict = GuardrailVerdict(
+                decision=GuardrailDecision.BLOCK, rule_ids=["tool.code_owned"]
+            )
+            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
         try:
             args = proposal_model(action.tool).model_validate(action.arguments)
         except ValidationError as exc:
@@ -446,13 +468,16 @@ class FakeActionExecutor:
         arguments: JsonObject = args.model_dump(mode="json")
         elig = None
         if isinstance(args, RefundProposal):
-            check = await self.gateway.call(
+            check, attempts = await self._call_with_retries(
                 ToolName.CHECK_REFUND_ELIGIBILITY,
                 {"order_id": args.order_id, "amount_cents": args.amount_cents},
                 ctx,
             )
-            if not check.is_error and check.data is not None:
-                elig = RefundEligibility.model_validate(check.data)
+            if check.is_error or check.data is None:
+                return ActionOutcome(
+                    action=action, status=ActionStatus.FAILED, result=check, attempts=attempts
+                )
+            elig = RefundEligibility.model_validate(check.data)
         policy_ctx = PolicyContext(
             ticket_id=ctx.ticket_id,
             customer_id=ctx.customer_id,
@@ -467,7 +492,7 @@ class FakeActionExecutor:
             if action.tool not in IRREVERSIBLE_TOOLS or ctx.customer_id is None:
                 return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
             approval_id = stable_id("apr", ctx.ticket_id, action.tool, canonical_json(arguments))
-            self.approvals.submit(
+            stored = self.approvals.submit(
                 ApprovalRequest(
                     approval_id=approval_id,
                     ticket_id=ctx.ticket_id,
@@ -482,7 +507,7 @@ class FakeActionExecutor:
             )
             return ActionOutcome(
                 action=action,
-                status=ActionStatus.PENDING_APPROVAL,
+                status=_STORED_STATUS[stored.status],
                 verdict=verdict,
                 approval_id=approval_id,
             )
@@ -552,6 +577,15 @@ class FakeActionExecutor:
         )
 
 
+# What re-proposing an existing approval reports. Never "executed" in-request.
+_STORED_STATUS: dict[ApprovalStatus, ActionStatus] = {
+    ApprovalStatus.PENDING: ActionStatus.PENDING_APPROVAL,
+    ApprovalStatus.APPROVED: ActionStatus.PENDING_APPROVAL,
+    ApprovalStatus.REJECTED: ActionStatus.BLOCKED,
+    ApprovalStatus.EXECUTED: ActionStatus.SKIPPED,
+}
+
+
 def _stored_action(request: ApprovalRequest) -> ProposedAction:
     return ProposedAction(
         tool=request.tool, arguments=request.arguments, rationale=request.rationale[:500]
@@ -587,13 +621,15 @@ class FakeCaseRuntimeFactory:
         docs: Sequence[KBDocument] = (),
         policy: PolicyConfig | None = None,
     ) -> None:
+        self.built: list[str] = []  # case ids, in build order
         self._make_resolver = make_resolver
         self._retriever = FakeRetriever(docs) if docs else None
         self._policy = policy
 
     def build(
-        self, *, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
+        self, *, case_id: str, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
     ) -> FakeCaseRuntime:
+        self.built.append(case_id)
         gateway = FakeToolGateway(
             world, as_of=as_of, retriever=self._retriever, faults=faults, policy=self._policy
         )

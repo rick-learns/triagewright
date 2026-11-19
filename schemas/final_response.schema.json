@@ -735,7 +735,7 @@
   },
   "$id": "triagewright/final_response/1.0.0",
   "additionalProperties": false,
-  "description": "Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,\ncitation candidates, and a proposed status among resolved/needs_info/refused;\n``actions`` and ``escalation`` come from executor and gateway records, and a\npending approval or a created escalation overrides the proposed status.",
+  "description": "Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,\ncitation candidates, and a proposed status among resolved/needs_info/refused;\n``actions`` and ``escalation`` come from executor and gateway records, and a\npending approval or a created escalation overrides the proposed status.\nIf both apply, ``escalated`` wins over ``pending_approval``.",
   "properties": {
     "actions": {
       "default": [],

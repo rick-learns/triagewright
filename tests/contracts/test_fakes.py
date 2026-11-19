@@ -16,7 +16,7 @@ from triagewright.contracts.guardrails import (
     GuardrailVerdict,
     PolicyContext,
 )
-from triagewright.contracts.policy import refund_idempotency_key
+from triagewright.contracts.policy import approval_token, refund_idempotency_key
 from triagewright.contracts.ports import (
     ActionExecutor,
     ApprovalStore,
@@ -34,6 +34,7 @@ from triagewright.contracts.rag import MetadataFilter, RetrievalQuery
 from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.tools import CallContext, Caller, ErrorCategory, ToolError, ToolName
 from triagewright.testing import (
+    TEST_APPROVAL_KEY,
     FakeActionExecutor,
     FakeCaseRuntimeFactory,
     FakeRetriever,
@@ -97,7 +98,7 @@ def test_fakes_satisfy_ports() -> None:
     assert isinstance(executor(), ActionExecutor)
     factory = FakeCaseRuntimeFactory()
     assert isinstance(factory, CaseRuntimeFactory)
-    runtime = factory.build(world=seed_world(), as_of=seed_as_of(), faults=[])
+    runtime = factory.build(case_id="happy-001", world=seed_world(), as_of=seed_as_of(), faults=[])
     assert isinstance(runtime, CaseRuntime)
 
 
@@ -258,42 +259,132 @@ async def test_executor_blocks_unsafe_proposals() -> None:
     assert ex.approvals.list_pending() == []
 
 
-async def test_executor_runs_reversible_writes_with_list_arguments() -> None:
+ESCALATION: JsonObject = {
+    "ticket_id": "tkt_0001",
+    "queue": "billing",
+    "priority": "high",
+    "summary": "Refund over limit",
+    "reason_codes": ["policy_limit"],
+}
+
+
+async def test_escalation_is_code_owned_and_works_without_a_customer() -> None:
     ex = executor()
-    escalate = ProposedAction(
-        tool=ToolName.CREATE_ESCALATION,
-        arguments={
-            "ticket_id": "tkt_0001",
-            "queue": "billing",
-            "priority": "high",
-            "summary": "Refund over limit",
-            "reason_codes": ["policy_limit"],
-        },
-        rationale="x",
+    proposed = ProposedAction(tool=ToolName.CREATE_ESCALATION, arguments=ESCALATION, rationale="x")
+    blocked = await ex.propose(proposed, CTX, injection_suspected=True)
+    assert blocked.status is ActionStatus.BLOCKED and ex.gateway.escalations == []
+    by_model = await ex.gateway.call(ToolName.CREATE_ESCALATION, ESCALATION, CTX)
+    assert by_model.error and by_model.error.category is ErrorCategory.PERMISSION
+    anon = ctx(None, "coordinator")
+    first = await ex.gateway.call(ToolName.CREATE_ESCALATION, ESCALATION, anon)
+    again = await ex.gateway.call(
+        ToolName.CREATE_ESCALATION, {**ESCALATION, "queue": "security"}, anon
     )
-    out = await ex.propose(escalate, CTX, injection_suspected=False)
-    assert out.status is ActionStatus.EXECUTED and out.result and out.result.data
-    again = await ex.propose(escalate, CTX, injection_suspected=False)
-    assert again.result and again.result.data == out.result.data  # idempotent per ticket
+    assert first.data and again.data == first.data  # idempotent per ticket
     assert len(ex.gateway.escalations) == 1
     other = await ex.gateway.call(
-        ToolName.CREATE_ESCALATION, {**escalate.arguments, "ticket_id": "tkt_9999"}, CTX
+        ToolName.CREATE_ESCALATION, {**ESCALATION, "ticket_id": "tkt_9999"}, anon
     )
     assert other.error and other.error.category is ErrorCategory.PERMISSION
 
 
+def _refund(order_id: str = "ord_h8001", amount: int = 5900) -> ProposedAction:
+    return ProposedAction(
+        tool=ToolName.ISSUE_REFUND,
+        arguments={"order_id": order_id, "amount_cents": amount, "reason": "damaged"},
+        rationale="x",
+    )
+
+
+def _transient(times: int) -> ToolFault:
+    return ToolFault(
+        tool=ToolName.CHECK_REFUND_ELIGIBILITY,
+        error=ToolError(category=ErrorCategory.TRANSIENT, message="db", retryable=True),
+        times=times,
+    )
+
+
+async def test_eligibility_lookup_retries_then_reports_the_error() -> None:
+    gw = gateway(faults=[_transient(2)])
+    ok = await executor(gw).propose(_refund(), ctx("cus_hal08"), injection_suspected=False)
+    assert ok.status is ActionStatus.PENDING_APPROVAL
+    assert [c.tool for c in gw.calls].count(ToolName.CHECK_REFUND_ELIGIBILITY) == 3
+
+    gw = gateway(faults=[_transient(3)])
+    failed = await executor(gw).propose(_refund(), ctx("cus_hal08"), injection_suspected=False)
+    assert failed.status is ActionStatus.FAILED and failed.attempts == 3
+    assert failed.result and failed.result.error and failed.result.error.retryable
+
+    missing = await executor().propose(_refund("ord_zzzz"), CTX, injection_suspected=False)
+    assert missing.status is ActionStatus.FAILED and missing.result and missing.result.error
+    assert missing.result.error.category is ErrorCategory.NOT_FOUND
+
+
+async def test_retry_after_a_lost_response_succeeds() -> None:
+    gw = gateway()
+    ex = executor(gw)
+    pending = await ex.propose(_refund(amount=11800), ctx("cus_hal08"), injection_suspected=False)
+    assert pending.approval_id
+    ex.approvals.decide(
+        ApprovalDecision(
+            approval_id=pending.approval_id, approved=True, reviewer="s", decided_at=seed_as_of()
+        )
+    )
+    stored = ex.approvals.get(pending.approval_id)
+    assert stored
+    # The refund commits, but the executor never sees the response.
+    signed: JsonObject = {
+        **stored.arguments,
+        "idempotency_key": stored.idempotency_key,
+        "approval_id": stored.approval_id,
+        "approval_token": approval_token(
+            TEST_APPROVAL_KEY,
+            approval_id=stored.approval_id,
+            order_id="ord_h8001",
+            amount_cents=11800,
+            idempotency_key=stored.idempotency_key,
+        ),
+    }
+    committed = await gw.call(ToolName.ISSUE_REFUND, signed, ctx("cus_hal08", "human"))
+    assert not committed.is_error
+    foreign = await gw.call(ToolName.ISSUE_REFUND, signed, ctx("cus_ava01", "human"))
+    assert foreign.error and foreign.error.category is ErrorCategory.NOT_FOUND
+    retried = await ex.execute_approved(pending.approval_id)
+    assert retried.status is ActionStatus.EXECUTED and retried.result == committed
+    assert len(gw.refunds) == len(seed_world().refunds) + 1
+
+
+async def test_reproposing_keeps_the_stored_decision() -> None:
+    ex = executor()
+    first = await ex.propose(_refund(), ctx("cus_hal08"), injection_suspected=False)
+    assert first.approval_id
+    await ex.decide(
+        ApprovalDecision(
+            approval_id=first.approval_id, approved=False, reviewer="s", decided_at=seed_as_of()
+        )
+    )
+    again = await ex.propose(_refund(), ctx("cus_hal08"), injection_suspected=False)
+    assert again.status is ActionStatus.BLOCKED
+    stored = ex.approvals.get(first.approval_id)
+    assert stored and stored.status is ApprovalStatus.REJECTED
+
+
 async def test_case_runtime_is_isolated_and_observable() -> None:
     factory = FakeCaseRuntimeFactory(docs=seed_kb())
-    a = factory.build(world=seed_world(), as_of=seed_as_of(), faults=[])
-    b = factory.build(world=seed_world(), as_of=seed_as_of(), faults=[])
+    a = factory.build(case_id="happy-001", world=seed_world(), as_of=seed_as_of(), faults=[])
+    b = factory.build(case_id="happy-003", world=seed_world(), as_of=seed_as_of(), faults=[])
     await a.gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, CTX)
     assert len(a.tool_calls()) == 1 and b.tool_calls() == []
+    assert factory.built == ["happy-001", "happy-003"]
     assert a.ledger().refunds == seed_world().refunds and a.pending_approvals() == []
     resp = await a.resolver.resolve(sample_ticket())
     assert resp.mode == "stub"
     wired = FakeCaseRuntimeFactory(lambda rt: StubResolver())
     assert isinstance(
-        wired.build(world=seed_world(), as_of=seed_as_of(), faults=[]).resolver, StubResolver
+        wired.build(
+            case_id="happy-002", world=seed_world(), as_of=seed_as_of(), faults=[]
+        ).resolver,
+        StubResolver,
     )
 
 
