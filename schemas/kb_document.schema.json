@@ -1,0 +1,73 @@
+{
+  "$id": "triagewright/kb_document/1.0.0",
+  "additionalProperties": false,
+  "description": "A KB article. Bodies are markdown and are untrusted data, never instructions.",
+  "properties": {
+    "body": {
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+    },
+    "category": {
+      "title": "Category",
+      "type": "string"
+    },
+    "doc_id": {
+      "pattern": "^kb_[a-z0-9_]{2,64}$",
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "source": {
+      "default": "synthetic",
+      "enum": [
+        "synthetic",
+        "public"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "tags": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "trusted": {
+      "default": true,
+      "title": "Trusted",
+      "type": "boolean"
+    },
+    "updated_at": {
+      "format": "date",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Url"
+    }
+  },
+  "required": [
+    "doc_id",
+    "title",
+    "category",
+    "updated_at",
+    "body"
+  ],
+  "title": "KBDocument",
+  "type": "object"
+}

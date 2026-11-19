@@ -1,0 +1,49 @@
+{
+  "$id": "triagewright/tools/issue_refund/1.0.0",
+  "additionalProperties": false,
+  "description": "Only the approval executor builds this, from a stored, human-approved request.",
+  "properties": {
+    "amount_cents": {
+      "exclusiveMinimum": 0,
+      "title": "Amount Cents",
+      "type": "integer"
+    },
+    "approval_id": {
+      "pattern": "^apr_[a-z0-9]{4,32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approval_token": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Approval Token",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "maxLength": 128,
+      "minLength": 8,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "order_id": {
+      "pattern": "^ord_[a-z0-9]{4,32}$",
+      "title": "Order Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "order_id",
+    "amount_cents",
+    "reason",
+    "idempotency_key",
+    "approval_id",
+    "approval_token"
+  ],
+  "title": "IssueRefundInput",
+  "type": "object"
+}

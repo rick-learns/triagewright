@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "ErrorCategory": {
+      "enum": [
+        "validation",
+        "not_found",
+        "permission",
+        "policy",
+        "conflict",
+        "rate_limited",
+        "transient",
+        "timeout",
+        "internal"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    },
+    "JsonObject": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ToolError": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ErrorCategory"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "default": {},
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Ms"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "category",
+        "message",
+        "retryable"
+      ],
+      "title": "ToolError",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "get_customer",
+        "get_account",
+        "get_order",
+        "list_orders",
+        "search_kb",
+        "check_refund_eligibility",
+        "issue_refund",
+        "create_escalation"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "description": "The envelope every tool call returns. Exactly one of ``data``/``error`` is set.",
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "is_error": {
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "is_error"
+      ],
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  "$id": "triagewright/tool_call_record/1.0.0",
+  "additionalProperties": false,
+  "description": "One raw gateway call, as logged by the gateway. Graders read these, not model claims.",
+  "properties": {
+    "arguments": {
+      "$ref": "#/$defs/JsonObject"
+    },
+    "caller": {
+      "enum": [
+        "triage",
+        "answer",
+        "action",
+        "escalation",
+        "coordinator",
+        "human"
+      ],
+      "title": "Caller",
+      "type": "string"
+    },
+    "latency_ms": {
+      "default": 0.0,
+      "minimum": 0,
+      "title": "Latency Ms",
+      "type": "number"
+    },
+    "result": {
+      "$ref": "#/$defs/ToolResult"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolName"
+    }
+  },
+  "required": [
+    "tool",
+    "arguments",
+    "caller",
+    "result"
+  ],
+  "title": "ToolCallRecord",
+  "type": "object"
+}

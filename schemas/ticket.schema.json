@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "Channel": {
+      "enum": [
+        "email",
+        "chat",
+        "web"
+      ],
+      "title": "Channel",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/ticket/1.0.0",
+  "additionalProperties": false,
+  "description": "A customer message as it arrives. ``body`` is untrusted customer content.",
+  "properties": {
+    "body": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+    },
+    "channel": {
+      "$ref": "#/$defs/Channel",
+      "default": "email"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "customer_id": {
+      "anyOf": [
+        {
+          "pattern": "^cus_[a-z0-9]{4,32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Customer Id"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Metadata",
+      "type": "object"
+    },
+    "subject": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Subject",
+      "type": "string"
+    },
+    "ticket_id": {
+      "pattern": "^tkt_[a-z0-9]{4,32}$",
+      "title": "Ticket Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "body",
+    "created_at"
+  ],
+  "title": "Ticket",
+  "type": "object"
+}

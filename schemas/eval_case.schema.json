@@ -1,0 +1,910 @@
+{
+  "$defs": {
+    "Account": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^cus_[a-z0-9]{4,32}$",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "email_verified": {
+          "default": true,
+          "title": "Email Verified",
+          "type": "boolean"
+        },
+        "failed_login_attempts": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Failed Login Attempts",
+          "type": "integer"
+        },
+        "last_login_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Login At"
+        },
+        "locked": {
+          "default": false,
+          "title": "Locked",
+          "type": "boolean"
+        },
+        "plan": {
+          "default": "basic",
+          "title": "Plan",
+          "type": "string"
+        },
+        "two_factor_enabled": {
+          "default": false,
+          "title": "Two Factor Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "title": "Account",
+      "type": "object"
+    },
+    "Channel": {
+      "enum": [
+        "email",
+        "chat",
+        "web"
+      ],
+      "title": "Channel",
+      "type": "string"
+    },
+    "Customer": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^cus_[a-z0-9]{4,32}$",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "region": {
+          "default": "US",
+          "pattern": "^[A-Z]{2}$",
+          "title": "Region",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CustomerStatus",
+          "default": "active"
+        },
+        "tier": {
+          "$ref": "#/$defs/CustomerTier",
+          "default": "standard"
+        }
+      },
+      "required": [
+        "customer_id",
+        "name",
+        "email",
+        "created_at"
+      ],
+      "title": "Customer",
+      "type": "object"
+    },
+    "CustomerStatus": {
+      "enum": [
+        "active",
+        "suspended",
+        "closed"
+      ],
+      "title": "CustomerStatus",
+      "type": "string"
+    },
+    "CustomerTier": {
+      "enum": [
+        "standard",
+        "plus",
+        "vip"
+      ],
+      "title": "CustomerTier",
+      "type": "string"
+    },
+    "ErrorCategory": {
+      "enum": [
+        "validation",
+        "not_found",
+        "permission",
+        "policy",
+        "conflict",
+        "rate_limited",
+        "transient",
+        "timeout",
+        "internal"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    },
+    "Escalation": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "escalation_id": {
+          "pattern": "^esc_[a-z0-9]{4,32}$",
+          "title": "Escalation Id",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "queue": {
+          "$ref": "#/$defs/EscalationQueue"
+        },
+        "reason_codes": {
+          "items": {
+            "$ref": "#/$defs/EscalationReason"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "default": "open",
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "ticket_id": {
+          "pattern": "^tkt_[a-z0-9]{4,32}$",
+          "title": "Ticket Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "escalation_id",
+        "ticket_id",
+        "queue",
+        "priority",
+        "summary",
+        "reason_codes",
+        "created_at"
+      ],
+      "title": "Escalation",
+      "type": "object"
+    },
+    "EscalationQueue": {
+      "enum": [
+        "tier1",
+        "tier2",
+        "billing",
+        "security"
+      ],
+      "title": "EscalationQueue",
+      "type": "string"
+    },
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "account_inactive",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope",
+        "loop_limit"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
+    "EvalCategory": {
+      "enum": [
+        "happy_path",
+        "ambiguous",
+        "policy_edge",
+        "injection",
+        "escalation_required",
+        "tool_failure"
+      ],
+      "title": "EvalCategory",
+      "type": "string"
+    },
+    "ExpectedOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "default": {},
+          "propertyNames": {
+            "$ref": "#/$defs/ToolName"
+          },
+          "title": "Attempts",
+          "type": "object"
+        },
+        "citations_any": {
+          "default": [],
+          "items": {
+            "pattern": "^kb_[a-z0-9_]{2,64}$",
+            "type": "string"
+          },
+          "title": "Citations Any",
+          "type": "array"
+        },
+        "escalate": {
+          "title": "Escalate",
+          "type": "boolean"
+        },
+        "max_refund_cents": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Refund Cents"
+        },
+        "must_call": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolName"
+          },
+          "title": "Must Call",
+          "type": "array"
+        },
+        "must_not_call": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolName"
+          },
+          "title": "Must Not Call",
+          "type": "array"
+        },
+        "must_not_execute": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolName"
+          },
+          "title": "Must Not Execute",
+          "type": "array"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Priority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "queue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EscalationQueue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reply_excludes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reply Excludes",
+          "type": "array"
+        },
+        "reply_includes_any": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reply Includes Any",
+          "type": "array"
+        },
+        "rubric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric"
+        },
+        "status_any": {
+          "items": {
+            "$ref": "#/$defs/ResolutionStatus"
+          },
+          "minItems": 1,
+          "title": "Status Any",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status_any",
+        "escalate"
+      ],
+      "title": "ExpectedOutcome",
+      "type": "object"
+    },
+    "Order": {
+      "additionalProperties": false,
+      "properties": {
+        "carrier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Carrier"
+        },
+        "currency": {
+          "default": "USD",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^cus_[a-z0-9]{4,32}$",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "delivered_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delivered At"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OrderItem"
+          },
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        },
+        "order_id": {
+          "pattern": "^ord_[a-z0-9]{4,32}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "placed_at": {
+          "format": "date-time",
+          "title": "Placed At",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/OrderStatus"
+        },
+        "total_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Total Cents",
+          "type": "integer"
+        },
+        "tracking_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tracking Number"
+        }
+      },
+      "required": [
+        "order_id",
+        "customer_id",
+        "status",
+        "items",
+        "total_cents",
+        "placed_at"
+      ],
+      "title": "Order",
+      "type": "object"
+    },
+    "OrderItem": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "quantity": {
+          "minimum": 1,
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "string"
+        },
+        "unit_price_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Unit Price Cents",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sku",
+        "name",
+        "quantity",
+        "unit_price_cents"
+      ],
+      "title": "OrderItem",
+      "type": "object"
+    },
+    "OrderStatus": {
+      "enum": [
+        "placed",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "returned"
+      ],
+      "title": "OrderStatus",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "Refund": {
+      "additionalProperties": false,
+      "properties": {
+        "amount_cents": {
+          "exclusiveMinimum": 0,
+          "title": "Amount Cents",
+          "type": "integer"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^apr_[a-z0-9]{4,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "currency": {
+          "default": "USD",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "customer_id": {
+          "pattern": "^cus_[a-z0-9]{4,32}$",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "order_id": {
+          "pattern": "^ord_[a-z0-9]{4,32}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "refund_id": {
+          "pattern": "^rf_[a-z0-9]{4,32}$",
+          "title": "Refund Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RefundStatus",
+          "default": "issued"
+        }
+      },
+      "required": [
+        "refund_id",
+        "order_id",
+        "customer_id",
+        "amount_cents",
+        "reason",
+        "idempotency_key",
+        "created_at"
+      ],
+      "title": "Refund",
+      "type": "object"
+    },
+    "RefundStatus": {
+      "enum": [
+        "issued",
+        "rejected"
+      ],
+      "title": "RefundStatus",
+      "type": "string"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "resolved",
+        "pending_approval",
+        "escalated",
+        "needs_info",
+        "refused"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    },
+    "Ticket": {
+      "additionalProperties": false,
+      "description": "A customer message as it arrives. ``body`` is untrusted customer content.",
+      "properties": {
+        "body": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "channel": {
+          "$ref": "#/$defs/Channel",
+          "default": "email"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "pattern": "^cus_[a-z0-9]{4,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Id"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Metadata",
+          "type": "object"
+        },
+        "subject": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Subject",
+          "type": "string"
+        },
+        "ticket_id": {
+          "pattern": "^tkt_[a-z0-9]{4,32}$",
+          "title": "Ticket Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "body",
+        "created_at"
+      ],
+      "title": "Ticket",
+      "type": "object"
+    },
+    "ToolError": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ErrorCategory"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "default": {},
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Ms"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "category",
+        "message",
+        "retryable"
+      ],
+      "title": "ToolError",
+      "type": "object"
+    },
+    "ToolFault": {
+      "additionalProperties": false,
+      "description": "Make ``tool`` return ``error`` for its first ``times`` matching calls.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ToolError"
+        },
+        "match_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Arguments"
+        },
+        "times": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Times",
+          "type": "integer"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "error"
+      ],
+      "title": "ToolFault",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "get_customer",
+        "get_account",
+        "get_order",
+        "list_orders",
+        "search_kb",
+        "check_refund_eligibility",
+        "issue_refund",
+        "create_escalation"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "WorldState": {
+      "additionalProperties": false,
+      "description": "A snapshot of every mock system. Seed data and eval-case overrides use this shape.\n\nEval cases merge their ``world`` over the seed world by primary key.",
+      "properties": {
+        "accounts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Account"
+          },
+          "title": "Accounts",
+          "type": "array"
+        },
+        "customers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Customer"
+          },
+          "title": "Customers",
+          "type": "array"
+        },
+        "escalations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Escalation"
+          },
+          "title": "Escalations",
+          "type": "array"
+        },
+        "orders": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Order"
+          },
+          "title": "Orders",
+          "type": "array"
+        },
+        "refunds": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Refund"
+          },
+          "title": "Refunds",
+          "type": "array"
+        }
+      },
+      "title": "WorldState",
+      "type": "object"
+    }
+  },
+  "$id": "triagewright/eval_case/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "As Of"
+    },
+    "category": {
+      "$ref": "#/$defs/EvalCategory"
+    },
+    "expected": {
+      "$ref": "#/$defs/ExpectedOutcome"
+    },
+    "faults": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ToolFault"
+      },
+      "title": "Faults",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^(happy|ambig|policy|inject|escal|toolfail)-\\d{3}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "reviewed": {
+      "default": false,
+      "title": "Reviewed",
+      "type": "boolean"
+    },
+    "tags": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "ticket": {
+      "$ref": "#/$defs/Ticket"
+    },
+    "title": {
+      "maxLength": 120,
+      "title": "Title",
+      "type": "string"
+    },
+    "world": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorldState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "category",
+    "title",
+    "ticket",
+    "expected"
+  ],
+  "title": "EvalCase",
+  "type": "object"
+}

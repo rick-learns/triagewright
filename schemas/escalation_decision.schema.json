@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "EscalationQueue": {
+      "enum": [
+        "tier1",
+        "tier2",
+        "billing",
+        "security"
+      ],
+      "title": "EscalationQueue",
+      "type": "string"
+    },
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "account_inactive",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope",
+        "loop_limit"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "title": "Priority",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/escalation_decision/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "escalate": {
+      "title": "Escalate",
+      "type": "boolean"
+    },
+    "handoff_summary": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Handoff Summary",
+      "type": "string"
+    },
+    "priority": {
+      "$ref": "#/$defs/Priority",
+      "default": "normal"
+    },
+    "queue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EscalationQueue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reasons": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EscalationReason"
+      },
+      "title": "Reasons",
+      "type": "array"
+    }
+  },
+  "required": [
+    "escalate"
+  ],
+  "title": "EscalationDecision",
+  "type": "object"
+}

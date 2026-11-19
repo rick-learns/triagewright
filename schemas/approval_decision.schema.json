@@ -1,0 +1,39 @@
+{
+  "$id": "triagewright/approval_decision/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "approval_id": {
+      "pattern": "^apr_[a-z0-9]{4,32}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "approved": {
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+    },
+    "reviewer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Reviewer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "approval_id",
+    "approved",
+    "reviewer",
+    "decided_at"
+  ],
+  "title": "ApprovalDecision",
+  "type": "object"
+}

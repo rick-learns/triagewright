@@ -1,0 +1,50 @@
+[
+  {
+    "refund_id": "rf_k1101a",
+    "order_id": "ord_k1102",
+    "customer_id": "cus_kai11",
+    "amount_cents": 1200,
+    "currency": "USD",
+    "reason": "One cable arrived damaged",
+    "status": "issued",
+    "idempotency_key": "seed-rf-k1101a",
+    "approval_id": null,
+    "created_at": "2026-06-06T12:00:00Z"
+  },
+  {
+    "refund_id": "rf_k1103a",
+    "order_id": "ord_k1103",
+    "customer_id": "cus_kai11",
+    "amount_cents": 5900,
+    "currency": "USD",
+    "reason": "Speaker not powering on",
+    "status": "issued",
+    "idempotency_key": "seed-rf-k1103a",
+    "approval_id": null,
+    "created_at": "2026-06-11T12:00:00Z"
+  },
+  {
+    "refund_id": "rf_h8003a",
+    "order_id": "ord_h8003",
+    "customer_id": "cus_hal08",
+    "amount_cents": 2900,
+    "currency": "USD",
+    "reason": "Return received",
+    "status": "issued",
+    "idempotency_key": "seed-rf-h8003a",
+    "approval_id": null,
+    "created_at": "2026-05-13T12:00:00Z"
+  },
+  {
+    "refund_id": "rf_a1001a",
+    "order_id": "ord_a1001",
+    "customer_id": "cus_ava01",
+    "amount_cents": 3000,
+    "currency": "USD",
+    "reason": "Partial refund for scuffed case",
+    "status": "issued",
+    "idempotency_key": "seed-rf-a1001a",
+    "approval_id": null,
+    "created_at": "2026-06-09T12:00:00Z"
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "$id": "triagewright/refund_proposal/1.0.0",
+  "additionalProperties": false,
+  "description": "What the action agent may propose for ``issue_refund``. The executor adds the rest.",
+  "properties": {
+    "amount_cents": {
+      "exclusiveMinimum": 0,
+      "title": "Amount Cents",
+      "type": "integer"
+    },
+    "order_id": {
+      "pattern": "^ord_[a-z0-9]{4,32}$",
+      "title": "Order Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "order_id",
+    "amount_cents",
+    "reason"
+  ],
+  "title": "RefundProposal",
+  "type": "object"
+}

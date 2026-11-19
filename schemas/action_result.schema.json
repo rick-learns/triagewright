@@ -1,0 +1,421 @@
+{
+  "$defs": {
+    "ActionOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ProposedAction"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "pattern": "^apr_[a-z0-9]{4,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Id"
+        },
+        "attempts": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "eligibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RefundEligibility"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "$ref": "#/$defs/ActionStatus"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuardrailVerdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "action",
+        "status"
+      ],
+      "title": "ActionOutcome",
+      "type": "object"
+    },
+    "ActionStatus": {
+      "enum": [
+        "executed",
+        "blocked",
+        "pending_approval",
+        "failed",
+        "skipped"
+      ],
+      "title": "ActionStatus",
+      "type": "string"
+    },
+    "ErrorCategory": {
+      "enum": [
+        "validation",
+        "not_found",
+        "permission",
+        "policy",
+        "conflict",
+        "rate_limited",
+        "transient",
+        "timeout",
+        "internal"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    },
+    "GuardrailDecision": {
+      "enum": [
+        "allow",
+        "block",
+        "require_approval"
+      ],
+      "title": "GuardrailDecision",
+      "type": "string"
+    },
+    "GuardrailVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/GuardrailDecision"
+        },
+        "injection_suspected": {
+          "default": false,
+          "title": "Injection Suspected",
+          "type": "boolean"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "GuardrailVerdict",
+      "type": "object"
+    },
+    "JsonObject": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ProposedAction": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/JsonObject"
+        },
+        "rationale": {
+          "maxLength": 500,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "arguments",
+        "rationale"
+      ],
+      "title": "ProposedAction",
+      "type": "object"
+    },
+    "RefundEligibility": {
+      "additionalProperties": false,
+      "description": "Output of ``contracts.policy.evaluate_refund``.",
+      "properties": {
+        "already_refunded_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Already Refunded Cents",
+          "type": "integer"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "max_refundable_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Max Refundable Cents",
+          "type": "integer"
+        },
+        "order_id": {
+          "pattern": "^ord_[a-z0-9]{4,32}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RefundReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "refunds_last_30d": {
+          "minimum": 0,
+          "title": "Refunds Last 30D",
+          "type": "integer"
+        },
+        "window_ends_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Window Ends At"
+        }
+      },
+      "required": [
+        "order_id",
+        "eligible",
+        "max_refundable_cents",
+        "already_refunded_cents",
+        "refunds_last_30d",
+        "window_ends_at"
+      ],
+      "title": "RefundEligibility",
+      "type": "object"
+    },
+    "RefundReason": {
+      "description": "Why a refund can't go to approval, in precedence order (first wins).\n\nSee ``contracts.policy.REFUND_OUTCOME`` for what the agent does for each.",
+      "enum": [
+        "account_inactive",
+        "not_delivered",
+        "outside_window",
+        "exceeds_balance",
+        "over_hard_limit",
+        "refund_count_limit"
+      ],
+      "title": "RefundReason",
+      "type": "string"
+    },
+    "ToolError": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ErrorCategory"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "default": {},
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Ms"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "category",
+        "message",
+        "retryable"
+      ],
+      "title": "ToolError",
+      "type": "object"
+    },
+    "ToolName": {
+      "enum": [
+        "get_customer",
+        "get_account",
+        "get_order",
+        "list_orders",
+        "search_kb",
+        "check_refund_eligibility",
+        "issue_refund",
+        "create_escalation"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "description": "The envelope every tool call returns. Exactly one of ``data``/``error`` is set.",
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "is_error": {
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      },
+      "required": [
+        "tool",
+        "is_error"
+      ],
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  "$id": "triagewright/action_result/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "facts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "outcomes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionOutcome"
+      },
+      "title": "Outcomes",
+      "type": "array"
+    },
+    "summary": {
+      "default": "",
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "title": "ActionResult",
+  "type": "object"
+}

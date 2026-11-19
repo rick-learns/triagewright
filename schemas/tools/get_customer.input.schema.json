@@ -1,0 +1,16 @@
+{
+  "$id": "triagewright/tools/get_customer/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "customer_id": {
+      "pattern": "^cus_[a-z0-9]{4,32}$",
+      "title": "Customer Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "customer_id"
+  ],
+  "title": "GetCustomerInput",
+  "type": "object"
+}

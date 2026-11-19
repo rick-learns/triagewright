@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "AttrValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "SpanKind": {
+      "enum": [
+        "request",
+        "agent_turn",
+        "subagent",
+        "model_call",
+        "tool_call",
+        "retrieval",
+        "guardrail",
+        "approval"
+      ],
+      "title": "SpanKind",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/trace_event/1.0.0",
+  "additionalProperties": false,
+  "description": "One finished span, as written to ``var/traces/*.jsonl`` and mapped to OTel.",
+  "properties": {
+    "attributes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AttrValue"
+      },
+      "default": {},
+      "title": "Attributes",
+      "type": "object"
+    },
+    "duration_ms": {
+      "minimum": 0,
+      "title": "Duration Ms",
+      "type": "number"
+    },
+    "kind": {
+      "$ref": "#/$defs/SpanKind"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "parent_span_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Span Id"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "span_id": {
+      "title": "Span Id",
+      "type": "string"
+    },
+    "status": {
+      "default": "ok",
+      "enum": [
+        "ok",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ts",
+    "request_id",
+    "span_id",
+    "name",
+    "kind",
+    "duration_ms"
+  ],
+  "title": "TraceEvent",
+  "type": "object"
+}

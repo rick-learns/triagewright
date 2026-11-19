@@ -1,0 +1,35 @@
+{
+  "$id": "triagewright/citation/1.0.0",
+  "additionalProperties": false,
+  "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text, and the\nchunk must be ``trusted``. Citations failing either check are dropped.",
+  "properties": {
+    "chunk_id": {
+      "pattern": "^kb_[a-z0-9_]{2,64}#\\d{1,4}$",
+      "title": "Chunk Id",
+      "type": "string"
+    },
+    "doc_id": {
+      "pattern": "^kb_[a-z0-9_]{2,64}$",
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "quote": {
+      "maxLength": 400,
+      "minLength": 1,
+      "title": "Quote",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "doc_id",
+    "chunk_id",
+    "title",
+    "quote"
+  ],
+  "title": "Citation",
+  "type": "object"
+}

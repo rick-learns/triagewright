@@ -1,0 +1,22 @@
+{
+  "$id": "triagewright/tools/check_refund_eligibility/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "amount_cents": {
+      "exclusiveMinimum": 0,
+      "title": "Amount Cents",
+      "type": "integer"
+    },
+    "order_id": {
+      "pattern": "^ord_[a-z0-9]{4,32}$",
+      "title": "Order Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "order_id",
+    "amount_cents"
+  ],
+  "title": "CheckRefundEligibilityInput",
+  "type": "object"
+}

@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "GuardrailDecision": {
+      "enum": [
+        "allow",
+        "block",
+        "require_approval"
+      ],
+      "title": "GuardrailDecision",
+      "type": "string"
+    }
+  },
+  "$id": "triagewright/guardrail_verdict/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "$ref": "#/$defs/GuardrailDecision"
+    },
+    "injection_suspected": {
+      "default": false,
+      "title": "Injection Suspected",
+      "type": "boolean"
+    },
+    "reasons": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "rule_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Rule Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "decision"
+  ],
+  "title": "GuardrailVerdict",
+  "type": "object"
+}
