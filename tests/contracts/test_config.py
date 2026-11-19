@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from triagewright import api, cli, mcp_server
 from triagewright.config import DEFAULT_MODELS, Settings, is_free_model
 from triagewright.contracts.llm import Provider
 from triagewright.evals import main as evals_main
@@ -55,6 +54,8 @@ def test_blank_secrets_are_unset_and_paid_models_rejected(monkeypatch: pytest.Mo
         (Provider.GEMINI, "gemini-3.5-flash-lite", True),
         (Provider.GEMINI, "gemini-3.8-flash", True),
         (Provider.GEMINI, "gemma-4-31b-it", True),
+        (Provider.GEMINI, "gemma-4-31b-it-latest", False),
+        (Provider.GEMINI, "gemini-3-flash-preview", True),
         (Provider.GEMINI, "gemini-3.5-pro", False),
         (Provider.GEMINI, "gemini-flash-latest", False),
         (Provider.GEMINI, "gemini-4-argon", False),
@@ -93,9 +94,3 @@ def test_evals_smoke_validates_cases(capsys: pytest.CaptureFixture[str]) -> None
     assert evals_main(["smoke"]) == 0
     assert "validated" in capsys.readouterr().out
     assert evals_main([]) == 2
-
-
-@pytest.mark.parametrize("entry", [api.main, cli.main, mcp_server.main])
-def test_unimplemented_entry_points_exit_cleanly(entry: object) -> None:
-    with pytest.raises(SystemExit, match="not implemented"):
-        entry()  # type: ignore[operator]

@@ -26,7 +26,7 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
 | A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | – | todo | – |
-| B1 model adapters (gemini, openrouter, replay/record) | W0.2 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
+| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
 | B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | – | todo | – |
 | C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | – | todo | – |
 | D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | – | todo | – |
