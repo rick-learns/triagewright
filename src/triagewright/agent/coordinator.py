@@ -19,19 +19,40 @@ Flow for one ticket:
 Any bound (turns, per-turn or total time), a second truncation, or a second
 invalid structured output gives the safe fallback: no pending proposal is sent,
 and the ticket is escalated with a code-built handoff summary.
+
+Modules: ``finalize`` (the finalize tool's arguments), ``refunds`` (refund rules),
+``outcomes`` (reading executor outcomes), ``replies`` (code-written text and
+redaction), and ``routing`` (escalation and status). :class:`Coordinator` runs the flow.
 """
 
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from collections.abc import Mapping
-from typing import Annotated, Literal
-
-from pydantic import Field
+from typing import Literal
 
 from triagewright.agent import prompts, subagents
+from triagewright.agent.finalize import CitationCandidate as CitationCandidate
+from triagewright.agent.finalize import FinalizeArgs as FinalizeArgs
+from triagewright.agent.outcomes import _ASK_CUSTOMER as _ASK_CUSTOMER
+from triagewright.agent.outcomes import _needs_info as _needs_info
+from triagewright.agent.outcomes import _refund_reason as _refund_reason
+from triagewright.agent.outcomes import _refused as _refused
+from triagewright.agent.refunds import _ORDER_ID as _ORDER_ID
+from triagewright.agent.refunds import _POLICY_SEARCH as _POLICY_SEARCH
+from triagewright.agent.refunds import _REFUND_POLICY_DOC as _REFUND_POLICY_DOC
+from triagewright.agent.refunds import _order_unclear as _order_unclear
+from triagewright.agent.refunds import _policy_citation as _policy_citation
+from triagewright.agent.refunds import _refund_decidable as _refund_decidable
+from triagewright.agent.refunds import _refund_proposed as _refund_proposed
+from triagewright.agent.refunds import _refund_requested as _refund_requested
+from triagewright.agent.refunds import _settled as _settled
+from triagewright.agent.refunds import first_sentence as first_sentence
+from triagewright.agent.replies import _SUMMARY_MAX as _SUMMARY_MAX
+from triagewright.agent.replies import _money as _money
+from triagewright.agent.routing import Routing
+from triagewright.agent.routing import _left_to_code as _left_to_code
 from triagewright.agent.runtime import (
     Clock,
     Fallback,
@@ -42,49 +63,30 @@ from triagewright.agent.runtime import (
     as_data,
 )
 from triagewright.contracts.agents import (
-    ActionOutcome,
     ActionStatus,
     AnswerDraft,
-    EscalationDecision,
     FinalResponse,
     LoopConfig,
     LoopStop,
     ResolutionStatus,
     SubagentName,
-    TicketCategory,
     TriageResult,
 )
-from triagewright.contracts.common import (
-    ChunkId,
-    Contract,
-    JsonObject,
-    JsonValue,
-    canonical_json,
-    stable_id,
-)
+from triagewright.contracts.common import Contract, JsonObject, canonical_json, stable_id
 from triagewright.contracts.guardrails import ContentSource
 from triagewright.contracts.llm import ToolDefinition
-from triagewright.contracts.policy import REFUND_OUTCOME
 from triagewright.contracts.ports import (
     ActionExecutor,
     Guardrails,
     ModelClient,
-    RequestTelemetry,
     TelemetryFactory,
     ToolGateway,
 )
 from triagewright.contracts.rag import Citation
 from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.tickets import Ticket
-from triagewright.contracts.tools import (
-    TOOL_SPECS,
-    CreateEscalationInput,
-    ErrorCategory,
-    RefundReason,
-    SideEffect,
-    ToolName,
-)
-from triagewright.contracts.world import EscalationQueue, EscalationReason, Priority
+from triagewright.contracts.tools import TOOL_SPECS, SideEffect, ToolName
+from triagewright.contracts.world import EscalationReason
 
 PURPOSES: tuple[str, ...] = ("coordinator", *(name.value for name in SubagentName))
 
@@ -95,31 +97,8 @@ READ_TOOLS: tuple[ToolName, ...] = tuple(
 # On a refund request it gets only the knowledge base: the order lookups and the refund
 # proposal belong to the action subagent, which it must run (enforced in ``_check_final``).
 REFUND_READ_TOOLS: tuple[ToolName, ...] = (ToolName.SEARCH_KB,)
-# An order id anywhere in the ticket (``contracts.common.OrderId``).
-_ORDER_ID = re.compile(r"\bord_[a-z0-9]{4,32}\b")
-
-_REFUND_POLICY_DOC = "kb_refund_policy"
-_POLICY_SEARCH: JsonObject = {"query": "refund policy"}
-# Errors the customer can fix by giving other details; anything else is a tool failure.
-_ASK_CUSTOMER = frozenset(
-    {ErrorCategory.NOT_FOUND, ErrorCategory.VALIDATION, ErrorCategory.PERMISSION}
-)
-_SUMMARY_MAX = 2000
 
 _NO_ARGS: JsonObject = {"type": "object", "properties": {}, "additionalProperties": False}
-
-
-class CitationCandidate(Contract):
-    chunk_id: ChunkId
-    quote: Annotated[str, Field(min_length=1, max_length=400)]
-
-
-class FinalizeArgs(Contract):
-    """What the coordinator model may supply. Everything else in the response is code's."""
-
-    status: Literal["resolved", "needs_info", "refused"]
-    reply: Annotated[str, Field(min_length=1, max_length=4000)]
-    citations: list[CitationCandidate] = []
 
 
 class CoordinatorInput(Contract):
@@ -128,7 +107,7 @@ class CoordinatorInput(Contract):
     customer_in_scope: bool
 
 
-class Coordinator:
+class Coordinator(Routing):
     """Implements ``ports.TicketResolver`` over the model, tool, guardrail, and executor ports.
 
     ``models`` maps each purpose (``coordinator`` and every :class:`SubagentName`)
@@ -238,43 +217,6 @@ class Coordinator:
             settle=lambda: _settled(run),
         )
 
-    def _check_final(self, run: RequestRun, final: FinalizeArgs) -> str | None:
-        """A refund reply needs a verified refund-policy citation and a refund proposal, so
-        the executor decides the outcome (behavior.md). Code checks both: a model can skip
-        a prompt rule. Without a proposal, only the replies code writes are accepted (see
-        ``_own_refund_reply``)."""
-        if not (_refund_requested(run) or _refund_proposed(run)):
-            return None
-        citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
-        cited = any(c.doc_id == _REFUND_POLICY_DOC for c in citations)
-        missing = [
-            message
-            for message, ok in (
-                (prompts.PROPOSE_REFUND_FIRST, _refund_decidable(run, final.status)),
-                (prompts.CITE_REFUND_POLICY, cited),
-            )
-            if not ok
-        ]
-        return " ".join(missing) or None
-
-    def _own_refund_reply(self, run: RequestRun, final: FinalizeArgs) -> FinalizeArgs:
-        """A refund reply with no proposal behind it is written by code, never the model,
-        so no model can deny or settle a refund: a sign-in request for an anonymous ticket,
-        or a question about which order when the records leave it open. A reply beside a
-        refund proposal is code's too, before the reviewer sees it: the model writes before
-        the executor decides (``_settled`` normally writes it; this covers any other path)."""
-        if _refund_proposed(run):
-            return final.model_copy(update={"reply": prompts.REFUND_OUTCOME_REPLY})
-        if not _refund_requested(run):
-            return final
-        if run.ticket.customer_id is None:
-            reply = prompts.SIGN_IN_FOR_REFUND
-        elif _order_unclear(run):
-            reply = prompts.WHICH_ORDER_FOR_REFUND
-        else:
-            return final  # ``_check_final`` accepted no proposal-free reply: unreachable
-        return final.model_copy(update={"status": "needs_info", "reply": reply})
-
     def _tools(self, run: RequestRun) -> list[LocalTool]:
         async def answer(_: JsonObject) -> tuple[str, bool]:
             draft, flagged = await subagents.answer(run)
@@ -338,392 +280,3 @@ class Coordinator:
             if failed and outcome.result is not None and not _needs_info(outcome):
                 run.tool_failures.append(outcome.result.tool)
             run.ensure_time()
-
-    # ---- routing and the response ------------------------------------------------
-
-    def _route(
-        self, run: RequestRun, review: EscalationDecision | None, proposed: ResolutionStatus
-    ) -> EscalationDecision | None:
-        """Code's escalation decision. The reviewer can add an escalation, never remove one."""
-        queue: EscalationQueue | None = None
-        priority = Priority.NORMAL
-        reasons: list[EscalationReason] = []
-        why: list[str] = []
-        for outcome in run.outcomes:
-            winning = _refund_reason(outcome)
-            routed = REFUND_OUTCOME[winning] if winning else None
-            if routed is not None and queue is None:
-                queue = routed
-                inactive = winning is RefundReason.ACCOUNT_INACTIVE
-                reasons.append(
-                    EscalationReason.ACCOUNT_INACTIVE if inactive else EscalationReason.POLICY_LIMIT
-                )
-                why.append(f"refund blocked by policy ({winning})")
-        reviewed = (
-            review is not None
-            and review.escalate
-            and not _left_to_code(run, review, refusing=proposed is ResolutionStatus.REFUSED)
-        )
-        if review is not None and reviewed:
-            queue = queue or review.queue or EscalationQueue.TIER1
-            priority = review.priority
-            reasons.extend(review.reasons)
-        if run.tool_failures:
-            queue = queue or EscalationQueue.TIER1
-            reasons.append(EscalationReason.TOOL_FAILURE)
-            failed = sorted({t.value for t in run.tool_failures})
-            why.append(f"tool kept failing after retries ({', '.join(failed)})")
-        # A refund ask with injection suspected anywhere, the reviewer's screen included
-        # (it runs last), goes to security whatever the models did.
-        forced_write = run.triage is not None and (
-            _refund_requested(run)
-            or (
-                run.ticket_flagged
-                and EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
-            )
-        )
-        if run.injection and (queue is not None or run.irreversible_requested or forced_write):
-            queue = EscalationQueue.SECURITY
-            reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
-            why.insert(0, "possible prompt injection alongside a write or handoff request")
-        if queue is None:
-            return None
-        given = review.handoff_summary if review is not None and reviewed else ""
-        summary = self._redact(given or self._summary(run, why))
-        if given and why:
-            # Redacted before the cut, so redaction can't push code's reasons out.
-            also = "\n" + self._redact(f"Also: {'; '.join(why)}.")[: _SUMMARY_MAX - 1]
-            summary = summary[: _SUMMARY_MAX - len(also)] + also
-        return EscalationDecision(
-            escalate=True,
-            reasons=list(dict.fromkeys(reasons)) or [EscalationReason.LOW_CONFIDENCE],
-            queue=queue,
-            priority=priority,
-            handoff_summary=summary[:_SUMMARY_MAX],
-        )
-
-    async def _respond(
-        self,
-        run: RequestRun,
-        reply: str,
-        proposed: ResolutionStatus,
-        citations: list[Citation],
-        review: EscalationDecision | None,
-        stop: LoopStop,
-    ) -> FinalResponse:
-        decision = self._route(run, review, proposed)
-        notes = [note for o in run.outcomes if (note := self._note(run, o))]
-        if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
-            reply = self._refund_reply(run, reply, decision, notes)
-        if decision is not None:
-            status = ResolutionStatus.ESCALATED
-            notes.append(await self._handoff(run, decision))
-        elif any(o.status is ActionStatus.PENDING_APPROVAL for o in run.outcomes):
-            status = ResolutionStatus.PENDING_APPROVAL
-        elif any(_refused(o) for o in run.outcomes):
-            status = ResolutionStatus.REFUSED
-        elif any(_needs_info(o) for o in run.outcomes):
-            status = ResolutionStatus.NEEDS_INFO
-        else:
-            status = proposed
-        return self._final(run, status, reply, notes, citations, decision, stop)
-
-    def _refund_reply(
-        self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
-    ) -> str:
-        """Code states every refund outcome (``_note``), and a security handoff never carries
-        model text. What's left is a reply code wrote: ``_own_refund_reply`` replaced any
-        model reply beside a proposal, and a refusal's reply is code's."""
-        security = decision is not None and decision.queue is EscalationQueue.SECURITY
-        if security:
-            return prompts.FALLBACK_REPLY
-        return reply
-
-    async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
-        """The safe fallback: hand off to a human, never a half-finished action."""
-        queue = EscalationQueue.TIER1
-        reasons = [fallback.reason]
-        why = [fallback.detail]
-        if run.tool_failures:
-            reasons.append(EscalationReason.TOOL_FAILURE)
-        if run.injection:
-            queue = EscalationQueue.SECURITY
-            reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
-            why.insert(0, "possible prompt injection")
-        decision = EscalationDecision(
-            escalate=True,
-            reasons=list(dict.fromkeys(reasons)),
-            queue=queue,
-            priority=Priority.NORMAL,
-            handoff_summary=self._redact(self._summary(run, why))[:_SUMMARY_MAX],
-        )
-        notes = [note for o in run.outcomes if (note := self._note(run, o))]
-        notes.append(await self._handoff(run, decision))
-        return self._final(
-            run,
-            ResolutionStatus.ESCALATED,
-            prompts.FALLBACK_REPLY,
-            notes,
-            [],
-            decision,
-            fallback.stop,
-        )
-
-    async def _handoff(self, run: RequestRun, decision: EscalationDecision) -> str:
-        """Code-owned ``create_escalation`` for the trusted ticket id. Returns the reply note."""
-        assert decision.queue is not None
-        args = CreateEscalationInput(
-            ticket_id=run.ticket.ticket_id,
-            queue=decision.queue,
-            priority=decision.priority,
-            summary=decision.handoff_summary or "Escalated by the support agent.",
-            reason_codes=decision.reasons,
-        )
-        try:
-            result = await run.call_tool(
-                ToolName.CREATE_ESCALATION,
-                args.model_dump(mode="json"),
-                "coordinator",
-                handoff=True,
-            )
-        except Fallback:
-            return prompts.LOGGED_FOR_REVIEW
-        return prompts.LOGGED_FOR_REVIEW if result.is_error else prompts.handed_off(decision.queue)
-
-    def _final(
-        self,
-        run: RequestRun,
-        status: ResolutionStatus,
-        reply: str,
-        notes: list[str],
-        citations: list[Citation],
-        decision: EscalationDecision | None,
-        stop: LoopStop,
-    ) -> FinalResponse:
-        return FinalResponse(
-            request_id=run.request_id,
-            ticket_id=run.ticket.ticket_id,
-            status=status,
-            reply=self._redact("\n\n".join([reply, *notes]), run.telemetry),
-            citations=citations,
-            triage=run.models_triage() if run.triage else None,
-            actions=list(run.outcomes),
-            escalation=decision,
-            stop=stop,
-            turns=run.turns.get("coordinator", 0),
-            mode=self._mode,
-        )
-
-    def _note(self, run: RequestRun, outcome: ActionOutcome) -> str | None:
-        """The customer-facing outcome of one proposal. Models never state outcomes."""
-        args = outcome.action.arguments
-        order = args.get("order_id")
-        if outcome.status is ActionStatus.PENDING_APPROVAL:
-            return (
-                f"Your refund request of {_money(args.get('amount_cents'))} for order {order} "
-                "has been submitted for review. A team member reviews every refund before "
-                "it's issued."
-            )
-        if _refused(outcome):
-            elig = outcome.eligibility
-            assert elig is not None
-            match elig.reasons[0]:
-                case RefundReason.NOT_DELIVERED:
-                    return f"Order {order} can't be refunded because it hasn't been delivered."
-                case RefundReason.OUTSIDE_WINDOW if elig.window_ends_at is not None:
-                    ended = elig.window_ends_at.date().isoformat()
-                    return f"Order {order} can't be refunded: its refund window ended on {ended}."
-                case RefundReason.EXCEEDS_BALANCE:
-                    left = _money(elig.max_refundable_cents)
-                    return f"That's more than the refundable balance on order {order} ({left})."
-            return f"Order {order} can't be refunded under our refund policy."
-        if _needs_info(outcome):
-            assert outcome.result is not None and outcome.result.error is not None
-            if run.ticket.customer_id is None:
-                return (
-                    "I can't look up orders without knowing your account. Please write to us "
-                    "while signed in to the account that placed the order."
-                )
-            if outcome.result.error.category is ErrorCategory.NOT_FOUND:
-                return (
-                    f"I couldn't find order {order} on your account. Could you check the order id?"
-                )
-            return "I couldn't process that refund request. Could you confirm the order and amount?"
-        return None
-
-    def _summary(self, run: RequestRun, why: list[str]) -> str:
-        """A handoff summary a human can act on without rereading the ticket."""
-        goal = run.triage.intent if run.triage else (run.ticket.subject or run.ticket.body)
-        facts = "; ".join(f[:300] for f in run.facts) or "none"
-        attempted = [f"{o.action.tool.value} -> {o.status.value}" for o in run.outcomes]
-        attempted += [f"{subagents.queued(a)} (not submitted)" for a in run.deferred]
-        lines = [
-            f"Customer goal: {goal[:300]}",
-            f"Facts checked: {facts}",
-            f"Attempted: {'; '.join(attempted) or 'no actions'}",
-            f"Why escalated: {'; '.join(why) or 'reviewer decision'}",
-        ]
-        return "\n".join(lines)[:_SUMMARY_MAX]
-
-    # ---- redaction ---------------------------------------------------------------
-
-    def _redact(self, text: str, telemetry: RequestTelemetry | None = None) -> str:
-        if telemetry is None:
-            return self._guardrails.redact(text).text
-        with telemetry.span("guardrails.redact", SpanKind.GUARDRAIL):
-            return self._guardrails.redact(text).text
-
-    def _redact_ticket(self, ticket: Ticket, telemetry: RequestTelemetry) -> Ticket:
-        """Customer text is redacted before any model sees it."""
-        with telemetry.span("guardrails.redact", SpanKind.GUARDRAIL):
-            return ticket.model_copy(
-                update={
-                    "body": self._guardrails.redact(ticket.body).text,
-                    "subject": self._guardrails.redact(ticket.subject).text,
-                    "metadata": self._redact_metadata(ticket.metadata),
-                }
-            )
-
-    def _redact_metadata(self, metadata: Mapping[str, str]) -> dict[str, str]:
-        """Redact keys and values. Keys that redact alike stay distinct, so all get screened."""
-        redacted: dict[str, str] = {}
-        suffix: dict[str, int] = {}  # the last suffix tried per key, so collisions stay linear
-        for key, value in metadata.items():
-            base = name = self._guardrails.redact(key).text
-            while name in redacted:
-                suffix[base] = suffix.get(base, 1) + 1
-                name = f"{base}#{suffix[base]}"
-            redacted[name] = self._guardrails.redact(value).text
-        return redacted
-
-
-def _refund_requested(run: RequestRun) -> bool:
-    """Triage's category, or its flag for a refund asked for under another category."""
-    assert run.triage is not None
-    return run.triage.category is TicketCategory.REFUND_REQUEST or run.triage.refund_requested
-
-
-def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool) -> bool:
-    """A review whose every reason is one code already handled adds nothing, unless triage
-    found a human need code didn't handle:
-
-    - ``approval_required`` once the request's one action is decided: a pending approval
-      is that human step, and a blocked action has nothing to approve.
-    - ``injection_suspected`` when code suspected it before the reviewer did and the draft
-      refuses: the injection rule in ``_route`` still sends a write or handoff request to
-      security.
-    """
-    handled: set[EscalationReason] = set()
-    decided = (ActionStatus.PENDING_APPROVAL, ActionStatus.BLOCKED)
-    if len(run.outcomes) == 1 and run.outcomes[0].status in decided:
-        handled.add(EscalationReason.APPROVAL_REQUIRED)
-    if run.flagged_before_review and refusing:
-        handled.add(EscalationReason.INJECTION_SUSPECTED)
-    reasons = set(review.reasons)
-    if not reasons or not reasons <= handled:
-        return False
-    triage = run.triage
-    other_need = triage is not None and (
-        bool(set(triage.needs_human_reasons) - handled)
-        or (triage.needs_human and not triage.needs_human_reasons)
-    )
-    return not other_need
-
-
-async def _settled(run: RequestRun) -> FinalizeArgs | None:
-    """A ticket is settled once a refund is proposed and the policy is cited: the executor
-    decides the outcome and code states it (``_note``), so a model's reply would only guess
-    at it. Code writes the reply and the citation instead, searching for the policy itself
-    once the turn's own tools are done if no model did."""
-    if not _refund_proposed(run):
-        return None
-    if _policy_citation(run) is None and not run.searched(_POLICY_SEARCH):
-        # Once a request: a failed or empty lookup isn't repeated, nor is a model's own.
-        search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
-        await search.handler(_POLICY_SEARCH)
-    citation = _policy_citation(run)
-    if citation is None:
-        return None
-    cited = CitationCandidate(chunk_id=citation.chunk_id, quote=citation.quote)
-    return FinalizeArgs(status="resolved", reply=prompts.REFUND_OUTCOME_REPLY, citations=[cited])
-
-
-def _policy_citation(run: RequestRun) -> Citation | None:
-    """The first trusted refund-policy hit seen, quoting its first sentence."""
-    for hit in run.kb_hits.values():
-        if hit.doc_id != _REFUND_POLICY_DOC:
-            continue
-        if (citation := run.cite(hit.chunk_id, first_sentence(hit.text))) is not None:
-            return citation
-    return None
-
-
-def first_sentence(text: str) -> str:
-    """The first sentence of a chunk's first line of prose (chunks open with a heading), or
-    its heading when it has no prose."""
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    prose = [line for line in lines if not line.startswith("#")] or [
-        line.lstrip("# ") for line in lines
-    ]
-    return prose[0].split(". ")[0][:400] if prose else ""
-
-
-def _refund_proposed(run: RequestRun) -> bool:
-    proposals = [*run.deferred, *(o.action for o in run.outcomes)]
-    return any(p.tool is ToolName.ISSUE_REFUND for p in proposals)
-
-
-def _order_unclear(run: RequestRun) -> bool:
-    """The ticket names no order id, and the customer's orders (from ``list_orders``)
-    don't narrow to one: by a product the ticket names, else by count. A full page
-    may have more orders behind it, so it never narrows to one."""
-    ticket = f"{run.ticket.subject}\n{run.ticket.body}"
-    if run.listed_orders is None or _ORDER_ID.search(ticket) is not None:
-        return False
-    if not run.listed_all:
-        return True  # older orders may match too
-    text = ticket.lower()
-    named = [o for o in run.listed_orders if any(i.name.lower() in text for i in o.items)]
-    return len(named or run.listed_orders) != 1
-
-
-def _refund_decidable(run: RequestRun, status: str) -> bool:
-    """Whether a refund finalize leaves the outcome to code, not the model.
-
-    The executor decides from a queued ``issue_refund`` proposal (with injection suspected,
-    it blocks the proposal and the ticket goes to security). Without one, only a
-    ``needs_info`` that code rewrites is accepted: no signed-in customer, or no clear order.
-    With injection suspected it needs none: ``_decide`` sends the ask to security.
-    """
-    if _refund_proposed(run) or run.ticket.customer_id is None or run.injection:
-        return True
-    return status == "needs_info" and _order_unclear(run)
-
-
-def _refund_reason(outcome: ActionOutcome) -> RefundReason | None:
-    """The winning reason of a policy-blocked refund (reasons are in precedence order)."""
-    elig = outcome.eligibility
-    if outcome.status is ActionStatus.BLOCKED and elig is not None and elig.reasons:
-        return elig.reasons[0]
-    return None
-
-
-def _refused(outcome: ActionOutcome) -> bool:
-    winning = _refund_reason(outcome)
-    return winning is not None and REFUND_OUTCOME[winning] is None
-
-
-def _needs_info(outcome: ActionOutcome) -> bool:
-    """A proposal that failed on its arguments, scope, or a missing record, not on the backend."""
-    error = outcome.result.error if outcome.result else None
-    if error is None or error.retryable or error.category not in _ASK_CUSTOMER:
-        return False
-    return outcome.status is ActionStatus.FAILED or (
-        outcome.status is ActionStatus.BLOCKED and outcome.verdict is None
-    )
-
-
-def _money(cents: JsonValue) -> str:
-    if isinstance(cents, int) and not isinstance(cents, bool):
-        return f"${cents / 100:,.2f}"
-    return "the requested amount"
