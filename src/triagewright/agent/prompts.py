@@ -147,7 +147,6 @@ PROPOSE_REFUND_FIRST = (
     "ticket names no order and the customer doesn't have exactly one, finalize with status "
     "`needs_info`; the system writes the question."
 )
-ACTION_PROPOSED = "Proposed the action. The system checks it against policy after the review."
 REFUND_OUTCOME_REPLY = "Thanks for your patience. Here's where your refund request stands."
 SIGN_IN_FOR_REFUND = (
     "I can help with a refund once I can see your account. Please sign in and send your "

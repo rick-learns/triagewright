@@ -58,6 +58,7 @@ from triagewright.contracts.tools import (
     KBSearchResult,
     ListOrdersInput,
     OrderList,
+    SearchKBInput,
     ToolName,
     ToolResult,
 )
@@ -120,6 +121,14 @@ def _append(
         messages.append(Message(role=role, content=list(blocks)))
 
 
+def _search_key(arguments: JsonObject) -> str | None:
+    """``search_kb`` arguments with defaults filled in, so equivalent searches compare equal."""
+    try:
+        return canonical_json(SearchKBInput.model_validate(arguments).model_dump(mode="json"))
+    except ValidationError:
+        return None
+
+
 @dataclass
 class RequestRun:
     ticket: Ticket  # PII-redacted
@@ -144,7 +153,7 @@ class RequestRun:
     listed_all: bool = False  # whether it was every order (a full page may have more)
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
-    kb_queries: set[str] = field(default_factory=set)  # every search_kb query
+    kb_searches: set[str] = field(default_factory=set)  # every search_kb, see ``searched``
     deferred: list[ProposedAction] = field(default_factory=list)
     irreversible_requested: bool = False  # any irreversible proposal, sent or not
     outcomes: list[ActionOutcome] = field(default_factory=list)
@@ -288,8 +297,8 @@ class RequestRun:
         spec = TOOL_SPECS[name]
 
         async def handler(arguments: JsonObject) -> tuple[str, bool]:
-            if name is ToolName.SEARCH_KB:
-                self.kb_queries.add(str(arguments.get("query", "")))
+            if name is ToolName.SEARCH_KB and (key := _search_key(arguments)) is not None:
+                self.kb_searches.add(key)
             result = await self.call_tool(name, arguments, caller)
             if name is ToolName.LIST_ORDERS and result.data is not None:
                 with contextlib.suppress(ValidationError):
@@ -300,6 +309,10 @@ class RequestRun:
             name=name.value, description=spec.description, input_schema=spec.input_schema()
         )
         return LocalTool(definition=definition, handler=handler)
+
+    def searched(self, arguments: JsonObject) -> bool:
+        """Whether this request already ran an equivalent ``search_kb`` call."""
+        return _search_key(arguments) in self.kb_searches
 
     def cite(self, chunk_id: str, quote: str) -> Citation | None:
         """A citation only for a trusted hit seen in this request whose text holds the quote."""

@@ -99,7 +99,7 @@ REFUND_READ_TOOLS: tuple[ToolName, ...] = (ToolName.SEARCH_KB,)
 _ORDER_ID = re.compile(r"\bord_[a-z0-9]{4,32}\b")
 
 _REFUND_POLICY_DOC = "kb_refund_policy"
-_POLICY_QUERY = "refund policy"
+_POLICY_SEARCH: JsonObject = {"query": "refund policy"}
 # Errors the customer can fix by giving other details; anything else is a tool failure.
 _ASK_CUSTOMER = frozenset(
     {ErrorCategory.NOT_FOUND, ErrorCategory.VALIDATION, ErrorCategory.PERMISSION}
@@ -304,9 +304,10 @@ class Coordinator:
     def _draft(
         self, run: RequestRun, final: FinalizeArgs, citations: list[Citation]
     ) -> AnswerDraft:
-        """The finalize draft as the reviewer sees it."""
+        """The finalize draft as the reviewer sees it. Beside a refund proposal the reply is
+        code's (``_own_refund_reply``), so an earlier answer's grounding doesn't describe it."""
         assert run.triage is not None
-        sub = run.answer
+        sub = None if _refund_proposed(run) else run.answer
         return AnswerDraft(
             answer=final.reply,
             citations=citations,
@@ -636,10 +637,10 @@ async def _settled(run: RequestRun) -> FinalizeArgs | None:
     once the turn's own tools are done if no model did."""
     if not _refund_proposed(run):
         return None
-    if _policy_citation(run) is None and _POLICY_QUERY not in run.kb_queries:
+    if _policy_citation(run) is None and not run.searched(_POLICY_SEARCH):
         # Once a request: a failed or empty lookup isn't repeated, nor is a model's own.
         search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
-        await search.handler({"query": _POLICY_QUERY})
+        await search.handler(_POLICY_SEARCH)
     citation = _policy_citation(run)
     if citation is None:
         return None
