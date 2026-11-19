@@ -156,12 +156,16 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   Submitting an existing approval id returns the stored one unchanged.
 - **Human approval.** The API authenticates the reviewer with a bearer
   `TW_APPROVER_TOKEN` (unset disables decisions), then calls
-  `ActionExecutor.decide`. The CLI is a trusted local operator tool: it runs
-  with the same environment, approval store, and `TW_APPROVAL_KEY` as the
-  service, so its token check only enforces that decisions are enabled. The
-  API is the authenticated boundary. On approval it loads the stored arguments (never
-  fresh model output), signs an HMAC token over the approval id, order, amount, and idempotency
-  key (`TW_APPROVAL_KEY`), and calls the gateway as `caller="human"`. The
+  `ActionExecutor.decide`. The CLI is a trusted local operator tool on the
+  same approval store: it reads the configured token from settings (env or
+  `.env`) but the presented token only from the process environment, so
+  `approvals decide` needs `TW_APPROVER_TOKEN` exported. The API is the
+  authenticated boundary. On approval the executor loads the stored arguments
+  (never fresh model output), signs an HMAC token over the approval id, order,
+  amount, and idempotency key, and calls the gateway as `caller="human"`. The
+  key is `TW_APPROVAL_KEY`; it is required for an out-of-process MCP server.
+  Without it, an in-process server signs with an ephemeral per-process key, so
+  the API and CLI share a key only when `TW_APPROVAL_KEY` is set. The
   approval is marked `executed` only on confirmed success. After a failure
   it stays `approved`, and a retry reuses the same idempotency key.
 - **Defense in depth.** The MCP server refuses `issue_refund` unless the
@@ -268,6 +272,8 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 - Contracts, `pyproject.toml`/`uv.lock`, `compose.yaml`, `Dockerfile`, CI,
   `data/seed`, `data/kb`, `triagewright.testing`, and `docs/books/` belong to
   the orchestrator.
+- The orchestrator can hand a path to one lane for that lane's duration;
+  `docs/books/STATUS.md` records each handoff, so every path has one writer.
 - A lane that needs a contract or dependency change asks the orchestrator,
   who lands it in a dedicated PR. Dependent lanes then rebase.
 
