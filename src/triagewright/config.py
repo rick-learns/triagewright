@@ -201,7 +201,9 @@ class Settings(BaseSettings):
             return self.llm_provider.value
         secret = key.get_secret_value() if key is not None else ""
         digest = hashlib.sha256(secret.encode()).hexdigest()[:16]
-        return f"{self.llm_provider.value}:{url}:{digest}"
+        # Normalized as the client builds its URL. Keys from one Gemini project share its
+        # quota but get separate windows here; set TW_LLM_REQUESTS_PER_MINUTE to split it.
+        return f"{self.llm_provider.value}:{url.rstrip('/')}:{digest}"
 
     def models(self) -> dict[str, str]:
         """Model id per purpose: the ``TW_MODEL_*`` override, else the provider default."""

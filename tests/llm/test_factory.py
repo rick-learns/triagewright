@@ -123,3 +123,13 @@ def test_clients_on_one_model_share_a_pacer() -> None:
         if clients.models[role] == "gemini-3.5-flash-lite"
     }
     assert len(pacers) == 1
+
+
+def test_a_trailing_slash_is_the_same_quota() -> None:
+    def quota(url: str) -> str:
+        s = Settings(
+            _env_file=None, llm_provider="gemini", gemini_api_key="a" * 40, gemini_base_url=url
+        )
+        return s.quota_id()
+
+    assert quota("https://g.test/v1beta/openai/") == quota("https://g.test/v1beta/openai")

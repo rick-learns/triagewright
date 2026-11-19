@@ -148,16 +148,18 @@ async def run_case(
     response: FinalResponse | None = None
     error: str | None = None
     started = time.perf_counter()
+    paced: list[float] = []
     try:
         # Rate-limit waits don't count against the case timeout (see triagewright.pacing).
         async with asyncio.timeout(timeout_s) as deadline:
-            with CallBudget(deadline).installed():
+            with CallBudget(deadline, on_wait=paced.append).installed():
                 response = await runtime.resolver.resolve(case.ticket)
     except TimeoutError:
         error = f"timed out after {timeout_s:g}s"
     except Exception as exc:
         error = f"resolve failed: {exc!r}"
-    wall_ms = (time.perf_counter() - started) * 1000
+    # With no request metrics (a timeout), latency is wall time, less pacing as elsewhere.
+    wall_ms = max(time.perf_counter() - started - sum(paced), 0.0) * 1000
     if response is not None and response.mode != mode:
         error = f"mode mismatch: response is {response.mode}, run is {mode}"
     elif response is not None and mode != "stub":
