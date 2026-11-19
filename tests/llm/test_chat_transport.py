@@ -261,5 +261,6 @@ def test_retry_after_parsing() -> None:
     assert retry_after_seconds("-1") == 0.0
     assert retry_after_seconds("Thu, 19 Nov 2026 12:00:07 GMT", now=now) == 7.0
     assert retry_after_seconds("Thu, 19 Nov 2026 11:00:00 GMT", now=now) == 0.0
+    assert retry_after_seconds("Thu Nov 19 12:00:07 2026", now=now) == 7.0
     assert retry_after_seconds("soon") is None
     assert retry_after_seconds(None) is None
