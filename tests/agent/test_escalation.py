@@ -201,6 +201,31 @@ async def test_a_failed_tool_stays_failed_for_the_request(
     assert (args["queue"], args["reason_codes"]) == ("tier1", ["tool_failure"])
 
 
+async def test_equivalent_arguments_share_the_failure() -> None:
+    error = ToolError(category=ErrorCategory.TIMEOUT, message="slow", retryable=True)
+    s = stack(
+        [
+            triage(),
+            call("list_orders", {"customer_id": "cus_ava01"}),
+            call("list_orders", {"customer_id": "cus_ava01", "limit": 10}),
+            finalize(),
+            review(),
+        ],
+        faults=[ToolFault(tool=ToolName.LIST_ORDERS, error=error, times=10)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.LIST_ORDERS)) == 3
+
+
+async def test_arguments_that_do_not_validate_still_reach_the_gateway() -> None:
+    s = stack([triage(), call("get_order", {"order": "ord_a1002"}), finalize(), review()])
+    response = await s.resolve(sample_ticket())
+    (record,) = s.calls(ToolName.GET_ORDER)
+    assert record.result.error is not None and record.result.error.category == "validation"
+    assert response.status is ResolutionStatus.RESOLVED
+
+
 async def test_a_bad_call_is_not_a_tool_failure() -> None:
     error = ToolError(category=ErrorCategory.VALIDATION, message="bad id", retryable=False)
     lookup = call("get_order", {"order_id": "ord_a1002"})

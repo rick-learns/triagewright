@@ -43,6 +43,16 @@ _SERVICE_ERRORS = frozenset(
 )
 
 
+def _call_key(name: ToolName, arguments: JsonObject) -> str:
+    """A call's arguments with defaults filled in, so equivalent calls share a key. Arguments
+    that don't validate are keyed as given."""
+    try:
+        validated = TOOL_SPECS[name].input_model.model_validate(arguments)
+    except ValidationError:
+        return canonical_json(arguments)
+    return canonical_json(validated.model_dump(mode="json"))
+
+
 def _search_key(arguments: JsonObject) -> str | None:
     """``search_kb`` arguments with defaults filled in, so equivalent searches compare equal.
     The gateway reads no categories, or an empty list, as unfiltered, and their order as a set."""
@@ -75,10 +85,10 @@ class ToolCalls(RunState):
         Every attempt is a raw gateway call, so ``ExpectedOutcome.attempts`` counts them all.
         A final service error (a retryable one that outlasts the retries, or one marked not
         retryable) is a tool failure, and that call stays failed for the rest of the request:
-        the same tool with the same arguments returns the failure without a raw call, so a
-        model asking again can't multiply the attempts.
+        the same tool with equivalent arguments (``_call_key``) returns the failure without a
+        raw call, so a model asking again can't multiply the attempts.
         """
-        key = (name, canonical_json(arguments))
+        key = (name, _call_key(name, arguments))
         if (failed := self.broken.get(key)) is not None:
             return failed
         ctx = self.context(caller)
