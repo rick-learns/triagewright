@@ -30,7 +30,9 @@ from triagewright.testing import (
     NullTelemetry,
     PassthroughGuardrails,
     ScriptedModelClient,
+    chunk_documents,
     model_response,
+    sample_ticket,
     seed_as_of,
     seed_kb,
     seed_world,
@@ -304,3 +306,16 @@ def tool_results(request: ModelRequest) -> list[ToolResultBlock]:
 
 def request_text(request: ModelRequest) -> str:
     return request.model_dump_json()
+
+
+# ---- shared coordinator test data -----------------------------------------------
+
+CHUNKS = {c.chunk_id: c for c in chunk_documents(seed_kb())}
+SHIPPING = CHUNKS["kb_shipping#0"]
+TIPS = CHUNKS["kb_community_tips#0"]
+POLICY_CITE = [(REFUND_POLICY, "Delivered orders can be refunded within 30 days")]
+CITED = finalize("Thanks, I've looked into your refund request.", citations=POLICY_CITE)
+
+
+def refund_ticket(customer_id: str, order_id: str) -> Any:
+    return sample_ticket(f"Please refund order {order_id}.", customer_id=customer_id)

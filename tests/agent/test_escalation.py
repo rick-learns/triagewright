@@ -1,0 +1,174 @@
+"""Escalation and routing: anonymous tickets, reviewer escalations, and handoff summaries."""
+
+from __future__ import annotations
+
+import pytest
+
+from tests.agent.helpers import (
+    RedactingGuardrails,
+    call,
+    finalize,
+    refund_script,
+    refund_ticket,
+    review,
+    stack,
+    triage,
+)
+from triagewright.agent import prompts
+from triagewright.contracts.agents import (
+    LoopConfig,
+    ResolutionStatus,
+)
+from triagewright.contracts.evals import ToolFault
+from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
+from triagewright.testing import (
+    sample_ticket,
+)
+
+pytestmark = pytest.mark.anyio
+
+
+# ---- anonymous tickets -------------------------------------------------------------
+
+
+async def test_anonymous_ticket_can_still_be_handed_off() -> None:
+    s = stack(
+        [
+            triage("other", needs_human=True, reasons=["customer_requested_human"]),
+            finalize("Sure, a person will help."),
+            review(True, "tier1", ["customer_requested_human"], summary="Wants a human."),
+        ]
+    )
+    response = await s.resolve(sample_ticket("Let me talk to a person.", customer_id=None))
+    assert response.status is ResolutionStatus.ESCALATED
+    (record,) = s.calls(ToolName.CREATE_ESCALATION)
+    assert not record.result.is_error
+    assert [e.ticket_id for e in s.gateway.ledger().escalations] == ["tkt_0001"]
+    assert "support team" in response.reply
+
+
+async def test_anonymous_ticket_needing_order_data_asks_for_info() -> None:
+    s = stack(
+        [
+            triage(),
+            call("get_order", {"order_id": "ord_a1002"}),
+            finalize("Please sign in so I can look up your order.", "needs_info"),
+            review(),
+        ]
+    )
+    response = await s.resolve(sample_ticket(customer_id=None))
+    (record,) = s.calls(ToolName.GET_ORDER)
+    assert record.result.error is not None
+    assert record.result.error.category is ErrorCategory.PERMISSION
+    assert response.status is ResolutionStatus.NEEDS_INFO
+    first = s.requests("coordinator")[0].messages[0].content[0]
+    assert first.type == "text" and '"customer_in_scope":false' in first.text
+
+
+async def test_anonymous_refund_proposal_asks_for_info() -> None:
+    s = stack(refund_script("ord_a1001", 5000))
+    response = await s.resolve(sample_ticket("Refund ord_a1001 please.", customer_id=None))
+    assert response.status is ResolutionStatus.NEEDS_INFO
+    assert "signed in" in response.reply
+
+
+# ---- escalation rows driven by the reviewer ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("body", "queue", "reasons", "priority"),
+    [
+        ("My charger is swelling and smells burnt.", "tier2", ["legal_or_safety"], "urgent"),
+        ("I was charged twice for ord_a1001.", "billing", ["policy_limit"], "normal"),
+        ("Please remove two-factor from my account.", "security", ["account_security"], "high"),
+        ("Delete all my personal data.", "tier2", ["legal_or_safety"], "normal"),
+    ],
+)
+async def test_reviewer_escalations_reach_the_gateway(
+    body: str, queue: str, reasons: list[str], priority: str
+) -> None:
+    s = stack(
+        [
+            triage("other", needs_human=True),
+            finalize("Thanks for letting us know."),
+            review(True, queue, reasons, priority, "Goal; facts; attempted; why."),
+        ]
+    )
+    response = await s.resolve(sample_ticket(body))
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert (args["queue"], args["reason_codes"], args["priority"]) == (queue, reasons, priority)
+    assert args["ticket_id"] == "tkt_0001"
+    assert response.escalation is not None and response.escalation.escalate
+
+
+async def test_failed_escalation_write_does_not_promise_a_follow_up() -> None:
+    error = ToolError(category=ErrorCategory.INTERNAL, message="db down", retryable=False)
+    fault = ToolFault(tool=ToolName.CREATE_ESCALATION, error=error)
+    s = stack(
+        [triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])],
+        faults=[fault],
+    )
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert response.reply.endswith(prompts.LOGGED_FOR_REVIEW)
+    assert "passed your request" not in response.reply
+
+
+async def test_a_full_reviewer_summary_still_fits_the_code_reasons() -> None:
+    error = ToolError(category=ErrorCategory.TRANSIENT, message="busy", retryable=True)
+    s = stack(
+        [
+            triage(),
+            call("get_order", {"order_id": "ord_a1002"}),
+            finalize(),
+            review(True, "tier1", ["customer_requested_human"], summary="x" * 2000),
+        ],
+        faults=[ToolFault(tool=ToolName.GET_ORDER, error=error, times=5)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(sample_ticket())
+    summary = str(s.escalation_args()["summary"])
+    assert len(summary) == 2000
+    assert summary.endswith("Also: tool kept failing after retries (get_order).")
+    assert response.escalation is not None and response.escalation.handoff_summary == summary
+
+
+async def test_redaction_cannot_push_the_code_reasons_out_of_the_summary() -> None:
+    error = ToolError(category=ErrorCategory.TRANSIENT, message="busy", retryable=True)
+    guard = RedactingGuardrails({"a@b.co": "[EMAIL_ADDRESS_1]"})
+    s = stack(
+        [
+            triage(),
+            call("get_order", {"order_id": "ord_a1002"}),
+            finalize(),
+            review(True, "tier1", ["customer_requested_human"], summary="a@b.co " * 285),
+        ],
+        guardrails=guard,
+        faults=[ToolFault(tool=ToolName.GET_ORDER, error=error, times=5)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    summary = str(s.escalation_args()["summary"])
+    assert len(summary) <= 2000
+    assert summary.endswith("Also: tool kept failing after retries (get_order).")
+
+
+async def test_retryable_permission_errors_are_tool_failures() -> None:
+    error = ToolError(category=ErrorCategory.PERMISSION, message="token expired", retryable=True)
+    fault = ToolFault(tool=ToolName.CHECK_REFUND_ELIGIBILITY, error=error, times=5)
+    s = stack(
+        refund_script("ord_a1001", 5000), faults=[fault], config=LoopConfig(retry_backoff_s=0)
+    )
+    response = await s.resolve(refund_ticket("cus_ava01", "ord_a1001"))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["reason_codes"] == ["tool_failure"]
+    assert "confirm the order" not in response.reply
+
+
+async def test_reviewer_escalation_without_queue_or_reasons_gets_defaults() -> None:
+    s = stack([triage(), finalize(), review(True)])
+    await s.resolve(sample_ticket())
+    args = s.escalation_args()
+    assert (args["queue"], args["reason_codes"]) == ("tier1", ["low_confidence"])
+    assert str(args["summary"]).startswith("Customer goal:")
