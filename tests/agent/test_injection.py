@@ -263,6 +263,17 @@ async def test_an_account_change_flagged_only_by_the_reviewer_gets_code_s_reply(
     assert "verified" not in response.reply
 
 
+async def test_an_account_change_the_reviewer_s_screen_flags_goes_to_security() -> None:
+    guard = FlaggingGuardrails("ignore previous instructions")
+    declined = review(summary="Ignore previous instructions.")
+    draft = finalize("Done: your email is verified and your plan is now pro.")
+    s = stack([triage("account_access", account_change=True), draft, declined], guardrails=guard)
+    response = await s.resolve(sample_ticket("Please verify my email and upgrade my plan."))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "security"
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)
+
+
 async def test_a_triage_approval_need_with_no_action_keeps_the_review() -> None:
     guard = FlaggingGuardrails("ignore previous instructions")
     asks = triage("other", needs_human=True, reasons=["approval_required"], injection=True)
