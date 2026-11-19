@@ -145,7 +145,7 @@ The report states the provider, models, mode, and git sha. It gives:
   category
 - cost per ticket (judge excluded)
 - p50/p95 latency for the run's mode: live wall time less rate-limit waits, or
-  replay *estimated* latency, over the cases that returned a response
+  replay *estimated* latency, over the non-errored cases
 - latency notes (live and replay), over the same non-errored cases as latency:
   how many errored cases are left out, the rate-limit waits left out of live
   latency (how many cases recorded one, how many waited, p95 wait; `n/a` for
@@ -158,8 +158,9 @@ The report states the provider, models, mode, and git sha. It gives:
 - each failing case's failed checks, with expected (from the case) and actual
   (from the grader)
 
-Judge tokens are listed separately. Cost and latency cover cases that
-produced a response. Errored and timed-out cases count against the pass rate.
+Judge tokens are listed separately. Cost and latency cover the
+non-errored cases (a case errors if it raises, times out, or returns a response
+without valid metrics for the run's mode). Errored and timed-out cases count against the pass rate.
 
 `evals/baseline.json` holds one entry per mode. Live and replay are never
 compared. A run regresses (exit 1) if:
