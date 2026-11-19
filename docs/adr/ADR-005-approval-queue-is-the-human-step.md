@@ -20,7 +20,7 @@ already decided:
 
 ## Decision
 
-`triagewright.agent.coordinator._left_to_code` decides when a reviewer
+`triagewright.agent.routing._left_to_code` decides when a reviewer
 escalation adds nothing. `Coordinator._route` ignores the review when every
 reason it gives is one code already handled, and triage found no human need
 that code left unhandled (including `needs_human` with no reason). Handled

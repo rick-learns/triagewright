@@ -20,7 +20,7 @@ live failures couldn't be told apart in traces.
 - An error the caller sets explicitly (`SpanHandle.set_error`) is not
   overwritten by the unwinding exception.
 - A failed model call sets its span error in `RequestRun.call_model`
-  (`triagewright.agent.runtime`) to the exception type plus the HTTP status
+  (`triagewright.agent.loop`) to the exception type plus the HTTP status
   when the error carries one, for example `ModelUnavailableError (HTTP 429)`.
   Timeouts and refused pacing set `timeout` and `pacing`.
 - Tool spans set the error to the tool's `ErrorCategory` value.
@@ -28,7 +28,7 @@ live failures couldn't be told apart in traces.
   attribute (`triagewright.observability.exporters`).
 - The model adapters keep the same rule for their own messages: provider,
   model, HTTP status, and the provider's status code, never the provider's
-  free text (`triagewright.llm.openai_compat`). The API logs only an unhandled
+  free text (`triagewright.llm.chat_transport`). The API logs only an unhandled
   exception's type.
 
 ## Consequences

@@ -26,7 +26,7 @@ demand".
   no `-latest` aliases, no Pro, and previews only from an explicit list
   (`_GEMINI_FREE_PREVIEWS`); on OpenRouter, ids ending in `:free`. `Settings`
   rejects any other id, with no opt-out, and both live adapters
-  (`triagewright.llm.openai_compat`) refuse one too. This is model-id
+  (`OpenAICompatClient` in `triagewright.llm.chat_transport`) refuse one too. This is model-id
   validation only: code can't tell whether a Gemini key's project has billing
   linked, so the key must belong to a project on the free plan (risk R2 in
   `docs/books/RISKS.md`).
