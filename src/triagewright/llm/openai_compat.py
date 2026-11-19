@@ -21,8 +21,9 @@ Translation (``ModelRequest`` to the wire and the wire back to ``ModelResponse``
 - Gemini 3 rejects a tool-call turn sent back without its ``thought_signature``
   (``tool_calls[].extra_content.google``). The contract has no field for it, so
   :class:`GeminiClient` keeps the signatures of its own responses in a bounded
-  in-memory map keyed by tool-use id and resends them; for history it didn't
-  produce (a resumed recording, a restart) it sends Google's documented
+  in-memory map keyed by tool-use id, name, and arguments, and resends them.
+  For history it didn't produce (a resumed recording, a restart), or a key two
+  responses signed differently, it sends Google's documented
   ``skip_thought_signature_validator`` on the first call of the turn.
   Signatures are not part of ``ModelRequest``, so fingerprints don't change.
 
@@ -91,11 +92,17 @@ _ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 type Sleep = Callable[[float], Awaitable[None]]
-type SignatureLookup = Callable[[str], str | None]
+type SignatureLookup = Callable[[ToolUseBlock], str | None]
+type SignatureKey = tuple[str, str, str]
 
 
 def tool_use_id(request: ModelRequest, index: int) -> str:
     return stable_id("toolu", request.fingerprint(), index)
+
+
+def signature_key(block: ToolUseBlock) -> SignatureKey:
+    # Identical requests reuse tool-use ids, so the call's content is part of the key.
+    return block.id, block.name, canonical_json(block.input)
 
 
 def to_chat_request(
@@ -138,20 +145,18 @@ def to_chat_request(
 def _wire_messages(message: Message, signatures: SignatureLookup | None) -> list[dict[str, Any]]:
     texts = [b.text for b in message.content if isinstance(b, TextBlock)]
     if message.role == "assistant":
-        calls: list[dict[str, Any]] = [
-            {
+        calls: list[dict[str, Any]] = []
+        for b in (b for b in message.content if isinstance(b, ToolUseBlock)):
+            call: dict[str, Any] = {
                 "id": b.id,
                 "type": "function",
                 "function": {"name": b.name, "arguments": canonical_json(b.input)},
             }
-            for b in message.content
-            if isinstance(b, ToolUseBlock)
-        ]
-        if signatures is not None:
-            for i, call in enumerate(calls):
-                sig = signatures(call["id"]) or (SKIP_THOUGHT_SIGNATURE if i == 0 else None)
+            if signatures is not None:
+                sig = signatures(b) or (None if calls else SKIP_THOUGHT_SIGNATURE)
                 if sig:
                     call["extra_content"] = {"google": {"thought_signature": sig}}
+            calls.append(call)
         out: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(texts) or None}
         if calls:
             out["tool_calls"] = calls
@@ -192,7 +197,10 @@ def from_chat_response(
             content.append(TextBlock(text=text))
         for i, call in enumerate(message.get("tool_calls") or []):
             fn = call["function"]
-            raw = fn.get("arguments") or "{}"
+            raw = fn.get("arguments")
+            if finish == "length" and not raw:
+                continue  # cut off before any arguments; the caller sees max_tokens
+            raw = raw or "{}"
             try:
                 args = json.loads(raw) if isinstance(raw, str) else raw
             except ValueError:
@@ -344,13 +352,13 @@ class OpenAICompatClient:
             response = from_chat_response(
                 data, request=request, provider=self.provider, latency_ms=latency_ms
             )
-            self._remember(data, request)
+            self._remember(data, request, response)
             return response
 
     def _wire_body(self, request: ModelRequest) -> dict[str, Any]:
         return to_chat_request(request)
 
-    def _remember(self, data: Any, request: ModelRequest) -> None:
+    def _remember(self, data: Any, request: ModelRequest, response: ModelResponse) -> None:
         """Hook for provider state carried between calls (Gemini thought signatures)."""
 
     def _delay(self, attempt: int, retry_after_s: float | None) -> float | None:
@@ -419,15 +427,20 @@ class GeminiClient(OpenAICompatClient):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._signatures: OrderedDict[str, str] = OrderedDict()
+        # ``None`` marks a key that two responses signed differently: send the sentinel.
+        self._signatures: OrderedDict[SignatureKey, str | None] = OrderedDict()
 
     def _wire_body(self, request: ModelRequest) -> dict[str, Any]:
-        return to_chat_request(request, signatures=self._signatures.get)
+        return to_chat_request(request, signatures=lambda b: self._signatures.get(signature_key(b)))
 
-    def _remember(self, data: Any, request: ModelRequest) -> None:
-        for tool_id, sig in thought_signatures(data, request).items():
-            self._signatures[tool_id] = sig
-            self._signatures.move_to_end(tool_id)
+    def _remember(self, data: Any, request: ModelRequest, response: ModelResponse) -> None:
+        found = thought_signatures(data, request)
+        for block in response.content:
+            if not isinstance(block, ToolUseBlock) or block.id not in found:
+                continue
+            key, sig = signature_key(block), found[block.id]
+            self._signatures[key] = sig if self._signatures.get(key, sig) == sig else None
+            self._signatures.move_to_end(key)
         while len(self._signatures) > self.max_signatures:
             self._signatures.popitem(last=False)
 

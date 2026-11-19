@@ -11,6 +11,7 @@ import pytest
 from triagewright.contracts.llm import (
     Message,
     ModelRequest,
+    ModelResponse,
     Provider,
     StopReason,
     TextBlock,
@@ -263,6 +264,8 @@ def test_length_drops_cut_off_tool_calls() -> None:
     calls = [
         {"id": "a", "function": {"name": "get_order", "arguments": '{"order_id":"ord_a1b2"}'}},
         {"id": "b", "function": {"name": "get_order", "arguments": '{"order_id":"ord_'}},
+        {"id": "c", "function": {"name": "get_order", "arguments": ""}},
+        {"id": "d", "function": {"name": "get_order"}},
     ]
     body = chat({"content": "", "tool_calls": calls}, finish="length")
     resp = from_chat_response(body, request=req, provider=Provider.GEMINI, latency_ms=0)
@@ -551,16 +554,60 @@ async def test_gemini_resends_thought_signatures_and_falls_back_to_the_sentinel(
     assert "extra_content" not in json.dumps(to_chat_request(follow))
 
 
-def test_gemini_signature_map_is_bounded() -> None:
-    client = gemini(lambda req: httpx.Response(200))
+def signed_call(args: str, sig: str) -> dict[str, Any]:
+    return {
+        "id": "x",
+        "function": {"name": "get_order", "arguments": args},
+        "extra_content": {"google": {"thought_signature": sig}},
+    }
+
+
+async def test_gemini_signatures_follow_call_content_not_just_ids() -> None:
+    # Identical requests get identical tool-use ids; each reply keeps its own signature,
+    # and a call two replies signed differently falls back to the sentinel.
+    replies = iter(
+        [
+            [signed_call('{"order_id":"ord_a1b2"}', "SIG_A")],
+            [signed_call('{"order_id":"ord_c3d4"}', "SIG_B")],
+            [signed_call('{"order_id":"ord_a1b2"}', "SIG_C")],
+        ]
+    )
+    client = gemini(
+        lambda req: httpx.Response(200, json=chat({"tool_calls": next(replies)}, "tool_calls"))
+    )
+    req = request(tools=[ORDER_TOOL])
+    first, second = await client.complete(req), await client.complete(req)
+    assert first.content[0].id == second.content[0].id  # type: ignore[union-attr]
+
+    def sent_signature(resp: ModelResponse) -> object:
+        follow = request(messages=[*req.messages, Message(role="assistant", content=resp.content)])
+        call = client._wire_body(follow)["messages"][2]["tool_calls"][0]
+        return call["extra_content"]["google"]["thought_signature"]
+
+    assert sent_signature(first) == "SIG_A" and sent_signature(second) == "SIG_B"
+    await client.complete(req)  # ord_a1b2 again, signed SIG_C
+    assert sent_signature(first) == "skip_thought_signature_validator"
+    assert sent_signature(second) == "SIG_B"
+
+
+async def test_gemini_signature_map_is_bounded() -> None:
+    n = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal n
+        n += 1
+        return httpx.Response(200, json=chat({"tool_calls": [signed_call("{}", f"S{n}")]}))
+
+    client = gemini(handler)
     client.max_signatures = 2
-    for n in range(3):
-        call = {
-            "id": str(n),
-            "function": {"name": "f", "arguments": "{}"},
-            "extra_content": {"google": {"thought_signature": f"S{n}"}},
-        }
-        client._remember(chat({"tool_calls": [call]}), request(system=f"s{n}"))
-    assert list(client._signatures.values()) == ["S1", "S2"]
-    client._remember({"choices": []}, request())  # malformed bodies carry no signatures
-    assert len(client._signatures) == 2
+    for i in range(3):
+        await client.complete(request(system=f"s{i}"))
+    assert list(client._signatures.values()) == ["S2", "S3"]
+
+
+def test_odd_signature_shapes_are_ignored() -> None:
+    from triagewright.llm.openai_compat import thought_signatures
+
+    call = {"function": {"name": "f", "arguments": "{}"}, "extra_content": "not-an-object"}
+    assert thought_signatures(chat({"tool_calls": [call]}), request()) == {}
+    assert thought_signatures({"choices": []}, request()) == {}
