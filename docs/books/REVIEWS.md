@@ -25,3 +25,7 @@
 | #24 | RF3 split the wiring module | sol-loop: gpt-6.2-sol (high) | 1 | approve | – | – | not reported |
 | #25 | J1 synthetic data generator | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
 | #26 | F2 eval report generator + review checklist | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
+| #27 | R1 README rewrite | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
+| #28 | I1 architecture doc, ADR-002..007, exam map | sol-loop: gpt-6.2-sol (high) | 3 | changes (r3: two wording points fixed after the round, not re-reviewed; checked by the orchestrator against the code) | see PR | – | not reported |
+| #29 | P1 fresh-clone compose quick start | sol-loop: gpt-6.2-sol (high) | 3 | changes (r3: probe hard-kill and tool check fixed after the round, not re-reviewed; compose smoke PASS on the combined tree) | see PR | – | not reported |
+| #30 | L1 settle refund tickets in code | sol-loop: gpt-6.2-sol (high) | 5 (extended: refund approval path) | approve | F1 heading-only policy chunk, F2 proposal on a mis-triaged ticket, F3 duplicate search, F4 repeated lookup, F5 uncited reply beside a proposal, F6 model refund text before review, F7 refusal overwritten, F8 sequential proposals dropped, F9 stale grounding, F10 filtered search, F11 empty categories | – | not reported |

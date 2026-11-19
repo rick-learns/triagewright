@@ -7,14 +7,15 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 ## Orchestrator-owned paths
 
 `src/triagewright/contracts/**`, `src/triagewright/testing/**`, `src/triagewright/config.py`,
-`src/triagewright/data.py`, `src/triagewright/wiring.py` (integration), `schemas/**`,
+`src/triagewright/data.py`, `src/triagewright/wiring/**` (integration), `schemas/**`,
 `scripts/export_schemas.py`, `data/seed/**`, `data/kb/**`, `docs/contracts/**`,
 `docs/adr/ADR-001-*`, `docs/books/**`, `pyproject.toml`, `uv.lock`, `Dockerfile`,
 `compose.yaml`, `.github/**`, `.env.example`.
 
-Handed to M2/M3 lanes until their PRs merge (one writer per path): `Dockerfile`,
-`compose.yaml`, `.env.example` to P1; `src/triagewright/testing/**` to RF2;
-`src/triagewright/wiring.py` (and its new `src/triagewright/wiring/**` package) to RF3.
+Handed to M2/M3 lanes until their PRs merge (one writer per path). Returned: `Dockerfile`,
+`compose.yaml`, `.env.example` from P1 (#29); `src/triagewright/testing/**` from RF2 (#23);
+`src/triagewright/wiring/**` from RF3 (#24). Out now: `src/triagewright/llm/**` and
+`tests/llm/**` to RF4; `src/triagewright/agent/**` and `tests/agent/**` to RF1.
 
 ## M0: Wave 0
 
@@ -67,26 +68,35 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | Q3 pending refunds stay with the approver; trace model errors | Q2 | agent core, `src/triagewright/observability/**` | orchestrator | merged (sol-loop 3) | [#20](https://github.com/rick-learns/triagewright/pull/20) |
 | Q4 reviewer reasons code already handled | Q3 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 2) | [#21](https://github.com/rick-learns/triagewright/pull/21) |
 | Q5 remaining live failures (escalation queues, over-cap proposals, tool failures, 503 retries) | Q4 | agent core | orchestrator | todo | – |
-| L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core | orchestrator | running (refund settle in code, sol-loop) | – |
+| L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core | orchestrator | merged (sol-loop 5; live latency not measured yet) | [#30](https://github.com/rick-learns/triagewright/pull/30) |
 | X2 record replay fixtures, full live eval, `evals/report.md` | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | todo | – |
 
 ### Lanes (parallel, disjoint owned paths)
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| I1 architecture doc, ADRs, exam map | X1 | `docs/architecture.md` (new), `docs/adr/ADR-002-*` and later (new; not ADR-001), `docs/exam-map.md` (new) | lane thread (claude-opus-5-5) | running | – |
-| R1 README rewrite | X1 | `README.md`, `docs/assets/**` (new) | lane thread (claude-opus-5-5) | in-review | [#27](https://github.com/rick-learns/triagewright/pull/27) |
+| I1 architecture doc, ADRs, exam map | X1 | `docs/architecture.md` (new), `docs/adr/ADR-002-*` and later (new; not ADR-001), `docs/exam-map.md` (new) | lane thread (claude-opus-5-5) | merged | [#28](https://github.com/rick-learns/triagewright/pull/28) |
+| R1 README rewrite | X1 | `README.md`, `docs/assets/**` (new) | lane thread (claude-opus-5-5) | merged | [#27](https://github.com/rick-learns/triagewright/pull/27) |
 | J1 synthetic data generator | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` (new) | lane thread (claude-opus-5-5) | merged | [#25](https://github.com/rick-learns/triagewright/pull/25) |
 | F2 eval report generator + case review checklist | F1 | `src/triagewright/evals/**` (except `runner.py`), `tests/evals/**` (except `test_runner.py`), `evals/README.md`, `evals/REVIEWING.md` (new) | lane thread (claude-opus-5-5) | merged | [#26](https://github.com/rick-learns/triagewright/pull/26) |
-| P1 fresh-clone `podman compose up` | X1 | `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `scripts/compose_smoke.sh` (new) | lane thread (claude-opus-5-5) | running | – |
+| P1 fresh-clone `podman compose up` | X1 | `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `scripts/compose_smoke.sh` (new) | lane thread (claude-opus-5-5) | merged | [#29](https://github.com/rick-learns/triagewright/pull/29) |
 | RF2 split the test fakes | X1 | `src/triagewright/testing/**`, `tests/contracts/test_fakes.py`, `tests/contracts/test_fakes_exports.py` (new) | lane thread (claude-opus-5-5) | merged | [#23](https://github.com/rick-learns/triagewright/pull/23) |
 | RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | merged | [#24](https://github.com/rick-learns/triagewright/pull/24) |
+
+Second wave (refactors, launched 10:31–10:52 UTC). RF1 moved ahead of Q5 because the live
+fixes wait for the free-tier quota to reset; the agent core is handed to RF1 until it merges.
+
+| id | deps | owned paths | worker | state | PR |
+| --- | --- | --- | --- | --- | --- |
+| RF1 split the agent core | L1 | `src/triagewright/agent/**`, `tests/agent/**` (handed off) | lane thread (claude-opus-5-5) | running | – |
+| RF4 split the model adapter | X1 | `src/triagewright/llm/**`, `tests/llm/**` (handed off) | lane thread (claude-opus-5-5) | running | – |
+| RF5 split the eval report and data generator | F2, J1 | `src/triagewright/evals/report.py` (and a new `evals/report/` package), `tests/evals/test_report*.py`, `src/triagewright/datagen/**`, `tests/datagen/**` | lane thread (claude-opus-5-5) | running | – |
+| RF6 split oversized test modules | RF2, RF3 | `tests/test_wiring.py` (to `tests/wiring/**`), `tests/contracts/test_fakes*.py`, `tests/guardrails/test_executor*.py` | lane thread (claude-opus-5-5) | running | – |
 
 ### Later
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| RF1 split the agent core (`coordinator.py`, `runtime.py`, `tests/agent/test_coordinator.py`) and `llm/openai_compat.py` | Q5, L1 | agent core | lane thread | todo | – |
 | D2 demo script and recording on replay | X2, R1 | `scripts/demo/**` (new), `docs/demo.md` (new) | lane thread | todo | – |
 | C2 council review of the PoC before the M3 checkpoint | X2, I1, R1, P1 | read-only | council | todo | – |
 
