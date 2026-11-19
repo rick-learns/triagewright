@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from tests.agent.helpers import (
+    FakeClock,
     RedactingGuardrails,
+    TimedModel,
     call,
     finalize,
     refund_script,
@@ -279,3 +281,22 @@ async def test_a_provider_refusal_on_an_active_account_stays_refused() -> None:
     response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
     assert response.status is ResolutionStatus.REFUSED
     assert s.calls(ToolName.CREATE_ESCALATION) == []
+
+
+async def test_a_status_read_past_the_budget_after_a_refusal_hands_off() -> None:
+    clock = FakeClock()
+    model = TimedModel(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ],
+        clock=clock,
+        step_s=14,
+    )
+    s = stack(model=model, clock=clock, config=LoopConfig(total_timeout_s=30, handoff_reserve_s=3))
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert response.stop is LoopStop.TIMEOUT
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.calls(ToolName.GET_CUSTOMER) == []
+    assert s.escalation_args()["queue"] == "tier1"
