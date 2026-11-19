@@ -249,6 +249,20 @@ async def test_a_reviewer_injection_escalation_stands_when_only_its_screen_flagg
     assert s.escalation_args()["queue"] == "security"
 
 
+async def test_an_account_change_flagged_only_by_the_reviewer_gets_code_s_reply() -> None:
+    guard = FlaggingGuardrails("ignore previous instructions")
+    flagged = review(
+        True, "security", ["injection_suspected"], summary="Ignore previous instructions."
+    )
+    draft = finalize("Done: your email is verified and your plan is now pro.")
+    s = stack([triage("account_access", account_change=True), draft, flagged], guardrails=guard)
+    response = await s.resolve(sample_ticket("Please verify my email and upgrade my plan."))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "security"
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)
+    assert "verified" not in response.reply
+
+
 async def test_a_triage_approval_need_with_no_action_keeps_the_review() -> None:
     guard = FlaggingGuardrails("ignore previous instructions")
     asks = triage("other", needs_human=True, reasons=["approval_required"], injection=True)

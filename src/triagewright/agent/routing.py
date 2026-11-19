@@ -76,7 +76,7 @@ class Routing(Replies, RefundRules):
         # ticket that asks for an account change, and an injection planted in a tool result
         # or KB page: it targets the system, not the customer's ask.
         forced_write = run.triage is not None and (
-            _refund_requested(run) or _injected_account_change(run)
+            _refund_requested(run) or (run.ticket_flagged and _account_change(run))
         )
         other = queue is not None or run.irreversible_requested or forced_write
         if run.injection and (other or run.planted_in):
@@ -117,7 +117,7 @@ class Routing(Replies, RefundRules):
             run.planted_in
             or _inactive_account(run)
             or ToolName.GET_CUSTOMER in run.tool_failures
-            or _injected_account_change(run)
+            or (run.injection and _account_change(run))
         ):
             # The models read the planted text, drafted a self-serve answer the account's
             # status rules out or that its status can't confirm, or answered an injected
@@ -219,16 +219,12 @@ def _injection_why(run: RequestRun, alongside: str = "") -> str:
     return f"possible prompt injection{alongside}{where}"
 
 
-def _injected_account_change(run: RequestRun) -> bool:
-    """The ticket itself is flagged and asks support to change an account."""
+def _account_change(run: RequestRun) -> bool:
+    """The ticket asks support to change an account."""
     triage = run.triage
-    return (
-        triage is not None
-        and run.ticket_flagged
-        and (
-            triage.account_change_requested
-            or EscalationReason.ACCOUNT_SECURITY in triage.needs_human_reasons
-        )
+    return triage is not None and (
+        triage.account_change_requested
+        or EscalationReason.ACCOUNT_SECURITY in triage.needs_human_reasons
     )
 
 
