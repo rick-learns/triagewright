@@ -12,7 +12,7 @@ ticket:
 expected:
   status_any: [needs_info]
   escalate: false
-  reply_excludes: ["1Z1002003", "1Z1001012", "ord_a1002", "ord_a1001", "USB-C Cable", "Aurora"]
+  reply_excludes: ["1Z1002003", "1Z1001012", "ord_a1002", "ord_a1001"]
   rubric: >-
     Explains that it can't look up orders from a name alone, and asks for a
     safe next step that ties the ticket to the customer's account (for

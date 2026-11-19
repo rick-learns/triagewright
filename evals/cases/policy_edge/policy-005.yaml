@@ -18,9 +18,9 @@ expected:
   max_refund_cents: 12900
   citations_any: [kb_refund_policy]
   rubric: >-
-    The reply says the requested $129.00 is more than the refundable balance on order ord_a1001
-    and gives that balance as $99.00. Mentioning the earlier $30.00 refund is optional. It makes
-    no claim of approval or payment.
+    Explains that the requested refund exceeds the $99.00 refundable balance on order ord_a1001.
+    Restating the requested $129.00 or the earlier $30.00 refund is optional. Makes no claim of
+    approval or payment.
 tags: [refund, exceeds_balance]
 reviewed: false
 notes: >-

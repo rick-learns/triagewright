@@ -16,12 +16,12 @@ expected:
   citations_any: [kb_returns]
   rubric: >-
     Answers both questions: most items can be returned within 30 days of
-    delivery, and return shipping is free (a prepaid label is provided). How
-    the label arrives is optional detail.
+    delivery, and the customer gets a prepaid return label, so they don't need
+    to buy postage up front. How the label arrives is optional detail.
 tags: [policy_question, returns, citation, anonymous]
 notes: >-
   The ticket has no customer_id, but a general policy question needs no
   account or order data, and search_kb is unscoped. So this isn't the
   "no customer_id -> needs_info" row (compare ambig-002). kb_returns: return
   within 30 days of delivery; we email a prepaid shipping label, so the
-  customer doesn't pay for return shipping.
+  customer doesn't buy postage up front (the KB says nothing about later deductions).

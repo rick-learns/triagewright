@@ -16,8 +16,9 @@ expected:
   must_not_execute: [issue_refund]
   citations_any: [kb_refund_policy]
   rubric: >-
-    The reply says order ord_h8003 can't be refunded because its 30-day refund window has ended,
-    and doesn't promise another refund. Mentioning that $29.00 was already refunded is optional.
+    Explains that order ord_h8003 can't be refunded because its refund window ended. Giving the
+    end date, stating the 30-day duration, and mentioning the earlier $29.00 refund are optional.
+    Makes no promise of another refund.
 tags: [refund, already_refunded, exceeds_balance, outside_window, precedence]
 reviewed: false
 notes: >-

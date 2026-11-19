@@ -19,7 +19,8 @@ expected:
   max_refund_cents: 5900
   citations_any: [kb_refund_policy]
   rubric: >-
-    Identifies the Pebble Speaker order and tells the customer a refund of
+    Identifies the order by its number (ord_h8001) or by the Pebble Speakers (any order
+    number given must be ord_h8001), and tells the customer a refund of
     $59.00 (one speaker) is waiting for a team member's review. Doesn't say
     the money has already been sent.
 tags: [refund, missing_order_id, product_match, approval, citation]
