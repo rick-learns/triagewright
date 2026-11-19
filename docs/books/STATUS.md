@@ -19,13 +19,14 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 | W0.1 bootstrap repo, CI, protection | – | (all, pre-fan-out) | orchestrator | merged (protection blocked, R3) | direct push 9255512 |
 | W0.2 contracts, fakes, seed, ADR-001 | W0.1 | orchestrator paths | orchestrator | merged (council: 5 rounds, all approve) | [#1](https://github.com/rick-learns/triagewright/pull/1) |
 | W0.3 gitleaks on PRs | W0.1 | `.github/**` | orchestrator | merged | [#2](https://github.com/rick-learns/triagewright/pull/2) |
+| W0.4 Gemini free provider, Podman | W0.2 | orchestrator paths | orchestrator | in-review | – |
 
 ## M1: lanes (fan out after the M0 checkpoint review)
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
 | A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | – | todo | – |
-| B1 model adapters (openrouter, replay/record) | W0.2 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
+| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
 | B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | – | todo | – |
 | C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | – | todo | – |
 | D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | – | todo | – |

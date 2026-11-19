@@ -11,3 +11,5 @@
 | 2026-11-19 | Live model provider: OpenRouter only, `:free` models only (R2). |
 | 2026-11-19 | Accept procedural enforcement on `main` instead of GitHub Pro (R3). |
 | 2026-11-19 | Install Docker on the build host. Blocked: no working sudo credential (R1). |
+| 2026-11-19 | Add the Gemini API free tier as a live provider ($0, free plan, no billing). It's the default; OpenRouter `:free` is the fallback (R2). |
+| 2026-11-19 | Use rootless Podman instead of Docker for the local stack (R1 resolved). |

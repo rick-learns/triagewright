@@ -8,6 +8,7 @@ Reviewer and worker model usage (sol-loop, council, delegates) is tracked separa
 | date | task | provider | what | spend (USD) | running total |
 | --- | --- | --- | --- | --- | --- |
 | 2026-11-19 | W0 | openrouter | key metadata check (`GET /api/v1/key`, no model call) | 0.00 | 0.00 |
+| 2026-11-19 | W0.4 | gemini (free plan) | 2× `models.list`; 7 one-turn tool-call probes (about 85 tokens each; 3 OK, 3× 503, 1 timeout) | 0.00 | 0.00 |
 
 ## Harness usage (reviewers/workers)
 

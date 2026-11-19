@@ -1,5 +1,5 @@
-# Local stack. `docker compose up` starts the MCP server and the API.
-# `docker compose --profile tracing up` also starts Jaeger (UI on :16686).
+# Local stack. `podman compose up` (or `docker compose up`) starts the MCP server and the API.
+# `podman compose --profile tracing up` also starts Jaeger (UI on :16686).
 services:
   mcp:
     build: .

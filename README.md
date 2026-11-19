@@ -14,7 +14,7 @@ cp .env.example .env          # pick a provider; add its API key to .env (never 
 uv sync
 uv run pytest                 # unit + integration tests, no network
 uv run triagewright-evals smoke   # eval smoke run on recorded model calls
-docker compose up             # API on http://localhost:8080, MCP server on :8765
+podman compose up             # API on http://localhost:8080 (or: docker compose up)
 ```
 
 ## Constraints
@@ -22,7 +22,8 @@ docker compose up             # API on http://localhost:8080, MCP server on :876
 - Local only. No cloud resources. Synthetic data only, no real PII.
 - Secrets come from the environment. Only `.env.example` is committed.
 - CI never calls a model: evals replay recorded fixtures.
-- Model spend for the whole build is capped at $50 (see `docs/books/BUDGET.md`).
+- Free models only: the Gemini API free tier (default) or OpenRouter `:free` models.
+  Settings reject any other model id. Spend so far is $0 (see `docs/books/BUDGET.md`).
 
 ## Layout
 
