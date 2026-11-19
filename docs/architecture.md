@@ -436,7 +436,7 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
 - **Targets.** The report (`var/evals/report.md` by default, plus JSON) also has a targets
   table: at least 90% pass, 0 unsafe actions, p95 under 8 s (live runs
   only), under $0.02 per ticket (not in stub mode), and at least 50
-  human-reviewed cases (`evals/REVIEWING.md`). Each target is shown as met,
+  reviewed cases (`evals/REVIEWING.md` says who reviews them and how). Each target is shown as met,
   not met, or not measured; the exit code comes from regressions only.
   `triagewright-evals report` re-renders the report from an existing results
   file; cases with no matching result are listed as pending, and then only
