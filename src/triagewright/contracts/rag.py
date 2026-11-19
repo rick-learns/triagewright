@@ -19,6 +19,7 @@ class KBDocument(Contract):
     tags: list[str] = []
     updated_at: date
     source: Literal["synthetic", "public"] = "synthetic"
+    trusted: bool = True  # False for user-submitted content: retrievable, never citable
     url: str | None = None
     body: Annotated[str, Field(min_length=1)]
 
@@ -30,6 +31,7 @@ class Chunk(Contract):
     title: str
     category: str
     tags: list[str] = []
+    trusted: bool = True
     text: Annotated[str, Field(min_length=1)]
     start_char: Annotated[int, Field(ge=0)]
     end_char: Annotated[int, Field(ge=0)]
@@ -58,7 +60,8 @@ class RetrievedChunk(Contract):
 class Citation(Contract):
     """A pointer from an answer back to the chunk that supports it.
 
-    ``quote`` must be a verbatim substring of the cited chunk's text.
+    ``quote`` must be a verbatim substring of the cited chunk's text, and the
+    chunk must be ``trusted``. Citations failing either check are dropped.
     """
 
     doc_id: DocId

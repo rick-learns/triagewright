@@ -9,11 +9,12 @@ from triagewright.evals import main as evals_main
 
 
 def test_defaults_are_safe_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "TW_LLM_PROVIDER"):
+    for var in ("OPENROUTER_API_KEY", "TW_LLM_PROVIDER", "TW_APPROVAL_KEY"):
         monkeypatch.delenv(var, raising=False)
     s = Settings(_env_file=None)
     assert s.llm_provider is Provider.REPLAY
-    assert s.anthropic_api_key is None and s.openrouter_api_key is None
+    assert s.openrouter_api_key is None and s.approval_key is None
+    assert s.openrouter_free_only and all(m.endswith(":free") for m in s.models().values())
     assert s.loop_config().max_turns == 8
     assert s.policy_config().refund_hard_limit_cents == 50_000
     assert set(s.models()) == {"coordinator", "triage", "answer", "action", "escalation", "judge"}

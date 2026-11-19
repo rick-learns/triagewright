@@ -162,7 +162,7 @@
         },
         "reason_codes": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/EscalationReason"
           },
           "title": "Reason Codes",
           "type": "array"
@@ -204,6 +204,24 @@
       "title": "EscalationQueue",
       "type": "string"
     },
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "account_inactive",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope",
+        "loop_limit"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
     "EvalCategory": {
       "enum": [
         "happy_path",
@@ -219,6 +237,17 @@
     "ExpectedOutcome": {
       "additionalProperties": false,
       "properties": {
+        "attempts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "default": {},
+          "propertyNames": {
+            "$ref": "#/$defs/ToolName"
+          },
+          "title": "Attempts",
+          "type": "object"
+        },
         "citations_any": {
           "default": [],
           "items": {
@@ -268,6 +297,28 @@
           },
           "title": "Must Not Execute",
           "type": "array"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Priority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "queue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EscalationQueue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "reply_excludes": {
           "default": [],
@@ -467,6 +518,7 @@
         "approval_id": {
           "anyOf": [
             {
+              "pattern": "^apr_[a-z0-9]{4,32}$",
               "type": "string"
             },
             {

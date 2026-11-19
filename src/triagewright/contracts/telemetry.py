@@ -2,11 +2,17 @@
 
 Definitions used everywhere (evals, API, report):
 
-- ``latency_ms``: wall time from request start to ``FinalResponse`` ready.
-- ``ttft_ms``: time from request start to the first token of the *first* model
-  call (streamed). ``None`` when no model call streamed.
-- ``cost_usd``: sum of model-call costs from the pricing table. Free models
-  cost 0. An unknown model is an error, never a guessed price.
+- ``latency_ms`` (live): wall time from request start to ``FinalResponse`` ready.
+- ``latency_ms`` (replay): non-model wall time plus the *recorded* latency of
+  each model call. ``estimated`` is then true. Live and replay numbers are
+  never compared with each other: baselines and gates are per mode, and the
+  p95 < 8 s target is judged on live runs only.
+- ``ttft_ms``: request start to the first streamed token of the first model
+  call (``started_ms`` + that call's ``ttft_ms``). ``None`` if nothing streamed.
+- ``cost_usd``: sum of model-call costs from the pricing table, using
+  ``Usage`` buckets (``input_tokens`` excludes cache tokens). Free models cost
+  0. An unknown model is an error, never a guessed price. Eval-judge calls are
+  not part of any request's cost; the eval report lists them separately.
 """
 
 from __future__ import annotations
@@ -61,6 +67,7 @@ class ModelPrice(Contract):
 
 class ModelCallRecord(Contract):
     purpose: str
+    started_ms: Annotated[float, Field(ge=0)]  # offset from request start
     provider: Provider
     model: str
     input_tokens: Annotated[int, Field(ge=0)]
@@ -83,3 +90,4 @@ class RequestMetrics(Contract):
     cost_usd: Annotated[float, Field(ge=0)] = 0.0
     ttft_ms: Annotated[float, Field(ge=0)] | None = None
     latency_ms: Annotated[float, Field(ge=0)] = 0.0
+    estimated: bool = False  # true in replay: latency and cost come from recordings

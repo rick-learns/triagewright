@@ -1,7 +1,9 @@
 """12-factor settings. Every value comes from the environment (or ``.env``) with a safe default.
 
 Secrets are ``SecretStr`` and never logged. The provider defaults to ``replay``
-so nothing calls a paid API unless you opt in.
+so nothing calls the network unless you opt in. The only live provider is
+OpenRouter, restricted to ``:free`` models unless ``TW_OPENROUTER_FREE_ONLY``
+is turned off (ADR-001, "Model provider").
 """
 
 from __future__ import annotations
@@ -25,35 +27,43 @@ class Settings(BaseSettings):
 
     # ---- model provider ----
     llm_provider: Provider = Provider.REPLAY
-    anthropic_api_key: SecretStr | None = Field(
-        default=None, validation_alias=AliasChoices("ANTHROPIC_API_KEY", "TW_ANTHROPIC_API_KEY")
-    )
-    anthropic_base_url: str | None = None
     openrouter_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("OPENROUTER_API_KEY", "TW_OPENROUTER_API_KEY")
     )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_free_only: bool = True  # adapter refuses model ids without ":free"
     recordings_dir: Path = Path("evals/fixtures/recordings")
     record: bool = False  # live calls also append to recordings_dir
 
-    # Model ids per purpose. Defaults are Anthropic ids; override per provider in .env.
-    model_coordinator: str = "claude-haiku-5-5"
-    model_triage: str = "claude-haiku-5-5"
-    model_answer: str = "claude-haiku-5-5"
-    model_action: str = "claude-haiku-5-5"
-    model_escalation: str = "claude-haiku-5-5"
-    model_judge: str = "claude-sonnet-5-5"
+    # OpenRouter model ids per purpose. Recordings are keyed by model id, so
+    # changing one means re-recording. Both support tool calling.
+    model_coordinator: str = "google/gemma-4-31b-it:free"
+    model_triage: str = "google/gemma-4-31b-it:free"
+    model_answer: str = "google/gemma-4-31b-it:free"
+    model_action: str = "google/gemma-4-31b-it:free"
+    model_escalation: str = "google/gemma-4-31b-it:free"
+    model_judge: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
     # ---- agent loop ----
     max_turns: int = 8
     turn_timeout_s: float = 20.0
     total_timeout_s: float = 30.0
+    handoff_reserve_s: float = 3.0
     max_tokens: int = 1024
+    tool_retries: int = 2
+    retry_backoff_s: float = 0.5
 
     # ---- policy ----
     refund_hard_limit_cents: int = 50_000
     refund_window_days: int = 30
     max_refunds_per_customer_30d: int = 2
+
+    # ---- approvals ----
+    # HMAC key shared by the executor and the MCP server; required unless the
+    # MCP transport is in-process (wiring then makes an ephemeral key).
+    approval_key: SecretStr | None = None
+    # Bearer token the API/CLI require before accepting an approval decision.
+    approver_token: SecretStr | None = None
 
     # ---- data and storage ----
     seed_dir: Path = Path("data/seed")
@@ -66,7 +76,7 @@ class Settings(BaseSettings):
     mcp_url: str = "http://localhost:8765/mcp"
 
     # ---- observability ----
-    trace_exporter: Literal["none", "console", "jsonl", "otlp"] = "jsonl"
+    trace_exporter: Literal["none", "jsonl", "otlp"] = "jsonl"
     trace_dir: Path = Path("var/traces")
     otlp_endpoint: str = "http://localhost:4318"
     pricing_file: Path = Path("config/pricing.toml")
@@ -80,7 +90,10 @@ class Settings(BaseSettings):
             max_turns=self.max_turns,
             turn_timeout_s=self.turn_timeout_s,
             total_timeout_s=self.total_timeout_s,
+            handoff_reserve_s=self.handoff_reserve_s,
             max_tokens=self.max_tokens,
+            tool_retries=self.tool_retries,
+            retry_backoff_s=self.retry_backoff_s,
         )
 
     def policy_config(self) -> PolicyConfig:

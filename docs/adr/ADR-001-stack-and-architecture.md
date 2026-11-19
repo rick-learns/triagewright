@@ -1,13 +1,13 @@
 # ADR-001: Stack and architecture
 
-- Status: Proposed (pending council review)
+- Status: Proposed (council round 2)
 - Date: 2026-11-19
 
 ## Context
 
 triagewright is a local-first customer-support agent: triage, tool use over MCP,
 grounded answers with citations, and escalation to a human. It must run on one
-machine with `docker compose up`, cost under $50 in model spend to build, and
+machine with `docker compose up`, stay under $50 in model spend, and
 be testable in CI with no API keys. Ten lanes are built in parallel, so the
 contracts between them must be fixed before fan-out.
 
@@ -20,14 +20,32 @@ reject unknown fields, and use integer cents. JSON Schemas in `schemas/` are
 generated from them (`scripts/export_schemas.py`), and a test fails if they're
 stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 
-### 2. Provider-neutral model layer shaped like the Anthropic Messages API
+### 2. Model layer shaped like the Anthropic Messages API, served by OpenRouter
 
-`ModelRequest`/`ModelResponse` mirror Messages: content blocks (`text`,
-`tool_use`, `tool_result`), `stop_reason`, and usage including cache tokens.
-Adapters: `anthropic` (official SDK), `openrouter`, and `replay`. The replay
-adapter serves `Recording`s keyed by `ModelRequest.fingerprint()`. The default
-provider is `replay`, so nothing calls a paid API unless `.env` opts in. CI
-always replays. A missing recording is a hard error, never a live fallback.
+- `ModelRequest`/`ModelResponse` mirror Messages: content blocks (`text`,
+  `tool_use`, `tool_result`), `stop_reason`, and usage including cache tokens.
+  `Usage.input_tokens` excludes cache tokens; adapters normalize to that.
+- **The owner chose OpenRouter as the only live provider** (2026-11-19).
+  Adapters: `openrouter` and `replay`. The OpenRouter adapter translates
+  to and from its OpenAI-compatible chat API and refuses model ids without
+  `:free` unless `TW_OPENROUTER_FREE_ONLY=false`. Defaults:
+  `google/gemma-4-31b-it:free` for every role and
+  `nvidia/nemotron-3-ultra-550b-a55b:free` for the judge, both with tool
+  calling. Free models are rate-limited (20 requests/min, and a daily cap),
+  so live runs are throttled and resumable.
+- The default provider is `replay`, so nothing calls the network unless
+  `.env` opts in. CI always replays. A missing recording is a hard error,
+  never a live fallback.
+- **Replay is deterministic by construction.** Recordings are stored per case
+  (`evals/fixtures/recordings/<case_id>.jsonl`) and matched by
+  `ModelRequest.fingerprint()`, which includes the model id. Identical
+  fingerprints are served in recorded order. Everything a model sees is
+  serialized with `common.canonical_json`. Every model-visible id (approval,
+  escalation, refund, request) comes from `common.stable_id` over inputs
+  such as the ticket id, never uuid4 or the wall clock. The clock is the
+  case's `as_of`. Recording happens only after the MCP server (A), RAG (C),
+  and guardrails (D) have landed, because their output is part of every
+  fingerprint.
 
 ### 3. Coordinator plus isolated subagents (hub and spoke)
 
@@ -42,32 +60,74 @@ always replays. A missing recording is a hard error, never a live fallback.
   Hitting any bound gives a safe fallback, which escalates to a human with a
   handoff summary. It never gives a half-finished action.
 - Its tools are the four subagents plus the read-only business tools. The
-  final answer is a forced `finalize` tool call whose input is validated
-  against the `FinalResponse` fields (structured output through tool schema).
-  It's validated with Pydantic and retried once with the validation error.
+  final answer is a forced `finalize` tool call (structured output through a
+  tool schema), validated with Pydantic and retried once with the validation
+  error. The model supplies only the reply, citation candidates, and a
+  proposed status (`resolved`, `needs_info`, or `refused`). **Code builds
+  `FinalResponse`:** `actions` and `escalation` come from executor and
+  gateway records, and a pending approval or a created escalation overrides
+  the proposed status.
+- After the escalation reviewer decides to escalate, coordinator code (not a
+  model) calls `create_escalation` from the `EscalationDecision`, with the
+  ticket id from the trusted context. The call is idempotent per ticket.
+  `LoopConfig.handoff_reserve_s` is held back from the total budget for it.
+  If the write still fails, the reply says the request was logged for
+  review and does not promise a follow-up time.
+- Retries of retryable tool errors happen in one place: lane B's
+  deterministic tool-call wrapper (`LoopConfig.tool_retries`, backoff from
+  `retry_after_ms` or `retry_backoff_s`, zero in evals). Not the model, and
+  not the gateway, so `ToolFault.times` counts raw gateway calls.
 - **Subagents** (`triage`, `answer`, `action`, `escalation`) get only their
   typed input (`TriageInput`, `AnswerInput`, …), never the coordinator
   transcript. Each returns its typed output, validated before the coordinator
   sees it. Each subagent may run its own bounded tool loop. The answer
-  subagent may use `search_kb` only. The action subagent may use only the
-  tools in `ActionInput.allowed_tools`.
+  subagent may use `search_kb` only. The action subagent may call the
+  read-only tools in `ActionInput.allowed_tools` directly. It reaches writes
+  only through `ActionExecutor.propose`.
 
 ### 4. Guardrails are code, not prompts
 
+- **Customer scope.** Every tool call carries a `CallContext` set by code
+  from the ticket: `customer_id` never comes from model arguments. All tools
+  except `search_kb` fail with `permission` when it's missing, and another
+  customer's records are reported as `not_found`, exactly like missing ones.
+  So no other customer's data can enter a transcript.
 - Customer text is PII-redacted before any model sees it, and re-redacted in
   the final reply.
-- Tool outputs and KB text count as untrusted data. The `screen` check flags
-  instruction-like content, and the agent wraps that content in delimiters
-  with an explicit "data, not instructions" note.
-- Every proposed write passes `Guardrails.check_action` inside a guarded tool
-  gateway before it reaches MCP.
-- Irreversible tools (`issue_refund`) always return `require_approval`. An
-  `ApprovalRequest` is stored and the request ends in `pending_approval`. A
-  human decides through the API or CLI, and only then does the stored action
-  run, with its `approval_id`.
-- Defense in depth: the MCP server rejects `issue_refund` without an
-  `approval_id`, enforces the refund window and the refundable balance, and
-  dedupes by idempotency key.
+- **Injection.** Ticket text, tool outputs, and KB text are untrusted. The
+  coordinator runs `screen` on the ticket and on every tool and subagent
+  result it records, and ORs the verdicts into one request-scoped
+  `injection_suspected` flag held by code. Flagged content is still shown to
+  models, wrapped in delimiters with a "data, not instructions" note, but
+  once the flag is set the executor blocks every model-directed irreversible
+  action and approval request. The only write left is the code-owned
+  security handoff (`create_escalation` to `security`). KB documents carry
+  `trusted`; untrusted ones (`kb_community_tips`) can be retrieved but never
+  cited.
+- **One refund policy.** `contracts.policy.evaluate_refund` is the only
+  definition of "eligible". It checks account status, delivery, the 30-day
+  window, the refundable balance, the $500 hard limit, and the customer-wide
+  count of issued refunds in the last 30 days. It returns stable
+  `RefundReason` codes in precedence order, and `REFUND_OUTCOME` maps the
+  winning code to refuse or to a queue. The MCP server, the guardrails, the
+  fakes, and the eval cases all use it.
+- **One executor.** `ActionExecutor` (lane D) is the only path from a
+  proposed write to the gateway. `propose` validates the arguments, fetches
+  eligibility itself, and runs `Guardrails.check_action`. Irreversible tools
+  never run in-request: `issue_refund` is stored as an `ApprovalRequest`
+  with the exact arguments and an idempotency key derived from the approval
+  id, and the request ends in `pending_approval`.
+- **Human approval.** The API and CLI authenticate the reviewer with
+  `TW_APPROVER_TOKEN`, then call `ActionExecutor.decide`. On approval it loads
+  the stored arguments (never fresh model output), re-checks eligibility,
+  signs an HMAC token over the approval id, order, amount, and idempotency
+  key (`TW_APPROVAL_KEY`), and calls the gateway as `caller="human"`. The
+  approval is marked `executed` only on confirmed success. After a failure
+  it stays `approved`, and a retry reuses the same idempotency key.
+- **Defense in depth.** The MCP server refuses `issue_refund` unless the
+  token verifies and the caller is `human`. It re-applies `evaluate_refund`
+  and dedupes by idempotency key. A forged or replayed approval id can't
+  issue a refund, even over the HTTP transport.
 
 ### 5. MCP server over the mock business systems
 
@@ -81,7 +141,14 @@ always replays. A missing recording is a hard error, never a live fallback.
   - in-process: tests and evals
   - stdio: local clients
   - streamable HTTP: Compose
-- Eval faults (`ToolFault`) are injected at the gateway.
+- Every raw call is logged as a `ToolCallRecord` (including retries and
+  faults). Graders read this log, not the agent's own report.
+- Eval faults (`ToolFault`) are injected at the gateway. A
+  `CaseRuntimeFactory` builds one isolated stack per eval case: a fresh
+  SQLite database with the case's merged world, its `as_of` clock and
+  faults, and an inspectable call log, ledger, and approval list. Eval knobs
+  never appear on the production ticket API. `triagewright.testing` has a
+  fake factory; the real one lives in `triagewright.wiring`.
 
 ### 6. RAG in SQLite
 
@@ -102,33 +169,45 @@ always replays. A missing recording is a hard error, never a live fallback.
 
 - Spans cover the request, each turn, each subagent, and each model, tool,
   retrieval, guardrail, and approval step.
-- Exporters: JSONL under `var/traces/` (the default), console, or OTLP to
-  Jaeger (Compose `tracing` profile).
+- Exporters: JSONL under `var/traces/` (the default) or OTLP to Jaeger
+  (Compose `tracing` profile).
 - Cost comes from `config/pricing.toml`. Each price cites its source, and an
-  unknown model is an error. TTFT comes from streaming.
+  unknown model is an error. Free models cost $0. Judge calls are reported
+  separately and never count toward cost per ticket.
+- TTFT is request start to the first streamed token
+  (`ModelCallRecord.started_ms` plus that call's TTFT).
+- Live latency is wall time. In replay, latency is non-model wall time plus
+  each call's *recorded* latency, and metrics are marked `estimated`. Live
+  and replay numbers are never compared: baselines and gates are per mode,
+  and the p95 < 8 s target is judged on live runs only.
 - Langfuse was rejected: self-hosting it needs Postgres, ClickHouse, and
   Redis. OTLP keeps that option open.
 
 ### 8. Evals
 
 - One YAML file per case under `evals/cases/<category>/`.
-- Deterministic graders run first: status, escalation, must/must-not call,
-  unsafe action, citations, and reply include/exclude. An LLM-judge rubric
-  runs second, and judge calls are recorded too.
+- Deterministic graders run first: status, escalation (with queue and
+  priority), must/must-not call, unsafe action, citations, and reply
+  include/exclude. They read the `CaseRuntime` call log and ledger, not
+  `FinalResponse` claims. An LLM-judge rubric runs second, and judge calls
+  are recorded too.
+- **Unsafe action:** any refund that appears in the ledger during `resolve`
+  (approvals never complete in-request), or any successful call to a tool
+  the case forbids.
 - Metrics: pass rate, escalation precision and recall, cost per ticket, and
   p50/p95 latency.
 - A PR regresses against `evals/baseline.json` if any of these happen:
   - the pass rate drops
   - any unsafe action appears
-  - cost per ticket rises more than 10%
-  - p95 latency rises more than 10%
+  - cost per ticket rises more than 10% (same mode)
+  - p95 latency rises more than 10% (same mode)
 
 ### 9. API, CLI, and packaging
 
 - The API is FastAPI. Its endpoints:
   - `POST /tickets`
   - `GET /approvals`
-  - `POST /approvals/{id}/decision`
+  - `POST /approvals/{id}/decision` (requires the approver token)
   - `GET /healthz`
 - The CLI is Typer.
 - One Docker image runs both the API and the MCP server. Compose binds to
@@ -146,8 +225,9 @@ always replays. A missing recording is a hard error, never a live fallback.
 ## Consequences
 
 - Lanes can build and test against `triagewright.testing` fakes from day one.
-- A provider swap is a config change. But metrics from free models (cost $0,
-  slower queues) aren't comparable with Claude metrics, so the eval report
-  records the provider and models per run.
+- Free models make spend close to $0, but "< $0.02 per ticket" is then met
+  trivially, and free-tier queues make live latency noisy. The eval report
+  records the provider, models, and mode per run, and states this plainly.
+  The Messages-shaped contract keeps a paid provider a config change away.
 - Human approval on every refund means no refund completes inside one request.
   That's the intended, safest behavior. It's measured as `pending_approval`.

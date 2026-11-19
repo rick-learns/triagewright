@@ -1,6 +1,10 @@
 """Test doubles and fixtures shared by every lane. Orchestrator-owned."""
 
 from triagewright.testing.fakes import (
+    TEST_APPROVAL_KEY,
+    FakeActionExecutor,
+    FakeCaseRuntime,
+    FakeCaseRuntimeFactory,
     FakeRetriever,
     FakeToolGateway,
     InMemoryApprovalStore,
@@ -24,6 +28,10 @@ from triagewright.testing.fixtures import (
 
 __all__ = [
     "REPO_ROOT",
+    "TEST_APPROVAL_KEY",
+    "FakeActionExecutor",
+    "FakeCaseRuntime",
+    "FakeCaseRuntimeFactory",
     "FakeRetriever",
     "FakeToolGateway",
     "InMemoryApprovalStore",

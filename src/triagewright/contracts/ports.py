@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from triagewright.contracts.agents import FinalResponse, ProposedAction
+from triagewright.contracts.agents import ActionOutcome, FinalResponse, ProposedAction
 from triagewright.contracts.common import JsonObject
+from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.guardrails import (
     ApprovalDecision,
     ApprovalRequest,
@@ -24,7 +26,14 @@ from triagewright.contracts.llm import ModelRequest, ModelResponse
 from triagewright.contracts.rag import RetrievalQuery, RetrievedChunk
 from triagewright.contracts.telemetry import AttrValue, RequestMetrics, SpanKind
 from triagewright.contracts.tickets import Ticket
-from triagewright.contracts.tools import CallContext, ToolName, ToolResult, ToolSpec
+from triagewright.contracts.tools import (
+    CallContext,
+    ToolCallRecord,
+    ToolName,
+    ToolResult,
+    ToolSpec,
+)
+from triagewright.contracts.world import WorldState
 
 
 @runtime_checkable
@@ -36,7 +45,13 @@ class ModelClient(Protocol):
 
 @runtime_checkable
 class ToolGateway(Protocol):
-    """Lane A (MCP client side). Never raises for tool failures; returns ``is_error`` results."""
+    """Lane A (MCP client side). Never raises for tool failures; returns ``is_error`` results.
+
+    Enforces customer scoping from ``ctx.customer_id`` (see ``contracts.tools``).
+    Does not retry: the agent's tool-call wrapper (lane B) retries retryable
+    errors up to ``LoopConfig.tool_retries`` times, so ``ToolFault.times``
+    counts raw gateway calls.
+    """
 
     def list_tools(self) -> Sequence[ToolSpec]: ...
 
@@ -77,6 +92,39 @@ class ApprovalStore(Protocol):
 
 
 @runtime_checkable
+class ActionExecutor(Protocol):
+    """Lane D. The only path from a proposed write to the gateway.
+
+    ``propose``: validates ``action.arguments`` against
+    ``tools.proposal_model(tool)`` (a model-supplied ``approval_id`` or token
+    is a validation error). It builds the :class:`PolicyContext` itself from
+    ``ctx`` and its own clock, fetching ``check_refund_eligibility`` for
+    refunds, then runs ``Guardrails.check_action``. ``allow`` runs the call;
+    ``require_approval`` submits an :class:`ApprovalRequest` with the exact
+    arguments and idempotency key and returns ``pending_approval``; ``block``
+    returns ``blocked``. It never runs an irreversible tool.
+
+    ``decide``: the one path the API and CLI use after a human decision. It
+    records the decision; if approved it runs ``execute_approved``.
+
+    ``execute_approved``: loads the stored request (never fresh model
+    arguments), requires status ``approved``, re-checks eligibility, signs
+    ``policy.approval_token``, and calls the gateway with ``caller="human"``.
+    It marks the approval ``executed`` only on confirmed success. After a
+    failure the approval stays ``approved``, and calling this again retries
+    with the same idempotency key.
+    """
+
+    async def propose(
+        self, action: ProposedAction, ctx: CallContext, *, injection_suspected: bool
+    ) -> ActionOutcome: ...
+
+    async def decide(self, decision: ApprovalDecision) -> ActionOutcome: ...
+
+    async def execute_approved(self, approval_id: str) -> ActionOutcome: ...
+
+
+@runtime_checkable
 class SpanHandle(Protocol):
     def set_attribute(self, key: str, value: AttrValue) -> None: ...
 
@@ -91,7 +139,10 @@ class RequestTelemetry(Protocol):
         self, name: str, kind: SpanKind, attributes: Mapping[str, AttrValue] | None = None
     ) -> AbstractContextManager[SpanHandle]: ...
 
-    def record_model_call(self, request: ModelRequest, response: ModelResponse) -> None: ...
+    def record_model_call(
+        self, request: ModelRequest, response: ModelResponse, started_ms: float
+    ) -> None:
+        """``started_ms``: when the call started, as an offset from the request start."""
 
     def record_tool_call(self, result: ToolResult, latency_ms: float) -> None: ...
 
@@ -108,3 +159,34 @@ class TicketResolver(Protocol):
     """Lane B (coordinator). The single entry point the API, CLI, and evals call."""
 
     async def resolve(self, ticket: Ticket) -> FinalResponse: ...
+
+
+@runtime_checkable
+class CaseRuntime(Protocol):
+    """One isolated stack for one eval case: its own world, clock, faults, and logs."""
+
+    @property
+    def resolver(self) -> TicketResolver: ...
+
+    def tool_calls(self) -> list[ToolCallRecord]:
+        """Every raw gateway call so far, in order (including retries and faults)."""
+        ...
+
+    def ledger(self) -> WorldState:
+        """Current state of the mock systems (refunds, escalations, ...)."""
+        ...
+
+    def pending_approvals(self) -> list[ApprovalRequest]: ...
+
+
+@runtime_checkable
+class CaseRuntimeFactory(Protocol):
+    """Builds a fresh :class:`CaseRuntime` per case. Eval knobs never touch the production API.
+
+    The real factory (``triagewright.wiring``, integration) runs the MCP server
+    in-process on a fresh SQLite database. ``triagewright.testing`` has a fake.
+    """
+
+    def build(
+        self, *, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
+    ) -> CaseRuntime: ...

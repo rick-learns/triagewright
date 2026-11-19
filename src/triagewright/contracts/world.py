@@ -13,6 +13,7 @@ from typing import Annotated
 from pydantic import Field, model_validator
 
 from triagewright.contracts.common import (
+    ApprovalId,
     Cents,
     Contract,
     Currency,
@@ -105,7 +106,7 @@ class Refund(Contract):
     reason: str
     status: RefundStatus = RefundStatus.ISSUED
     idempotency_key: str
-    approval_id: str | None = None
+    approval_id: ApprovalId | None = None
     created_at: datetime
 
 
@@ -123,13 +124,28 @@ class Priority(StrEnum):
     URGENT = "urgent"
 
 
+class EscalationReason(StrEnum):
+    POLICY_LIMIT = "policy_limit"
+    APPROVAL_REQUIRED = "approval_required"
+    LOW_CONFIDENCE = "low_confidence"
+    INJECTION_SUSPECTED = "injection_suspected"
+    CUSTOMER_REQUESTED_HUMAN = "customer_requested_human"
+    TOOL_FAILURE = "tool_failure"
+    ACCOUNT_SECURITY = "account_security"
+    ACCOUNT_INACTIVE = "account_inactive"
+    LEGAL_OR_SAFETY = "legal_or_safety"
+    UNGROUNDED = "ungrounded"
+    OUT_OF_SCOPE = "out_of_scope"
+    LOOP_LIMIT = "loop_limit"
+
+
 class Escalation(Contract):
     escalation_id: EscalationId
     ticket_id: TicketId
     queue: EscalationQueue
     priority: Priority
     summary: str
-    reason_codes: list[str]
+    reason_codes: list[EscalationReason]
     status: str = "open"
     created_at: datetime
 

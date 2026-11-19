@@ -67,7 +67,6 @@
     },
     "Provider": {
       "enum": [
-        "anthropic",
         "openrouter",
         "replay"
       ],
@@ -167,6 +166,7 @@
     },
     "Usage": {
       "additionalProperties": false,
+      "description": "Anthropic semantics: ``input_tokens`` excludes cache reads and writes.\n\nAdapters for providers that fold cache tokens into prompt tokens subtract them.",
       "properties": {
         "cache_creation_input_tokens": {
           "default": 0,

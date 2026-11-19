@@ -5,6 +5,7 @@ category: community
 tags: [community, tips, unverified]
 updated_at: 2026-05-30
 source: synthetic
+trusted: false
 ---
 ## Tips from customers
 

@@ -236,7 +236,6 @@
     },
     "Provider": {
       "enum": [
-        "anthropic",
         "openrouter",
         "replay"
       ],
@@ -390,6 +389,7 @@
     },
     "Usage": {
       "additionalProperties": false,
+      "description": "Anthropic semantics: ``input_tokens`` excludes cache reads and writes.\n\nAdapters for providers that fold cache tokens into prompt tokens subtract them.",
       "properties": {
         "cache_creation_input_tokens": {
           "default": 0,
@@ -422,8 +422,20 @@
   },
   "$id": "triagewright/recording/1.0.0",
   "additionalProperties": false,
-  "description": "One recorded model call. Stored as JSONL under ``evals/fixtures/recordings/``.",
+  "description": "One recorded model call, stored as JSONL in ``evals/fixtures/recordings/<case_id>.jsonl``.\n\nReplay looks up by ``fingerprint`` within the case file. Identical\nfingerprints are served in ``sequence`` order. A miss is an error, never a\nlive call. The fingerprint covers the model id, so switching models means\nre-recording. Determinism rests on ``common.canonical_json`` for all\nmodel-visible content and ``common.stable_id`` for all model-visible ids.",
   "properties": {
+    "case_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Case Id"
+    },
     "fingerprint": {
       "title": "Fingerprint",
       "type": "string"
@@ -433,6 +445,12 @@
     },
     "response": {
       "$ref": "#/$defs/ModelResponse"
+    },
+    "sequence": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
     }
   },
   "required": [

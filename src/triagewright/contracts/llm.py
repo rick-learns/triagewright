@@ -18,7 +18,6 @@ from triagewright.contracts.common import Contract, JsonObject
 
 
 class Provider(StrEnum):
-    ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
     REPLAY = "replay"
 
@@ -90,6 +89,11 @@ class ModelRequest(Contract):
 
 
 class Usage(Contract):
+    """Anthropic semantics: ``input_tokens`` excludes cache reads and writes.
+
+    Adapters for providers that fold cache tokens into prompt tokens subtract them.
+    """
+
     input_tokens: Annotated[int, Field(ge=0)] = 0
     output_tokens: Annotated[int, Field(ge=0)] = 0
     cache_read_input_tokens: Annotated[int, Field(ge=0)] = 0
@@ -109,8 +113,17 @@ class ModelResponse(Contract):
 
 
 class Recording(Contract):
-    """One recorded model call. Stored as JSONL under ``evals/fixtures/recordings/``."""
+    """One recorded model call, stored as JSONL in ``evals/fixtures/recordings/<case_id>.jsonl``.
 
+    Replay looks up by ``fingerprint`` within the case file. Identical
+    fingerprints are served in ``sequence`` order. A miss is an error, never a
+    live call. The fingerprint covers the model id, so switching models means
+    re-recording. Determinism rests on ``common.canonical_json`` for all
+    model-visible content and ``common.stable_id`` for all model-visible ids.
+    """
+
+    case_id: str | None = None
+    sequence: Annotated[int, Field(ge=0)] = 0
     fingerprint: str
     request: ModelRequest
     response: ModelResponse

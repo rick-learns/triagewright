@@ -9,6 +9,7 @@
         "approval_id": {
           "anyOf": [
             {
+              "pattern": "^apr_[a-z0-9]{4,32}$",
               "type": "string"
             },
             {
@@ -70,7 +71,7 @@
     },
     "Citation": {
       "additionalProperties": false,
-      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text.",
+      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text, and the\nchunk must be ``trusted``. Citations failing either check are dropped.",
       "properties": {
         "chunk_id": {
           "pattern": "^kb_[a-z0-9_]{2,64}#\\d{1,4}$",
@@ -179,9 +180,11 @@
         "customer_requested_human",
         "tool_failure",
         "account_security",
+        "account_inactive",
         "legal_or_safety",
         "ungrounded",
-        "out_of_scope"
+        "out_of_scope",
+        "loop_limit"
       ],
       "title": "EscalationReason",
       "type": "string"
@@ -364,6 +367,11 @@
           "title": "Purpose",
           "type": "string"
         },
+        "started_ms": {
+          "minimum": 0,
+          "title": "Started Ms",
+          "type": "number"
+        },
         "stop_reason": {
           "$ref": "#/$defs/StopReason"
         },
@@ -383,6 +391,7 @@
       },
       "required": [
         "purpose",
+        "started_ms",
         "provider",
         "model",
         "input_tokens",
@@ -408,24 +417,7 @@
       "additionalProperties": false,
       "properties": {
         "arguments": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": "Arguments",
-          "type": "object"
+          "$ref": "#/$defs/JsonObject"
         },
         "rationale": {
           "maxLength": 500,
@@ -446,7 +438,6 @@
     },
     "Provider": {
       "enum": [
-        "anthropic",
         "openrouter",
         "replay"
       ],
@@ -461,6 +452,11 @@
           "minimum": 0,
           "title": "Cost Usd",
           "type": "number"
+        },
+        "estimated": {
+          "default": false,
+          "title": "Estimated",
+          "type": "boolean"
         },
         "input_tokens": {
           "default": 0,
@@ -739,6 +735,7 @@
   },
   "$id": "triagewright/final_response/1.0.0",
   "additionalProperties": false,
+  "description": "Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,\ncitation candidates, and a proposed status among resolved/needs_info/refused;\n``actions`` and ``escalation`` come from executor and gateway records, and a\npending approval or a created escalation overrides the proposed status.",
   "properties": {
     "actions": {
       "default": [],
@@ -779,7 +776,6 @@
       "default": null
     },
     "mode": {
-      "default": "stub",
       "enum": [
         "live",
         "replay",
@@ -793,6 +789,7 @@
       "type": "string"
     },
     "request_id": {
+      "pattern": "^req_[a-z0-9]{8,32}$",
       "title": "Request Id",
       "type": "string"
     },
@@ -830,7 +827,8 @@
     "request_id",
     "ticket_id",
     "status",
-    "reply"
+    "reply",
+    "mode"
   ],
   "title": "FinalResponse",
   "type": "object"

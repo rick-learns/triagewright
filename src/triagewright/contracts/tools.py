@@ -1,6 +1,12 @@
 """MCP tool signatures and the structured error envelope.
 
-Every tool returns a :class:`ToolResult`. Over MCP it travels as a
+Every tool returns a :class:`ToolResult`.
+
+Scoping: every call carries a :class:`CallContext` whose ``customer_id`` comes
+from the ticket, never from model arguments. Private tools (all but
+``search_kb``) fail with ``permission`` when it is missing, and records owned
+by another customer are reported as ``not_found``, exactly like missing ones.
+ Over MCP it travels as a
 ``CallToolResult`` whose ``isError`` equals ``ToolResult.is_error``, whose
 ``structuredContent`` is ``ToolResult.model_dump(mode="json")``, and whose single
 ``TextContent`` block holds the same JSON. Tool handlers never raise to the
@@ -24,6 +30,7 @@ from triagewright.contracts.common import (
     DocId,
     JsonObject,
     OrderId,
+    RequestId,
     TicketId,
 )
 from triagewright.contracts.world import (
@@ -31,6 +38,7 @@ from triagewright.contracts.world import (
     Customer,
     Escalation,
     EscalationQueue,
+    EscalationReason,
     Order,
     Priority,
     Refund,
@@ -152,20 +160,30 @@ class CheckRefundEligibilityInput(Contract):
     amount_cents: Annotated[int, Field(gt=0)]
 
 
-class IssueRefundInput(Contract):
+class RefundProposal(Contract):
+    """What the action agent may propose for ``issue_refund``. The executor adds the rest."""
+
     order_id: OrderId
     amount_cents: Annotated[int, Field(gt=0)]
     reason: Annotated[str, Field(min_length=1, max_length=500)]
-    idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
-    approval_id: ApprovalId | None = None
+
+
+class IssueRefundInput(RefundProposal):
+    """Only the approval executor builds this, from a stored, human-approved request."""
+
+    idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]  # refund-<approval_id>
+    approval_id: ApprovalId
+    approval_token: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]  # policy.approval_token
 
 
 class CreateEscalationInput(Contract):
+    """Idempotent per ticket: a second call for the same ticket returns the first escalation."""
+
     ticket_id: TicketId
     queue: EscalationQueue
     priority: Priority
     summary: Annotated[str, Field(min_length=1, max_length=2000)]
-    reason_codes: Annotated[list[str], Field(min_length=1)]
+    reason_codes: Annotated[list[EscalationReason], Field(min_length=1)]
 
 
 # ---- tool outputs ---------------------------------------------------------------
@@ -179,6 +197,8 @@ class KBHit(Contract):
     doc_id: DocId
     chunk_id: ChunkId
     title: str
+    category: str
+    trusted: bool  # False for user-submitted docs; never cite them as policy
     text: str
     score: float
 
@@ -187,13 +207,30 @@ class KBSearchResult(Contract):
     hits: list[KBHit]
 
 
+class RefundReason(StrEnum):
+    """Why a refund can't go to approval, in precedence order (first wins).
+
+    See ``contracts.policy.REFUND_OUTCOME`` for what the agent does for each.
+    """
+
+    ACCOUNT_INACTIVE = "account_inactive"  # customer suspended or closed
+    NOT_DELIVERED = "not_delivered"  # status is not delivered/returned
+    OUTSIDE_WINDOW = "outside_window"  # more than window days after delivery
+    EXCEEDS_BALANCE = "exceeds_balance"  # amount > total minus already refunded
+    OVER_HARD_LIMIT = "over_hard_limit"  # amount > refund_hard_limit_cents
+    REFUND_COUNT_LIMIT = "refund_count_limit"  # already at max refunds in 30 days
+
+
 class RefundEligibility(Contract):
+    """Output of ``contracts.policy.evaluate_refund``."""
+
     order_id: OrderId
     eligible: bool
     max_refundable_cents: Cents
     already_refunded_cents: Cents
+    refunds_last_30d: Annotated[int, Field(ge=0)]  # customer-wide, issued refunds
     window_ends_at: datetime | None
-    reasons: list[str] = []
+    reasons: list[RefundReason] = []  # sorted by precedence
 
 
 # ---- registry -------------------------------------------------------------------
@@ -273,7 +310,7 @@ TOOL_SPECS: dict[ToolName, ToolSpec] = dict(
         ),
         _spec(
             ToolName.ISSUE_REFUND,
-            "Issue a refund. Irreversible. Requires an approved approval_id.",
+            "Issue a refund. Irreversible. Requires a human-approved approval_id and its token.",
             SideEffect.WRITE_IRREVERSIBLE,
             IssueRefundInput,
             Refund,
@@ -292,10 +329,32 @@ IRREVERSIBLE_TOOLS: frozenset[ToolName] = frozenset(
     name for name, spec in TOOL_SPECS.items() if spec.side_effect is SideEffect.WRITE_IRREVERSIBLE
 )
 
+# Tools that need no customer scope. Every other tool fails closed without ctx.customer_id.
+UNSCOPED_TOOLS: frozenset[ToolName] = frozenset({ToolName.SEARCH_KB})
+
+
+def proposal_model(tool: ToolName) -> type[BaseModel]:
+    """The schema ``ProposedAction.arguments`` must match for ``tool``."""
+    return RefundProposal if tool is ToolName.ISSUE_REFUND else TOOL_SPECS[tool].input_model
+
+
+Caller = Literal["triage", "answer", "action", "escalation", "coordinator", "human"]
+
 
 class CallContext(Contract):
-    """Per-call metadata the gateway passes alongside tool arguments."""
+    """Trusted per-call metadata, set by code from the ticket. Never from model output."""
 
-    request_id: str
+    request_id: RequestId
     ticket_id: TicketId
-    caller: Literal["triage", "answer", "action", "escalation", "coordinator", "human"]
+    customer_id: CustomerId | None
+    caller: Caller
+
+
+class ToolCallRecord(Contract):
+    """One raw gateway call, as logged by the gateway. Graders read these, not model claims."""
+
+    tool: ToolName
+    arguments: JsonObject
+    caller: Caller
+    result: ToolResult
+    latency_ms: Annotated[float, Field(ge=0)] = 0.0

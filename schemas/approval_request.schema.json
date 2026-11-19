@@ -53,6 +53,50 @@
       "title": "GuardrailVerdict",
       "type": "object"
     },
+    "JsonObject": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    },
     "ToolName": {
       "enum": [
         "get_customer",
@@ -78,24 +122,16 @@
       "type": "string"
     },
     "arguments": {
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "integer"
-          },
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "title": "Arguments",
-      "type": "object"
+      "$ref": "#/$defs/JsonObject"
+    },
+    "customer_id": {
+      "pattern": "^cus_[a-z0-9]{4,32}$",
+      "title": "Customer Id",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "title": "Idempotency Key",
+      "type": "string"
     },
     "rationale": {
       "title": "Rationale",
@@ -125,8 +161,10 @@
   "required": [
     "approval_id",
     "ticket_id",
+    "customer_id",
     "tool",
     "arguments",
+    "idempotency_key",
     "rationale",
     "verdict",
     "requested_at"

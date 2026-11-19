@@ -9,6 +9,7 @@
         "approval_id": {
           "anyOf": [
             {
+              "pattern": "^apr_[a-z0-9]{4,32}$",
               "type": "string"
             },
             {
@@ -174,24 +175,7 @@
       "additionalProperties": false,
       "properties": {
         "arguments": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": "Arguments",
-          "type": "object"
+          "$ref": "#/$defs/JsonObject"
         },
         "rationale": {
           "maxLength": 500,

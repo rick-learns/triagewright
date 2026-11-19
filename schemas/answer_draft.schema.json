@@ -2,7 +2,7 @@
   "$defs": {
     "Citation": {
       "additionalProperties": false,
-      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text.",
+      "description": "A pointer from an answer back to the chunk that supports it.\n\n``quote`` must be a verbatim substring of the cited chunk's text, and the\nchunk must be ``trusted``. Citations failing either check are dropped.",
       "properties": {
         "chunk_id": {
           "pattern": "^kb_[a-z0-9_]{2,64}#\\d{1,4}$",

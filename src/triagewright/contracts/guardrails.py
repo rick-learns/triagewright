@@ -8,9 +8,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from triagewright.contracts.common import ApprovalId, Contract, TicketId
-from triagewright.contracts.tools import ToolName
-from triagewright.contracts.world import Customer, Order, Refund
+from triagewright.contracts.common import ApprovalId, Contract, CustomerId, JsonObject, TicketId
+from triagewright.contracts.tools import RefundEligibility, ToolName
 
 
 class ContentSource(StrEnum):
@@ -56,15 +55,21 @@ class GuardrailVerdict(Contract):
 class PolicyConfig(Contract):
     refund_hard_limit_cents: Annotated[int, Field(ge=0)] = 50_000
     refund_window_days: Annotated[int, Field(ge=0)] = 30
-    max_refunds_per_customer_30d: Annotated[int, Field(ge=0)] = 2
-    require_approval_for_irreversible: bool = True
+    max_refunds_per_customer_30d: Annotated[int, Field(ge=1)] = 2
 
 
 class PolicyContext(Contract):
+    """Code-owned facts for ``check_action``. Nothing here comes from model output.
+
+    ``injection_suspected`` is request-scoped: the coordinator ORs every
+    ``screen`` verdict it records (customer text, tool results) and passes it
+    to every subagent and the executor. Once true, model-directed irreversible
+    actions are blocked and the code-owned security handoff is used instead.
+    """
+
     ticket_id: TicketId
-    customer: Customer | None = None
-    order: Order | None = None
-    prior_refunds: list[Refund] = []
+    customer_id: CustomerId | None
+    eligibility: RefundEligibility | None = None  # required for issue_refund, else BLOCK
     injection_suspected: bool = False
     now: datetime
 
@@ -79,10 +84,12 @@ class ApprovalStatus(StrEnum):
 class ApprovalRequest(Contract):
     """A proposed irreversible action waiting for a human."""
 
-    approval_id: ApprovalId
+    approval_id: ApprovalId  # common.stable_id("apr", ticket_id, tool, arguments)
     ticket_id: TicketId
+    customer_id: CustomerId
     tool: ToolName
-    arguments: dict[str, str | int | bool | None]
+    arguments: JsonObject  # exactly what will run; never re-read from the model
+    idempotency_key: str  # refund-<approval_id> for refunds
     rationale: str
     verdict: GuardrailVerdict
     status: ApprovalStatus = ApprovalStatus.PENDING
@@ -92,6 +99,8 @@ class ApprovalRequest(Contract):
 class ApprovalDecision(Contract):
     approval_id: ApprovalId
     approved: bool
-    reviewer: Annotated[str, Field(min_length=1, max_length=100)]  # a role or handle, never PII
+    # A role or handle, never PII. The API/CLI authenticates the reviewer
+    # (TW_APPROVER_TOKEN) before building a decision; the model never can.
+    reviewer: Annotated[str, Field(min_length=1, max_length=100)]
     note: str = ""
     decided_at: datetime

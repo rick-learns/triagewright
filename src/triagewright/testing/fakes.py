@@ -8,21 +8,23 @@ implementations: the MCP server (lane A), retriever (lane C), guardrails
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
 
 from triagewright.contracts.agents import (
+    ActionOutcome,
+    ActionStatus,
     EscalationDecision,
-    EscalationReason,
     FinalResponse,
     ProposedAction,
     ResolutionStatus,
 )
-from triagewright.contracts.common import JsonObject
+from triagewright.contracts.common import JsonObject, canonical_json, stable_id
 from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.guardrails import (
     ApprovalDecision,
@@ -31,16 +33,25 @@ from triagewright.contracts.guardrails import (
     ContentSource,
     GuardrailDecision,
     GuardrailVerdict,
+    PolicyConfig,
     PolicyContext,
     RedactionResult,
 )
 from triagewright.contracts.llm import ModelRequest, ModelResponse
+from triagewright.contracts.policy import (
+    approval_token,
+    evaluate_refund,
+    refund_idempotency_key,
+    verify_approval_token,
+)
+from triagewright.contracts.ports import Guardrails, TicketResolver
 from triagewright.contracts.rag import Chunk, KBDocument, RetrievalQuery, RetrievedChunk
 from triagewright.contracts.telemetry import AttrValue, RequestMetrics, SpanKind
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import (
     IRREVERSIBLE_TOOLS,
     TOOL_SPECS,
+    UNSCOPED_TOOLS,
     CallContext,
     CheckRefundEligibilityInput,
     CreateEscalationInput,
@@ -54,20 +65,25 @@ from triagewright.contracts.tools import (
     ListOrdersInput,
     OrderList,
     RefundEligibility,
+    RefundProposal,
     SearchKBInput,
+    ToolCallRecord,
     ToolName,
     ToolResult,
     ToolSpec,
+    proposal_model,
 )
 from triagewright.contracts.world import (
     Escalation,
     EscalationQueue,
-    Order,
-    OrderStatus,
+    EscalationReason,
     Priority,
     Refund,
     WorldState,
 )
+
+# Shared by the fake gateway and fake executor. The real key comes from TW_APPROVAL_KEY.
+TEST_APPROVAL_KEY = b"triagewright-test-approval-key"
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -95,6 +111,7 @@ def chunk_documents(docs: Sequence[KBDocument]) -> list[Chunk]:
                     title=doc.title,
                     category=doc.category,
                     tags=doc.tags,
+                    trusted=doc.trusted,
                     text=para.strip(),
                     start_char=start,
                     end_char=pos,
@@ -131,7 +148,12 @@ class FakeRetriever:
 
 
 class FakeToolGateway:
-    """Mock business systems in memory, with fault injection. Mirrors the MCP tool contract."""
+    """Mock business systems in memory, with fault injection. Mirrors the MCP tool contract.
+
+    Like the real server it scopes every private tool to ``ctx.customer_id``
+    (another customer's records look missing), applies ``contracts.policy``,
+    verifies the approval token on refunds, and logs every raw call.
+    """
 
     def __init__(
         self,
@@ -140,7 +162,8 @@ class FakeToolGateway:
         as_of: datetime,
         retriever: FakeRetriever | None = None,
         faults: Sequence[ToolFault] = (),
-        refund_window_days: int = 30,
+        policy: PolicyConfig | None = None,
+        approval_key: bytes = TEST_APPROVAL_KEY,
     ) -> None:
         self.customers = {c.customer_id: c for c in world.customers}
         self.accounts = {a.customer_id: a for a in world.accounts}
@@ -149,12 +172,22 @@ class FakeToolGateway:
         self.escalations: list[Escalation] = list(world.escalations)
         self.as_of = as_of
         self.retriever = retriever
-        self.refund_window = timedelta(days=refund_window_days)
+        self.policy = policy or PolicyConfig()
+        self._approval_key = approval_key
         self._faults = [[f, f.times] for f in faults]
-        self.calls: list[tuple[ToolName, JsonObject]] = []
+        self.calls: list[ToolCallRecord] = []
 
     def list_tools(self) -> Sequence[ToolSpec]:
         return list(TOOL_SPECS.values())
+
+    def ledger(self) -> WorldState:
+        return WorldState(
+            customers=list(self.customers.values()),
+            accounts=list(self.accounts.values()),
+            orders=list(self.orders.values()),
+            refunds=list(self.refunds),
+            escalations=list(self.escalations),
+        )
 
     def _fault_for(self, name: ToolName, arguments: JsonObject) -> ToolResult | None:
         for entry in self._faults:
@@ -171,9 +204,17 @@ class FakeToolGateway:
         return None
 
     async def call(self, name: ToolName, arguments: JsonObject, ctx: CallContext) -> ToolResult:
-        self.calls.append((name, dict(arguments)))
+        result = await self._call(name, arguments, ctx)
+        self.calls.append(
+            ToolCallRecord(tool=name, arguments=dict(arguments), caller=ctx.caller, result=result)
+        )
+        return result
+
+    async def _call(self, name: ToolName, arguments: JsonObject, ctx: CallContext) -> ToolResult:
         if (faulted := self._fault_for(name, arguments)) is not None:
             return faulted
+        if ctx.customer_id is None and name not in UNSCOPED_TOOLS:
+            return ToolResult.fail(name, ErrorCategory.PERMISSION, "no customer in scope")
         spec = TOOL_SPECS[name]
         try:
             args = spec.input_model.model_validate(arguments)
@@ -181,50 +222,46 @@ class FakeToolGateway:
             return ToolResult.fail(name, ErrorCategory.VALIDATION, str(exc.errors()[0]["msg"]))
         return await self._dispatch(name, args, ctx)
 
-    def _refunded(self, order_id: str) -> int:
-        return sum(r.amount_cents for r in self.refunds if r.order_id == order_id)
-
-    def _eligibility(self, order: Order, amount: int) -> RefundEligibility:
-        reasons: list[str] = []
-        window_end = order.delivered_at + self.refund_window if order.delivered_at else None
-        if order.status is not OrderStatus.DELIVERED:
-            reasons.append(f"order status is {order.status.value}")
-        if window_end and self.as_of > window_end:
-            reasons.append("outside refund window")
-        already = self._refunded(order.order_id)
-        max_refundable = max(order.total_cents - already, 0)
-        if amount > max_refundable:
-            reasons.append("amount exceeds refundable balance")
-        return RefundEligibility(
-            order_id=order.order_id,
-            eligible=not reasons,
-            max_refundable_cents=max_refundable,
-            already_refunded_cents=already,
-            window_ends_at=window_end,
-            reasons=reasons,
+    def _eligibility(
+        self, order_id: str, amount: int, ctx: CallContext
+    ) -> RefundEligibility | None:
+        order = self.orders.get(order_id)
+        customer = self.customers.get(ctx.customer_id or "")
+        if order is None or customer is None or order.customer_id != customer.customer_id:
+            return None
+        return evaluate_refund(
+            order=order,
+            customer=customer,
+            refunds=self.refunds,
+            amount_cents=amount,
+            as_of=self.as_of,
+            policy=self.policy,
         )
 
     async def _dispatch(self, name: ToolName, args: Any, ctx: CallContext) -> ToolResult:
         missing = ErrorCategory.NOT_FOUND
+        mine = ctx.customer_id
         match args:
             case GetCustomerInput(customer_id=cid):
-                c = self.customers.get(cid)
+                c = self.customers.get(cid) if cid == mine else None
                 return ToolResult.ok(name, c) if c else ToolResult.fail(name, missing, cid)
             case GetAccountInput(customer_id=cid):
-                a = self.accounts.get(cid)
+                a = self.accounts.get(cid) if cid == mine else None
                 return ToolResult.ok(name, a) if a else ToolResult.fail(name, missing, cid)
             case GetOrderInput(order_id=oid):
                 o = self.orders.get(oid)
-                return ToolResult.ok(name, o) if o else ToolResult.fail(name, missing, oid)
+                if o and o.customer_id == mine:
+                    return ToolResult.ok(name, o)
+                return ToolResult.fail(name, missing, oid)
             case ListOrdersInput(customer_id=cid, limit=limit):
-                if cid not in self.customers:
+                if cid != mine or cid not in self.customers:
                     return ToolResult.fail(name, missing, cid)
-                mine = sorted(
+                orders = sorted(
                     (o for o in self.orders.values() if o.customer_id == cid),
                     key=lambda o: o.placed_at,
                     reverse=True,
                 )
-                return ToolResult.ok(name, OrderList(orders=mine[:limit]))
+                return ToolResult.ok(name, OrderList(orders=orders[:limit]))
             case SearchKBInput(query=q, k=k, categories=cats):
                 from triagewright.contracts.rag import MetadataFilter
 
@@ -237,6 +274,8 @@ class FakeToolGateway:
                             doc_id=r.chunk.doc_id,
                             chunk_id=r.chunk.chunk_id,
                             title=r.chunk.title,
+                            category=r.chunk.category,
+                            trusted=r.chunk.trusted,
                             text=r.chunk.text,
                             score=r.score,
                         )
@@ -244,45 +283,60 @@ class FakeToolGateway:
                     ]
                 return ToolResult.ok(name, KBSearchResult(hits=hits))
             case CheckRefundEligibilityInput(order_id=oid, amount_cents=amount):
-                o = self.orders.get(oid)
-                if not o:
-                    return ToolResult.fail(name, missing, oid)
-                return ToolResult.ok(name, self._eligibility(o, amount))
+                elig = self._eligibility(oid, amount, ctx)
+                return ToolResult.ok(name, elig) if elig else ToolResult.fail(name, missing, oid)
             case IssueRefundInput() as req:
-                return self._issue_refund(name, req)
+                return self._issue_refund(name, req, ctx)
             case CreateEscalationInput() as req:
-                esc = Escalation(
-                    escalation_id=f"esc_{len(self.escalations) + 1:04d}",
-                    ticket_id=req.ticket_id,
-                    queue=req.queue,
-                    priority=req.priority,
-                    summary=req.summary,
-                    reason_codes=req.reason_codes,
-                    created_at=self.as_of,
-                )
-                self.escalations.append(esc)
-                return ToolResult.ok(name, esc)
+                return self._create_escalation(name, req, ctx)
         return ToolResult.fail(name, ErrorCategory.INTERNAL, "unhandled tool")  # pragma: no cover
 
-    def _issue_refund(self, name: ToolName, req: IssueRefundInput) -> ToolResult:
+    def _create_escalation(
+        self, name: ToolName, req: CreateEscalationInput, ctx: CallContext
+    ) -> ToolResult:
+        if req.ticket_id != ctx.ticket_id:
+            return ToolResult.fail(name, ErrorCategory.PERMISSION, "ticket out of scope")
+        for esc in self.escalations:
+            if esc.ticket_id == req.ticket_id:
+                return ToolResult.ok(name, esc)  # idempotent per ticket
+        esc = Escalation(
+            escalation_id=stable_id("esc", req.ticket_id),
+            ticket_id=req.ticket_id,
+            queue=req.queue,
+            priority=req.priority,
+            summary=req.summary,
+            reason_codes=req.reason_codes,
+            created_at=self.as_of,
+        )
+        self.escalations.append(esc)
+        return ToolResult.ok(name, esc)
+
+    def _issue_refund(self, name: ToolName, req: IssueRefundInput, ctx: CallContext) -> ToolResult:
+        signed = verify_approval_token(
+            self._approval_key,
+            req.approval_token,
+            approval_id=req.approval_id,
+            order_id=req.order_id,
+            amount_cents=req.amount_cents,
+            idempotency_key=req.idempotency_key,
+        )
+        if not signed or ctx.caller != "human":
+            return ToolResult.fail(name, ErrorCategory.PERMISSION, "valid approval required")
         for r in self.refunds:
             if r.idempotency_key == req.idempotency_key:
                 same = (r.order_id, r.amount_cents) == (req.order_id, req.amount_cents)
                 if same:
                     return ToolResult.ok(name, r)
                 return ToolResult.fail(name, ErrorCategory.CONFLICT, "idempotency key reused")
-        if req.approval_id is None:
-            return ToolResult.fail(name, ErrorCategory.PERMISSION, "approval_id required")
-        order = self.orders.get(req.order_id)
-        if not order:
+        elig = self._eligibility(req.order_id, req.amount_cents, ctx)
+        if elig is None:
             return ToolResult.fail(name, ErrorCategory.NOT_FOUND, req.order_id)
-        elig = self._eligibility(order, req.amount_cents)
         if not elig.eligible:
-            return ToolResult.fail(name, ErrorCategory.POLICY, "; ".join(elig.reasons))
+            return ToolResult.fail(name, ErrorCategory.POLICY, ", ".join(elig.reasons))
         refund = Refund(
-            refund_id=f"rf_{len(self.refunds) + 1:04d}",
-            order_id=order.order_id,
-            customer_id=order.customer_id,
+            refund_id=stable_id("rf", req.idempotency_key),
+            order_id=req.order_id,
+            customer_id=self.orders[req.order_id].customer_id,
             amount_cents=req.amount_cents,
             reason=req.reason,
             idempotency_key=req.idempotency_key,
@@ -294,7 +348,11 @@ class FakeToolGateway:
 
 
 class PassthroughGuardrails:
-    """No redaction, no screening. Irreversible tools always need approval (safe default)."""
+    """No redaction, no screening, and a minimal action policy (lane D replaces it).
+
+    Blocks writes once injection is suspected and refunds without a passing
+    eligibility check. Every other irreversible action needs approval.
+    """
 
     def redact(self, text: str) -> RedactionResult:
         return RedactionResult(text=text)
@@ -303,6 +361,21 @@ class PassthroughGuardrails:
         return GuardrailVerdict(decision=GuardrailDecision.ALLOW)
 
     def check_action(self, action: ProposedAction, ctx: PolicyContext) -> GuardrailVerdict:
+        if ctx.injection_suspected and action.tool in IRREVERSIBLE_TOOLS:
+            return GuardrailVerdict(
+                decision=GuardrailDecision.BLOCK,
+                rule_ids=["injection.write_blocked"],
+                injection_suspected=True,
+            )
+        if action.tool is ToolName.ISSUE_REFUND:
+            elig = ctx.eligibility
+            if elig is None or not elig.eligible:
+                reasons = [r.value for r in elig.reasons] if elig else ["no eligibility check"]
+                return GuardrailVerdict(
+                    decision=GuardrailDecision.BLOCK,
+                    rule_ids=[f"refund.{r}" for r in reasons],
+                    reasons=reasons,
+                )
         if action.tool in IRREVERSIBLE_TOOLS:
             return GuardrailVerdict(
                 decision=GuardrailDecision.REQUIRE_APPROVAL, rule_ids=["approval.irreversible"]
@@ -340,6 +413,196 @@ class InMemoryApprovalStore:
 
     def list_pending(self) -> list[ApprovalRequest]:
         return [a for a in self.items.values() if a.status is ApprovalStatus.PENDING]
+
+
+class FakeActionExecutor:
+    """Reference implementation of the ``ActionExecutor`` port over the fakes."""
+
+    def __init__(
+        self,
+        gateway: FakeToolGateway,
+        guardrails: Guardrails,
+        approvals: InMemoryApprovalStore,
+        *,
+        now: datetime,
+        approval_key: bytes = TEST_APPROVAL_KEY,
+    ) -> None:
+        self.gateway = gateway
+        self.guardrails = guardrails
+        self.approvals = approvals
+        self.now = now
+        self._key = approval_key
+
+    async def propose(
+        self, action: ProposedAction, ctx: CallContext, *, injection_suspected: bool
+    ) -> ActionOutcome:
+        try:
+            args = proposal_model(action.tool).model_validate(action.arguments)
+        except ValidationError as exc:
+            result = ToolResult.fail(
+                action.tool, ErrorCategory.VALIDATION, str(exc.errors()[0]["msg"])
+            )
+            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, result=result)
+        arguments: JsonObject = args.model_dump(mode="json")
+        elig = None
+        if isinstance(args, RefundProposal):
+            check = await self.gateway.call(
+                ToolName.CHECK_REFUND_ELIGIBILITY,
+                {"order_id": args.order_id, "amount_cents": args.amount_cents},
+                ctx,
+            )
+            if not check.is_error and check.data is not None:
+                elig = RefundEligibility.model_validate(check.data)
+        policy_ctx = PolicyContext(
+            ticket_id=ctx.ticket_id,
+            customer_id=ctx.customer_id,
+            eligibility=elig,
+            injection_suspected=injection_suspected,
+            now=self.now,
+        )
+        verdict = self.guardrails.check_action(action, policy_ctx)
+        if verdict.decision is GuardrailDecision.BLOCK:
+            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+        if verdict.decision is GuardrailDecision.REQUIRE_APPROVAL:
+            if action.tool not in IRREVERSIBLE_TOOLS or ctx.customer_id is None:
+                return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+            approval_id = stable_id("apr", ctx.ticket_id, action.tool, canonical_json(arguments))
+            self.approvals.submit(
+                ApprovalRequest(
+                    approval_id=approval_id,
+                    ticket_id=ctx.ticket_id,
+                    customer_id=ctx.customer_id,
+                    tool=action.tool,
+                    arguments=arguments,
+                    idempotency_key=refund_idempotency_key(approval_id),
+                    rationale=action.rationale,
+                    verdict=verdict,
+                    requested_at=self.now,
+                )
+            )
+            return ActionOutcome(
+                action=action,
+                status=ActionStatus.PENDING_APPROVAL,
+                verdict=verdict,
+                approval_id=approval_id,
+            )
+        if action.tool in IRREVERSIBLE_TOOLS:  # a guardrail bug must not run a refund
+            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+        result = await self.gateway.call(action.tool, arguments, ctx)
+        status = ActionStatus.FAILED if result.is_error else ActionStatus.EXECUTED
+        return ActionOutcome(
+            action=action, status=status, result=result, verdict=verdict, attempts=1
+        )
+
+    async def decide(self, decision: ApprovalDecision) -> ActionOutcome:
+        request = self.approvals.decide(decision)
+        if request.status is ApprovalStatus.APPROVED:
+            return await self.execute_approved(request.approval_id)
+        return ActionOutcome(
+            action=_stored_action(request),
+            status=ActionStatus.SKIPPED,
+            approval_id=request.approval_id,
+        )
+
+    async def execute_approved(self, approval_id: str) -> ActionOutcome:
+        request = self.approvals.get(approval_id)
+        if request is None:
+            raise KeyError(approval_id)
+        action = _stored_action(request)
+        if request.status is not ApprovalStatus.APPROVED:
+            return ActionOutcome(
+                action=action, status=ActionStatus.BLOCKED, approval_id=approval_id
+            )
+        proposal = RefundProposal.model_validate(request.arguments)
+        token = approval_token(
+            self._key,
+            approval_id=approval_id,
+            order_id=proposal.order_id,
+            amount_cents=proposal.amount_cents,
+            idempotency_key=request.idempotency_key,
+        )
+        ctx = CallContext(
+            request_id=stable_id("req", request.ticket_id, "approval", approval_id),
+            ticket_id=request.ticket_id,
+            customer_id=request.customer_id,
+            caller="human",
+        )
+        arguments: JsonObject = {
+            **request.arguments,
+            "idempotency_key": request.idempotency_key,
+            "approval_id": approval_id,
+            "approval_token": token,
+        }
+        result = await self.gateway.call(request.tool, arguments, ctx)
+        if result.is_error:
+            return ActionOutcome(
+                action=action,
+                status=ActionStatus.FAILED,
+                result=result,
+                approval_id=approval_id,
+                attempts=1,
+            )
+        self.approvals.mark_executed(approval_id)
+        return ActionOutcome(
+            action=action,
+            status=ActionStatus.EXECUTED,
+            result=result,
+            approval_id=approval_id,
+            attempts=1,
+        )
+
+
+def _stored_action(request: ApprovalRequest) -> ProposedAction:
+    return ProposedAction(
+        tool=request.tool, arguments=request.arguments, rationale=request.rationale[:500]
+    )
+
+
+@dataclass
+class FakeCaseRuntime:
+    """One isolated fake stack. Satisfies the ``CaseRuntime`` port."""
+
+    gateway: FakeToolGateway
+    approvals: InMemoryApprovalStore
+    executor: FakeActionExecutor
+    resolver: TicketResolver = field(default_factory=lambda: StubResolver())
+
+    def tool_calls(self) -> list[ToolCallRecord]:
+        return list(self.gateway.calls)
+
+    def ledger(self) -> WorldState:
+        return self.gateway.ledger()
+
+    def pending_approvals(self) -> list[ApprovalRequest]:
+        return self.approvals.list_pending()
+
+
+class FakeCaseRuntimeFactory:
+    """Builds a fresh fake stack per case. ``make_resolver`` wires a resolver onto it."""
+
+    def __init__(
+        self,
+        make_resolver: Callable[[FakeCaseRuntime], TicketResolver] | None = None,
+        *,
+        docs: Sequence[KBDocument] = (),
+        policy: PolicyConfig | None = None,
+    ) -> None:
+        self._make_resolver = make_resolver
+        self._retriever = FakeRetriever(docs) if docs else None
+        self._policy = policy
+
+    def build(
+        self, *, world: WorldState, as_of: datetime, faults: Sequence[ToolFault]
+    ) -> FakeCaseRuntime:
+        gateway = FakeToolGateway(
+            world, as_of=as_of, retriever=self._retriever, faults=faults, policy=self._policy
+        )
+        approvals = InMemoryApprovalStore()
+        executor = FakeActionExecutor(gateway, PassthroughGuardrails(), approvals, now=as_of)
+        runtime = FakeCaseRuntime(gateway=gateway, approvals=approvals, executor=executor)
+        if self._make_resolver is not None:
+            runtime.resolver = self._make_resolver(runtime)
+        return runtime
 
 
 class ScriptedModelClient:
@@ -385,7 +648,9 @@ class NullTelemetry:
         self.spans.append((name, kind))
         yield _NullSpan()
 
-    def record_model_call(self, request: ModelRequest, response: ModelResponse) -> None:
+    def record_model_call(
+        self, request: ModelRequest, response: ModelResponse, started_ms: float
+    ) -> None:
         self.responses.append(response)
 
     def record_tool_call(self, result: ToolResult, latency_ms: float) -> None:
@@ -411,7 +676,7 @@ class StubResolver:
 
     async def resolve(self, ticket: Ticket) -> FinalResponse:
         return FinalResponse(
-            request_id="req_stub0000",
+            request_id=stable_id("req", ticket.ticket_id),
             ticket_id=ticket.ticket_id,
             status=ResolutionStatus.ESCALATED,
             reply="Thanks for reaching out. A support specialist will follow up shortly.",

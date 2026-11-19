@@ -10,6 +10,24 @@
       "title": "EscalationQueue",
       "type": "string"
     },
+    "EscalationReason": {
+      "enum": [
+        "policy_limit",
+        "approval_required",
+        "low_confidence",
+        "injection_suspected",
+        "customer_requested_human",
+        "tool_failure",
+        "account_security",
+        "account_inactive",
+        "legal_or_safety",
+        "ungrounded",
+        "out_of_scope",
+        "loop_limit"
+      ],
+      "title": "EscalationReason",
+      "type": "string"
+    },
     "Priority": {
       "enum": [
         "low",
@@ -23,6 +41,7 @@
   },
   "$id": "triagewright/tools/create_escalation/1.0.0",
   "additionalProperties": false,
+  "description": "Idempotent per ticket: a second call for the same ticket returns the first escalation.",
   "properties": {
     "priority": {
       "$ref": "#/$defs/Priority"
@@ -32,7 +51,7 @@
     },
     "reason_codes": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/EscalationReason"
       },
       "minItems": 1,
       "title": "Reason Codes",

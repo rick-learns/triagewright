@@ -23,4 +23,4 @@ Every refund is reviewed by a team member before it's issued, usually within 1 b
 
 ## Not refundable
 
-Gift cards, orders delivered more than 30 days ago, and orders from closed or suspended accounts can't be refunded through support.
+Orders delivered more than 30 days ago, and orders that were never delivered, can't be refunded. Refund requests from closed or suspended accounts go to our account team for review.

@@ -46,6 +46,11 @@
           "title": "Purpose",
           "type": "string"
         },
+        "started_ms": {
+          "minimum": 0,
+          "title": "Started Ms",
+          "type": "number"
+        },
         "stop_reason": {
           "$ref": "#/$defs/StopReason"
         },
@@ -65,6 +70,7 @@
       },
       "required": [
         "purpose",
+        "started_ms",
         "provider",
         "model",
         "input_tokens",
@@ -78,7 +84,6 @@
     },
     "Provider": {
       "enum": [
-        "anthropic",
         "openrouter",
         "replay"
       ],
@@ -106,6 +111,11 @@
       "minimum": 0,
       "title": "Cost Usd",
       "type": "number"
+    },
+    "estimated": {
+      "default": false,
+      "title": "Estimated",
+      "type": "boolean"
     },
     "input_tokens": {
       "default": 0,

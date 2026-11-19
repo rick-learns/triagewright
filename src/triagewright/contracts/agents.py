@@ -13,13 +13,21 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from triagewright.contracts.common import Cents, Contract, OrderId, TicketId
+from triagewright.contracts.common import (
+    ApprovalId,
+    Cents,
+    Contract,
+    JsonObject,
+    OrderId,
+    RequestId,
+    TicketId,
+)
 from triagewright.contracts.guardrails import GuardrailVerdict
 from triagewright.contracts.rag import Citation
 from triagewright.contracts.telemetry import RequestMetrics
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ToolName, ToolResult
-from triagewright.contracts.world import EscalationQueue, Priority
+from triagewright.contracts.world import EscalationQueue, EscalationReason, Priority
 
 
 class SubagentName(StrEnum):
@@ -40,19 +48,6 @@ class TicketCategory(StrEnum):
     POLICY_QUESTION = "policy_question"
     COMPLAINT = "complaint"
     OTHER = "other"
-
-
-class EscalationReason(StrEnum):
-    POLICY_LIMIT = "policy_limit"
-    APPROVAL_REQUIRED = "approval_required"
-    LOW_CONFIDENCE = "low_confidence"
-    INJECTION_SUSPECTED = "injection_suspected"
-    CUSTOMER_REQUESTED_HUMAN = "customer_requested_human"
-    TOOL_FAILURE = "tool_failure"
-    ACCOUNT_SECURITY = "account_security"
-    LEGAL_OR_SAFETY = "legal_or_safety"
-    UNGROUNDED = "ungrounded"
-    OUT_OF_SCOPE = "out_of_scope"
 
 
 Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
@@ -111,7 +106,7 @@ class ActionInput(Contract):
 
 class ProposedAction(Contract):
     tool: ToolName
-    arguments: dict[str, str | int | bool | None]
+    arguments: JsonObject  # validated against TOOL_SPECS[tool].input_model by the executor
     rationale: Annotated[str, Field(max_length=500)]
 
 
@@ -128,7 +123,7 @@ class ActionOutcome(Contract):
     status: ActionStatus
     result: ToolResult | None = None
     verdict: GuardrailVerdict | None = None
-    approval_id: str | None = None
+    approval_id: ApprovalId | None = None
     attempts: Annotated[int, Field(ge=0)] = 0
 
 
@@ -179,11 +174,20 @@ class LoopConfig(Contract):
     max_turns: Annotated[int, Field(ge=1, le=50)] = 8
     turn_timeout_s: Annotated[float, Field(gt=0)] = 20.0
     total_timeout_s: Annotated[float, Field(gt=0)] = 30.0
+    handoff_reserve_s: Annotated[float, Field(ge=0)] = 3.0  # kept back for the escalation write
     max_tokens: Annotated[int, Field(ge=1)] = 1024
+    tool_retries: Annotated[int, Field(ge=0, le=5)] = 2  # retries of retryable tool errors
+    retry_backoff_s: Annotated[float, Field(ge=0)] = 0.5  # base; evals use 0
 
 
 class FinalResponse(Contract):
-    request_id: str
+    """Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,
+    citation candidates, and a proposed status among resolved/needs_info/refused;
+    ``actions`` and ``escalation`` come from executor and gateway records, and a
+    pending approval or a created escalation overrides the proposed status.
+    """
+
+    request_id: RequestId
     ticket_id: TicketId
     status: ResolutionStatus
     reply: str  # customer-facing, PII-safe
@@ -194,4 +198,4 @@ class FinalResponse(Contract):
     stop: LoopStop = LoopStop.COMPLETED
     turns: Annotated[int, Field(ge=0)] = 0
     metrics: RequestMetrics | None = None
-    mode: Literal["live", "replay", "stub"] = "stub"
+    mode: Literal["live", "replay", "stub"]

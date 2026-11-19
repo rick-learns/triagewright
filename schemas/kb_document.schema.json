@@ -38,6 +38,11 @@
       "title": "Title",
       "type": "string"
     },
+    "trusted": {
+      "default": true,
+      "title": "Trusted",
+      "type": "boolean"
+    },
     "updated_at": {
       "format": "date",
       "title": "Updated At",

@@ -24,24 +24,24 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
 | A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | – | todo | – |
-| B1 model adapters (anthropic, openrouter, replay/record) | W0.2 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
+| B1 model adapters (openrouter, replay/record) | W0.2 | `src/triagewright/llm/**`, `tests/llm/**` | – | todo | – |
 | B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | – | todo | – |
 | C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | – | todo | – |
-| D1 guardrails + approvals | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | – | todo | – |
+| D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | – | todo | – |
 | E1 tracing, pricing, cost, latency | W0.2 | `src/triagewright/observability/**`, `tests/observability/**`, `config/pricing.toml` | – | todo | – |
 | F1 eval harness + graders + report | W0.2 | `src/triagewright/evals/**`, `tests/evals/**`, `evals/baseline.json`, `evals/README.md` | – | todo | – |
 | G1 cases: happy path + ambiguous | W0.2 | `evals/cases/happy_path/**`, `evals/cases/ambiguous/**` | – | todo | – |
 | G2 cases: policy edge + escalation | W0.2 | `evals/cases/policy_edge/**`, `evals/cases/escalation_required/**` | – | todo | – |
 | G3 cases: injection + tool failure | W0.2 | `evals/cases/injection/**`, `evals/cases/tool_failure/**` | – | todo | – |
 | H1 HTTP API + CLI | W0.2 | `src/triagewright/api/**`, `src/triagewright/cli/**`, `tests/api/**`, `tests/cli/**` | – | todo | – |
-| I1 architecture docs | W0.2 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | todo | – |
-| J1 synthetic data generator | W0.2 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | todo | – |
+| I1 architecture docs (deferred to M2) | X1 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | todo | – |
+| J1 synthetic data generator (deferred to M2, only if needed) | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | todo | – |
 
 ## M1 integration
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| X1 first 20 evals green on stubs (recorded) | B1, B2, F1, G1–G3 | `src/triagewright/wiring.py`, `evals/fixtures/recordings/**` | – | todo | – |
+| X1 first 20 evals green (recorded once, after A, C, D land) | A1, B1, B2, C1, D1, F1, G1–G3 | `src/triagewright/wiring.py`, `evals/fixtures/recordings/**` | – | todo | – |
 
 ## M2–M3
 

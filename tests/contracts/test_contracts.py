@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from scripts.export_schemas import main as export_schemas
 
-from triagewright.contracts.agents import FinalResponse, ResolutionStatus, TriageResult
+from triagewright.contracts.agents import FinalResponse, TriageResult
 from triagewright.contracts.evals import EvalCase
 from triagewright.contracts.llm import (
     Message,
@@ -135,14 +135,16 @@ def test_triage_confidence_is_bounded() -> None:
         )
 
 
-def test_final_response_minimal() -> None:
-    resp = FinalResponse(
-        request_id="req_00000001",
-        ticket_id="tkt_0001",
-        status=ResolutionStatus.NEEDS_INFO,
-        reply="Which order is this about?",
-    )
-    assert resp.mode == "stub"
+def test_final_response_mode_is_required() -> None:
+    raw = {
+        "request_id": "req_00000001",
+        "ticket_id": "tkt_0001",
+        "status": "needs_info",
+        "reply": "Which order is this about?",
+    }
+    with pytest.raises(ValidationError):
+        FinalResponse.model_validate(raw)
+    assert FinalResponse.model_validate({**raw, "mode": "live"}).mode == "live"
 
 
 def test_eval_case_id_must_match_category_prefix_pattern() -> None:
