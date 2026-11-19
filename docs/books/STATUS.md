@@ -48,7 +48,7 @@ Handed to M2/M3 lanes until their PRs merge (one writer per path): `Dockerfile`,
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
 | X1 compose the real lanes for API, CLI, evals | A1, B1, B2, C1, D1, E1, F1, G1–G3, H1 | `src/triagewright/wiring.py` | orchestrator | merged (sol-loop) | [#17](https://github.com/rick-learns/triagewright/pull/17) |
-| F1b `min_refund_cents` expectation | F1 | `src/triagewright/evals/**`, `tests/evals/**` | orchestrator | merged | [#15](https://github.com/rick-learns/triagewright/pull/15) |
+| F1b `min_refund_cents` expectation | F1, G2 | `src/triagewright/evals/**`, `tests/evals/**` | orchestrator | merged | [#15](https://github.com/rick-learns/triagewright/pull/15) |
 
 ## M2–M3: one writer for the agent core, lanes for everything else
 
@@ -76,11 +76,11 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | --- | --- | --- | --- | --- | --- |
 | I1 architecture doc, ADRs, exam map | X1 | `docs/architecture.md` (new), `docs/adr/ADR-002-*` and later (new; not ADR-001), `docs/exam-map.md` (new) | lane thread (claude-opus-5-5) | running | – |
 | R1 README rewrite | X1 | `README.md`, `docs/assets/**` (new) | lane thread (claude-opus-5-5) | running | – |
-| J1 synthetic data generator | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` (new) | lane thread (claude-opus-5-5) | running | – |
-| F2 eval report generator + case review checklist | F1 | `src/triagewright/evals/**` (except `runner.py`), `tests/evals/**` (except `test_runner.py`), `evals/README.md`, `evals/REVIEWING.md` (new) | lane thread (claude-opus-5-5) | running | – |
+| J1 synthetic data generator | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` (new) | lane thread (claude-opus-5-5) | in-review | [#25](https://github.com/rick-learns/triagewright/pull/25) |
+| F2 eval report generator + case review checklist | F1 | `src/triagewright/evals/**` (except `runner.py`), `tests/evals/**` (except `test_runner.py`), `evals/README.md`, `evals/REVIEWING.md` (new) | lane thread (claude-opus-5-5) | in-review | [#26](https://github.com/rick-learns/triagewright/pull/26) |
 | P1 fresh-clone `podman compose up` | X1 | `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `scripts/compose_smoke.sh` (new) | lane thread (claude-opus-5-5) | running | – |
-| RF2 split the test fakes | X1 | `src/triagewright/testing/**`, `tests/contracts/test_fakes.py` | lane thread (claude-opus-5-5) | running | – |
-| RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | running | – |
+| RF2 split the test fakes | X1 | `src/triagewright/testing/**`, `tests/contracts/test_fakes.py`, `tests/contracts/test_fakes_exports.py` (new) | lane thread (claude-opus-5-5) | in-review | [#23](https://github.com/rick-learns/triagewright/pull/23) |
+| RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | in-review | [#24](https://github.com/rick-learns/triagewright/pull/24) |
 
 ### Later
 

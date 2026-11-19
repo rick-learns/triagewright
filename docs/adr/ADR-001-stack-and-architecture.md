@@ -164,8 +164,9 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   (never fresh model output), signs an HMAC token over the approval id, order,
   amount, and idempotency key, and calls the gateway as `caller="human"`. The
   key is `TW_APPROVAL_KEY`; it is required for an out-of-process MCP server.
-  Without it, an in-process server signs with an ephemeral per-process key, so
-  the API and CLI share a key only when `TW_APPROVAL_KEY` is set. The
+  Without it, wiring generates an ephemeral key per service stack (the
+  executor signs, the in-process MCP server verifies), so the API and CLI
+  stacks share a key only when both use the same configured `TW_APPROVAL_KEY`. The
   approval is marked `executed` only on confirmed success. After a failure
   it stays `approved`, and a retry reuses the same idempotency key.
 - **Defense in depth.** The MCP server refuses `issue_refund` unless the
