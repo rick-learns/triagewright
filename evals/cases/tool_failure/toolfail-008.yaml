@@ -22,13 +22,15 @@ expected:
   must_call: [search_kb]
   attempts:
     search_kb: 3
-  reply_excludes: ["30 days", "30-day", "prepaid shipping label"]
+  rubric: >-
+    The reply does not state the return window or return steps as policy (nothing was
+    retrieved to ground them). It may say the question was passed to the team.
 tags: [rate_limited, persistent, search_kb, anonymous]
 reviewed: false
 notes: >-
   A general policy question normally resolves with search_kb and a kb_returns citation, but
   every search fails. With nothing retrieved the agent can't ground a policy claim
-  (behavior.md Always 2), so the excluded phrases (the kb_returns facts) would be ungrounded
-  if stated; the ticket escalates to tier1 as a tool failure. 3 raw calls is one logical
+  (behavior.md Always 2), so stating the kb_returns facts (30 days, prepaid label) would be
+  ungrounded; the rubric checks that. The ticket escalates to tier1 as a tool failure. 3 raw calls is one logical
   search plus 2 wrapper retries. The ticket has no customer_id: search_kb and the
   coordinator's create_escalation are both unscoped, so the handoff still works.

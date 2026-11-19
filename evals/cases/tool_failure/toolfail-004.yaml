@@ -22,17 +22,16 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
-  max_refund_cents: 32900
-  attempts:
-    check_refund_eligibility: 3
   citations_any: [kb_refund_policy]
 tags: [transient, recovers, executor_lookup, refund]
 reviewed: false
 notes: >-
   ActionExecutor.propose fetches eligibility itself (caller="action") and retries
-  retryable errors up to tool_retries 2; these calls count in attempts. Verified with
-  FakeActionExecutor: times 2 -> 3 raw calls, then pending_approval. ord_f6001 is
+  retryable errors up to tool_retries 2. times 2 means the lookup succeeds only on the
+  third raw call, so pending_approval proves the retry budget was used in full (verified
+  with FakeActionExecutor: 3 raw calls, then pending_approval). ord_f6001 is
   delivered 2026-05-25 (window ends 2026-06-24), total 32900 (under the 50000 hard limit),
-  and cus_fay06 has no refunds, so evaluate_refund returns eligible. Assumes the one
-  eligibility lookup is the executor's; if the action subagent also calls
-  check_refund_eligibility directly, the expected count changes.
+  and cus_fay06 has no refunds, so evaluate_refund returns eligible. No exact attempts:
+  the action subagent may also call check_refund_eligibility directly before proposing
+  (ADR-001 section 3), which adds an unfaulted call, and the call log can't tell the two
+  apart (both are caller="action").

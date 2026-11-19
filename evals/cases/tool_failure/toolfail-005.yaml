@@ -32,5 +32,6 @@ notes: >-
   status failed, 3 raw calls) and propose returns failed with the retryable result, which
   lane B maps to tool_failure -> tier1 per behavior.md Always 5. With no eligibility, no
   approval may be stored, though ord_c3002 would be eligible (delivered 2026-06-09, 4900, no
-  prior refunds). 3 holds whether or not the action subagent also calls the tool, since
-  every call fails and none may be retried beyond the wrapper.
+  prior refunds). 3 holds whether the failing lookup is the executor's or a direct action-subagent
+  call made first (after which nothing should be proposed), since every call fails and
+  none may be retried beyond the wrapper.
