@@ -1369,6 +1369,18 @@ async def test_a_models_own_failed_policy_search_counts_as_the_lookup() -> None:
     assert _policy_lookups(s) == 1
 
 
+async def test_a_policy_search_with_empty_categories_counts_as_the_lookup() -> None:
+    # No categories and an empty list both mean unfiltered: a failed one isn't repeated.
+    error = ToolError(category=ErrorCategory.INTERNAL, message="down", retryable=False)
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)
+    triaged, _, act, propose, submitted, _ = refund_script("ord_h8001", 11800)
+    empty = call("search_kb", {"query": "refund policy", "categories": []})
+    script = [triaged, together(act, empty), propose, submitted, finalize("x"), finalize("x")]
+    s = stack(script, faults=[fault])
+    await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    assert _policy_lookups(s) == 1
+
+
 async def test_a_filtered_policy_search_does_not_stand_in_for_the_lookup() -> None:
     # The model's search filtered the policy out, so code still looks it up.
     triaged, _, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)

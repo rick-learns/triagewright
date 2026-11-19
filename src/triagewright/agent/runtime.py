@@ -122,11 +122,16 @@ def _append(
 
 
 def _search_key(arguments: JsonObject) -> str | None:
-    """``search_kb`` arguments with defaults filled in, so equivalent searches compare equal."""
+    """``search_kb`` arguments with defaults filled in, so equivalent searches compare equal.
+    The gateway reads no categories, or an empty list, as unfiltered, and their order as a set."""
     try:
-        return canonical_json(SearchKBInput.model_validate(arguments).model_dump(mode="json"))
+        search = SearchKBInput.model_validate(arguments)
     except ValidationError:
         return None
+    categories = sorted(set(search.categories)) if search.categories else None
+    return canonical_json(
+        search.model_copy(update={"categories": categories}).model_dump(mode="json")
+    )
 
 
 @dataclass
