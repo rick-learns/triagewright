@@ -198,9 +198,10 @@ def from_chat_response(
         for i, call in enumerate(message.get("tool_calls") or []):
             fn = call["function"]
             raw = fn.get("arguments")
-            if finish == "length" and raw in (None, ""):
-                continue  # cut off before any arguments; the caller sees max_tokens
-            raw = raw or "{}"
+            if raw is None or raw == "":
+                if finish == "length":
+                    continue  # cut off before any arguments; the caller sees max_tokens
+                raw = "{}"
             try:
                 args = json.loads(raw) if isinstance(raw, str) else raw
             except ValueError:
@@ -208,6 +209,8 @@ def from_chat_response(
                     continue  # cut off mid-arguments; the caller sees max_tokens
                 raise
             if not isinstance(args, dict):
+                if finish == "length":
+                    continue  # not a complete object; the caller sees max_tokens
                 raise TypeError("tool arguments are not an object")
             content.append(ToolUseBlock(id=tool_use_id(request, i), name=fn["name"], input=args))
         usage, cost = _usage(body.get("usage") or {})

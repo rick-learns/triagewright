@@ -267,6 +267,9 @@ def test_length_drops_cut_off_tool_calls() -> None:
         {"id": "c", "function": {"name": "get_order", "arguments": ""}},
         {"id": "d", "function": {"name": "get_order"}},
         {"id": "e", "function": {"name": "list_orders", "arguments": {}}},
+        {"id": "f", "function": {"name": "list_orders", "arguments": []}},
+        {"id": "g", "function": {"name": "list_orders", "arguments": False}},
+        {"id": "h", "function": {"name": "list_orders", "arguments": "[]"}},
     ]
     body = chat({"content": "", "tool_calls": calls}, finish="length")
     resp = from_chat_response(body, request=req, provider=Provider.GEMINI, latency_ms=0)
@@ -286,6 +289,8 @@ def test_length_drops_cut_off_tool_calls() -> None:
         {"choices": [{"finish_reason": "stop"}]},
         chat({"tool_calls": [{"function": {"name": "f", "arguments": "{not json"}}]}),
         chat({"tool_calls": [{"function": {"name": "f", "arguments": "[1]"}}]}),
+        chat({"tool_calls": [{"function": {"name": "f", "arguments": []}}]}),
+        chat({"tool_calls": [{"function": {"name": "f", "arguments": False}}]}),
         chat({"tool_calls": [{"function": {"arguments": "{}"}}]}),
     ],
 )
