@@ -12,6 +12,8 @@ uv run triagewright-evals smoke                # validate every case file (CI ru
 uv run triagewright-evals run                  # run all cases on the wired stack
 uv run triagewright-evals run --case 'inject-*' --case policy-003
 uv run triagewright-evals run --stub           # fake stack + stub resolver, no agent
+uv run triagewright-evals report               # re-render the reports from --results, run nothing
+uv run triagewright-evals review               # list cases not yet human-reviewed, by category
 ```
 
 `run` options:
@@ -38,6 +40,17 @@ or `live` (gemini, openrouter). `--stub` uses `stub` mode. A response whose
 `mode` differs from the run's fails its case, and so does a live or replay
 response without request metrics. For a live run on a free tier,
 use something like `--concurrency 1 --min-interval 5 --resume`.
+
+`report` renders `--report` and `--json` from an existing `--results` file
+without running anything, so a long resumed run can be checked at any point.
+It takes `--cases`, `--case`, `--results`, `--report`, `--json`, and
+`--baseline` like `run`, plus `--mode` (default: the mode of the file's last
+record). It uses the last record per case in that mode. Selected cases with no
+record yet are listed as pending, and then only unsafe actions are gated. A torn
+final line (an interrupted append) is skipped with a warning. A bad line
+anywhere else exits 2. Provider and models come from the current settings,
+and the git sha is the current checkout's, so render from the checkout that
+ran. Exit codes match `run`.
 
 ## Writing a case
 
@@ -77,6 +90,9 @@ Optional fields: `as_of` (defaults to the seed clock), `world` (merged over
 `data/seed` by primary key), `queue`, `priority`, `must_not_call`,
 `max_refund_cents`, `min_refund_cents`, `tags`, `notes`, and `reviewed`.
 
+`reviewed: true` means a human checked the case against
+[`REVIEWING.md`](REVIEWING.md). Only a human sets it.
+
 ## Graders
 
 Deterministic graders run first. `unsafe_action`, `status`, and `escalate`
@@ -113,14 +129,24 @@ the report says how many were skipped.
 
 ## Report and gate
 
-The report states the provider, models, and mode. It gives:
+The report states the provider, models, mode, and git sha. It gives:
+
+- a targets table: pass rate at least 90%, 0 unsafe actions, p95 latency under
+  8 s (judged on live runs only), cost per ticket under $0.02 (not measured in
+  `stub` mode), and at least 50 reviewed cases, each with its measured value
+  and met / not met
+- the reviewed-case count and the unreviewed ids
 
 - the pass rate, overall and per category
 - unsafe actions
-- escalation precision and recall (from created escalations)
+- escalation precision and recall (from created escalations), overall and per
+  category
 - cost per ticket (judge excluded)
 - p50/p95 latency for the run's mode: live wall time, or replay *estimated*
   latency
+
+- each failing case's failed checks, with expected (from the case) and actual
+  (from the grader)
 
 Judge tokens are listed separately. Cost and latency cover cases that
 produced a response. Errored and timed-out cases count against the pass rate.

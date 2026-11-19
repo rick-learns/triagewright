@@ -1,4 +1,7 @@
-"""``triagewright-evals``: ``smoke`` validates every case file; ``run`` is the release gate."""
+"""``triagewright-evals``: ``smoke`` validates every case file; ``run`` is the release gate.
+
+``report`` re-renders the reports from a results JSONL, and ``review`` lists unreviewed cases.
+"""
 
 from __future__ import annotations
 
@@ -14,16 +17,21 @@ from typing import cast
 
 from triagewright.config import Settings, get_settings
 from triagewright.contracts.common import canonical_json
+from triagewright.contracts.evals import EvalCase
 from triagewright.contracts.llm import Provider
 from triagewright.contracts.ports import CaseRuntimeFactory
 from triagewright.data import load_as_of, load_eval_cases, load_world
 from triagewright.evals.judge import JudgeClientFactory
 from triagewright.evals.report import (
     EvalReport,
+    ResultsError,
+    build_report,
     judge_report,
+    latest_records,
     load_baseline,
-    regressions,
+    read_results,
     render_markdown,
+    review_status,
     summarize,
     updated_baseline,
 )
@@ -70,6 +78,26 @@ def _parser() -> argparse.ArgumentParser:
         metavar="MODULE:ATTR",
         help="zero-argument callable returning a JudgeClientFactory; unset skips the judge",
     )
+
+    report = sub.add_parser(
+        "report", help="re-render the reports from a results JSONL without running anything"
+    )
+    report.add_argument("--cases", type=Path, default=Path("evals/cases"), help="cases directory")
+    report.add_argument(
+        "--case", action="append", default=[], metavar="GLOB", help="only ids matching (repeat)"
+    )
+    report.add_argument("--results", type=Path, default=Path("var/evals/results.jsonl"))
+    report.add_argument("--report", type=Path, default=Path("var/evals/report.md"))
+    report.add_argument("--json", type=Path, default=Path("var/evals/report.json"))
+    report.add_argument("--baseline", type=Path, default=Path("evals/baseline.json"))
+    report.add_argument(
+        "--mode",
+        choices=["live", "replay", "stub"],
+        help="which run's records to use (default: the mode of the last record)",
+    )
+
+    review = sub.add_parser("review", help="list the cases not yet human-reviewed, by category")
+    review.add_argument("cases_dir", nargs="?", type=Path, default=Path("evals/cases"))
     return parser
 
 
@@ -104,12 +132,33 @@ def _smoke(cases_dir: Path) -> int:
     return 0
 
 
+def _select(cases: list[EvalCase], globs: list[str]) -> list[EvalCase]:
+    if not globs:
+        return cases
+    return [c for c in cases if any(fnmatch.fnmatchcase(c.id, g) for g in globs)]
+
+
+def _stack(settings: Settings, mode: Mode) -> tuple[str, dict[str, str]]:
+    """Provider and models (judge excluded) of the stack under test, as the report states them."""
+    if mode == "stub":
+        return "none (stub resolver, no model calls)", {}
+    models = {k: v for k, v in settings.models().items() if k != "judge"}
+    return settings.llm_provider.value, models
+
+
+def _write(report: EvalReport, md_path: Path, json_path: Path) -> None:
+    for path, text in (
+        (md_path, render_markdown(report)),
+        (json_path, report.model_dump_json(indent=2) + "\n"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
 def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
     all_cases = load_eval_cases(args.cases)
-    cases = all_cases
-    if args.case:
-        cases = [c for c in cases if any(fnmatch.fnmatchcase(c.id, g) for g in args.case)]
+    cases = _select(all_cases, args.case)
     if not cases:
         print(f"no eval cases selected in {args.cases}", file=sys.stderr)
         return 2
@@ -133,11 +182,7 @@ def _run(args: argparse.Namespace) -> int:
 
     mode = _mode(settings, args.stub)
     defaults = settings.models()
-    if mode == "stub":
-        provider, models = "none (stub resolver, no model calls)", {}
-    else:
-        provider = settings.llm_provider.value
-        models = {k: v for k, v in defaults.items() if k != "judge"}
+    provider, models = _stack(settings, mode)
     judge = None
     if judge_factory is not None:
         judge = JudgeConfig(
@@ -181,19 +226,14 @@ def _run(args: argparse.Namespace) -> int:
     )
     baseline = load_baseline(args.baseline)
     filtered = len(cases) < len(all_cases)
-    report = EvalReport(
-        summary=summary,
+    report = build_report(
+        summary,
+        cases=cases,
         judge=judge_report(records, model=judge.model if judge else None),
-        baseline_compared=mode in baseline.modes,
+        baseline=baseline,
         filtered=filtered,
-        regressions=regressions(summary, baseline, compare_metrics=not filtered),
     )
-    for path, text in (
-        (args.report, render_markdown(report)),
-        (args.json, report.model_dump_json(indent=2) + "\n"),
-    ):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+    _write(report, args.report, args.json)
 
     print(
         f"{summary.n_cases} cases ({mode}): pass rate {summary.pass_rate:.1%}, "
@@ -211,6 +251,83 @@ def _run(args: argparse.Namespace) -> int:
     return 1 if report.regressions else 0
 
 
+def _report(args: argparse.Namespace) -> int:
+    """Render the reports from ``--results`` as they stand, e.g. mid-way through a resumed run."""
+    settings = get_settings()
+    all_cases = load_eval_cases(args.cases)
+    cases = _select(all_cases, args.case)
+    if not cases:
+        print(f"no eval cases selected in {args.cases}", file=sys.stderr)
+        return 2
+    if not args.results.exists():
+        print(f"no results file at {args.results}", file=sys.stderr)
+        return 2
+    try:
+        saved, warnings = read_results(args.results)
+    except ResultsError as exc:
+        print(f"cannot read the results: {exc}", file=sys.stderr)
+        return 2
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if not saved:
+        print(f"no case records in {args.results}", file=sys.stderr)
+        return 2
+    mode: Mode = args.mode or saved[-1].mode
+    latest = latest_records(saved, mode)
+    records = [latest[c.id] for c in cases if c.id in latest]
+    pending = [c.id for c in cases if c.id not in latest]
+    if not records:
+        print(f"no {mode} records for the selected cases in {args.results}", file=sys.stderr)
+        return 2
+
+    provider, models = _stack(settings, mode)
+    # Records don't name the judge model; if any case was judged, it was the configured one.
+    judged = any(r.judge_status == "judged" for r in records)
+    judge_model = settings.models()["judge"] if judged else None
+    if judge_model is not None:
+        models["judge"] = judge_model
+    summary = summarize(
+        records,
+        mode=mode,
+        provider=provider,
+        models=models,
+        git_sha=_git_sha(),
+        created_at=datetime.now(UTC),
+    )
+    report = build_report(
+        summary,
+        cases=cases,
+        judge=judge_report(records, model=judge_model),
+        baseline=load_baseline(args.baseline),
+        filtered=len(records) < len(all_cases),
+        pending=pending,
+        rendered_from=str(args.results),
+    )
+    _write(report, args.report, args.json)
+    print(
+        f"{summary.n_cases} cases ({mode}), {len(pending)} pending: pass rate "
+        f"{summary.pass_rate:.1%}, {summary.unsafe_actions} unsafe; "
+        f"report {args.report}, json {args.json}"
+    )
+    for reason in report.regressions:
+        print(f"regression: {reason}", file=sys.stderr)
+    return 1 if report.regressions else 0
+
+
+def _review(cases_dir: Path) -> int:
+    """List unreviewed cases by category. Marking a case reviewed stays a human edit."""
+    cases = load_eval_cases(cases_dir)
+    status = review_status(cases)
+    print(f"{status.reviewed} of {status.total} cases reviewed; checklist: evals/REVIEWING.md")
+    by_category: dict[str, list[str]] = {}
+    for case in cases:
+        if not case.reviewed:
+            by_category.setdefault(case.category.value, []).append(case.id)
+    for category, ids in sorted(by_category.items()):
+        print(f"{category} ({len(ids)}): {', '.join(ids)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     try:
@@ -221,5 +338,9 @@ def main(argv: list[str] | None = None) -> int:
         return _smoke(args.cases_dir)
     if args.command == "run":
         return _run(args)
+    if args.command == "report":
+        return _report(args)
+    if args.command == "review":
+        return _review(args.cases_dir)
     parser.print_usage(sys.stderr)
     return 2

@@ -79,9 +79,10 @@ def test_stub_run_writes_reports_and_gates_on_the_baseline(
     s = report.summary
     assert (s.mode, s.n_cases, s.pass_rate, s.models) == ("stub", 2, 0.0, {})
     assert s.escalation_precision is None and s.escalation_recall == 0.0
-    assert "escalate: want escalate=True" in (tmp_path / "report.md").read_text()
+    md = (tmp_path / "report.md").read_text()
+    assert "| escalate | escalate=True | want escalate=True;" in md
     assert not report.baseline_compared and not report.judge.configured
-    assert "- Mode: stub" in (tmp_path / "report.md").read_text()
+    assert "- Mode: stub" in md
     assert len((tmp_path / "results.jsonl").read_text().splitlines()) == 2
 
     baseline = Baseline.model_validate_json((tmp_path / "baseline.json").read_text())
@@ -215,3 +216,91 @@ def test_factory_and_judge_load_from_module_specs(tmp_path: Path) -> None:
     assert report.judge.configured and report.judge.after_failure == 2
     errors = {r.case_id: r.error for r in report.summary.results}
     assert errors["escal-001"] == "mode mismatch: response is stub, run is replay"
+
+
+def report_args(root: Path, *extra: str) -> list[str]:
+    return [
+        "report",
+        "--cases",
+        str(root / "cases"),
+        "--results",
+        str(root / "results.jsonl"),
+        "--report",
+        str(root / "rendered.md"),
+        "--json",
+        str(root / "rendered.json"),
+        "--baseline",
+        str(root / "baseline.json"),
+        *extra,
+    ]
+
+
+def test_report_rerenders_the_run_and_skips_a_torn_final_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_cases(tmp_path)
+    assert main(run_args(tmp_path)) == 0
+    ran = EvalReport.model_validate_json((tmp_path / "report.json").read_text())
+    results = tmp_path / "results.jsonl"
+    with results.open("a") as fh:
+        fh.write('{"key": "tor')  # an interrupted append
+    capsys.readouterr()
+
+    assert main(report_args(tmp_path)) == 0
+    captured = capsys.readouterr()
+    assert f"warning: {results}:3: skipped a torn final line" in captured.err
+    assert "2 cases (stub), 0 pending: pass rate 0.0%, 0 unsafe" in captured.out
+    rendered = EvalReport.model_validate_json((tmp_path / "rendered.json").read_text())
+    assert rendered.summary.results == ran.summary.results
+    assert rendered.summary.mode == "stub" and rendered.summary.models == {}
+    assert rendered.rendered_from == str(results) and rendered.pending == []
+    assert not rendered.filtered and rendered.review == ran.review
+    assert rendered.failures == ran.failures
+    md = (tmp_path / "rendered.md").read_text()
+    assert "## Targets" in md and "| Reviewed cases | 0 | >= 50 | **not met** |" in md
+
+
+def test_report_mid_run_lists_pending_cases_and_gates_only_unsafe(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_cases(tmp_path)
+    assert main(run_args(tmp_path, "--case", "happy-*")) == 0
+    assert main(report_args(tmp_path)) == 0
+    assert "1 cases (stub), 1 pending" in capsys.readouterr().out
+    rendered = EvalReport.model_validate_json((tmp_path / "rendered.json").read_text())
+    assert rendered.pending == ["escal-001"] and rendered.filtered
+    assert rendered.review.total == 2
+    assert (
+        "- Pending: 1 selected case(s) have no result yet: `escal-001`"
+        in (tmp_path / "rendered.md").read_text()
+    )
+    # No records in the asked-for mode.
+    assert main(report_args(tmp_path, "--mode", "live")) == 2
+    assert "no live records for the selected cases" in capsys.readouterr().err
+
+
+def test_report_usage_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_cases(tmp_path)
+    assert main(report_args(tmp_path)) == 2
+    assert "no results file at" in capsys.readouterr().err
+    (tmp_path / "results.jsonl").write_text('{"torn\n{"key": "x"}\n')
+    assert main(report_args(tmp_path)) == 2
+    assert "cannot read the results" in capsys.readouterr().err
+    (tmp_path / "results.jsonl").write_text('{"torn')
+    assert main(report_args(tmp_path)) == 2
+    assert "no case records in" in capsys.readouterr().err
+    assert main(report_args(tmp_path, "--case", "nope-*")) == 2
+    assert "no eval cases selected" in capsys.readouterr().err
+    assert not (tmp_path / "rendered.md").exists()
+
+
+def test_review_lists_unreviewed_cases_by_category(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cases_dir = write_cases(tmp_path)
+    path = cases_dir / "happy_path" / "happy-001.yaml"
+    path.write_text(path.read_text().replace("reviewed: false", "reviewed: true"))
+    assert main(["review", str(cases_dir)]) == 0
+    assert capsys.readouterr().out == (
+        "1 of 2 cases reviewed; checklist: evals/REVIEWING.md\nescalation_required (1): escal-001\n"
+    )
