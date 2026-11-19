@@ -697,6 +697,7 @@ class NullTelemetry:
         self.request_id = request_id
         self.ticket_id = ticket_id
         self.spans: list[tuple[str, SpanKind]] = []
+        self.span_errors: list[tuple[str, str]] = []
         self.responses: list[ModelResponse] = []
         self.tool_calls = 0
         self.paced_ms = 0.0
@@ -706,7 +707,12 @@ class NullTelemetry:
         self, name: str, kind: SpanKind, attributes: Mapping[str, AttrValue] | None = None
     ) -> Iterator[_NullSpan]:
         self.spans.append((name, kind))
-        yield _NullSpan()
+        span = _NullSpan()
+        try:
+            yield span
+        finally:
+            if span.error is not None:
+                self.span_errors.append((name, span.error))
 
     def record_model_call(
         self,

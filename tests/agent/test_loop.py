@@ -32,8 +32,9 @@ from triagewright.contracts.llm import (
     ToolChoice,
 )
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
+from triagewright.llm.errors import ModelUnavailableError
 from triagewright.pacing import CALL_BUDGET
-from triagewright.testing import model_response, sample_ticket
+from triagewright.testing import ScriptedModelClient, model_response, sample_ticket
 
 pytestmark = pytest.mark.anyio
 
@@ -152,6 +153,20 @@ async def test_model_error_falls_back() -> None:
     assert response.status is ResolutionStatus.ESCALATED
     assert response.stop is LoopStop.ERROR
     assert s.escalation_args()["reason_codes"] == ["low_confidence"]
+
+
+async def test_a_model_errors_http_status_reaches_its_span() -> None:
+    class Overloaded(ScriptedModelClient):
+        async def complete(self, request: ModelRequest) -> ModelResponse:
+            if self.requests:
+                raise ModelUnavailableError("gemini m: HTTP 503", status=503)
+            return await super().complete(request)
+
+    s = stack(model=Overloaded([triage()]))
+    await s.resolve(sample_ticket())
+    assert s.telemetry.last is not None
+    errors = dict(s.telemetry.last.span_errors)
+    assert errors["model.coordinator"] == "ModelUnavailableError (HTTP 503)"
 
 
 # ---- bounds ------------------------------------------------------------------------

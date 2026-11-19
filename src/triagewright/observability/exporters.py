@@ -44,6 +44,8 @@ def to_trace_event(span: ReadableSpan) -> TraceEvent | None:
         k: v for k, v in attrs.items() if isinstance(v, str | int | float | bool)
     }
     error = span.status.status_code is StatusCode.ERROR
+    if error and span.status.description:
+        scalars["error"] = span.status.description
     return TraceEvent(
         ts=datetime.fromtimestamp(start / 1e9, UTC),
         request_id=request_id,

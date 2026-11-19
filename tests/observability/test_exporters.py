@@ -12,6 +12,7 @@ from opentelemetry.sdk.trace.export import (
     SpanExportResult,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import Status, StatusCode
 
 from tests.observability.support import request, response
 from triagewright.config import Settings
@@ -115,3 +116,18 @@ def test_jsonl_skips_foreign_spans_and_reports_write_failures(
     assert JsonlSpanExporter(blocked / "sub").export([ours]) is SpanExportResult.FAILURE
     assert "could not write traces" in caplog.text
     provider.shutdown()
+
+
+def test_an_error_spans_description_is_exported() -> None:
+    memory = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(memory))
+    span = provider.get_tracer("test").start_span(
+        "model.coordinator", attributes={"tw.kind": "model_call", "tw.request_id": "r"}
+    )
+    span.set_status(Status(StatusCode.ERROR, "ModelResponseError (HTTP 500)"))
+    span.end()
+    (finished,) = memory.get_finished_spans()
+    event = to_trace_event(finished)
+    assert event is not None and event.status == "error"
+    assert event.attributes["error"] == "ModelResponseError (HTTP 500)"
