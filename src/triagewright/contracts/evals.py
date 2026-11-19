@@ -114,7 +114,9 @@ class CaseResult(Contract):
     grades: list[GradeResult]
     cost_usd: Annotated[float, Field(ge=0)] = 0.0
     latency_ms: Annotated[float, Field(ge=0)] = 0.0
-    paced_ms: Annotated[float, Field(ge=0)] = 0.0  # rate-limit waits, left out of latency_ms
+    # Rate-limit waits, left out of latency_ms; None if not recorded (no metrics, or results
+    # written before this field existed).
+    paced_ms: Annotated[float, Field(ge=0)] | None = None
     ttft_ms: float | None = None
     stop: LoopStop | None = None  # how the agent loop ended; None without a response
     error: str | None = None

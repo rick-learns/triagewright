@@ -146,10 +146,14 @@ The report states the provider, models, mode, and git sha. It gives:
 - cost per ticket (judge excluded)
 - p50/p95 latency for the run's mode: live wall time less rate-limit waits, or
   replay *estimated* latency, over the cases that returned a response
-- latency notes (live and replay): how many errored cases latency leaves out,
-  the rate-limit waits it leaves out (cases that waited, p95 wait), and how
-  tickets ended (completed, timeout, max_turns, refusal, error); a `timeout`
-  ticket's latency is capped by the budget, and it was escalated by default
+- latency notes (live and replay), over the same non-errored cases as latency:
+  how many errored cases are left out, the rate-limit waits left out of live
+  latency (how many cases recorded one, how many waited, p95 wait; `n/a` for
+  results that predate the field, not applicable in replay), and how the
+  agent loop ended (completed, timeout, max_turns, refusal, error). A
+  `timeout` ticket hit a time limit (the request budget, a model call's
+  deadline, or a refused rate-limit wait), and the agent then attempted a
+  handoff
 
 - each failing case's failed checks, with expected (from the case) and actual
   (from the grader)

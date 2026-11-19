@@ -50,10 +50,17 @@
           "type": "number"
         },
         "paced_ms": {
-          "default": 0.0,
-          "minimum": 0,
-          "title": "Paced Ms",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paced Ms"
         },
         "passed": {
           "title": "Passed",

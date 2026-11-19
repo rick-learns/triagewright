@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 from tests.evals.test_report_support import cases_for, failing, rec, summary_of
 from triagewright.contracts.agents import LoopStop
 from triagewright.contracts.evals import EvalCategory, GradeResult
 from triagewright.evals.report import Baseline, build_report, judge_report, render_markdown
-from triagewright.evals.runner import CaseRecord
+from triagewright.evals.runner import CaseRecord, Mode
 
 
 def test_markdown_states_mode_provider_models_and_failures() -> None:
@@ -153,34 +155,59 @@ def test_zero_cost_does_not_claim_the_models_are_free() -> None:
     )
 
 
-def _ended(record: CaseRecord, stop: LoopStop | None, paced_ms: float = 0.0) -> CaseRecord:
+def _ended(record: CaseRecord, stop: LoopStop | None, paced_ms: float | None = 0.0) -> CaseRecord:
     result = record.result.model_copy(update={"stop": stop, "paced_ms": paced_ms})
     return record.model_copy(update={"result": result})
 
 
+def _render(*records: CaseRecord, mode: Mode) -> str:
+    s = summary_of(*records, mode=mode)
+    ids = [r.result.case_id for r in records]
+    report = build_report(
+        s,
+        cases=cases_for(*ids),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    return render_markdown(report)
+
+
 def test_latency_notes_count_errors_waits_and_how_tickets_ended() -> None:
-    s = summary_of(
+    md = _render(
         _ended(rec("happy-001", mode="live"), LoopStop.COMPLETED),
         _ended(rec("happy-002", mode="live"), LoopStop.TIMEOUT, paced_ms=4000.0),
         _ended(rec("happy-003", mode="live"), None),
         rec("happy-004", mode="live", passed=False, error="timed out"),
         mode="live",
     )
-    report = build_report(
-        s,
-        cases=cases_for("happy-001", "happy-002", "happy-003", "happy-004"),
-        judge=judge_report([], model=None),
-        baseline=Baseline(),
-        filtered=False,
-    )
-    md = render_markdown(report)
     for line in (
         "- Mode: live: latency is the agent's elapsed time per ticket, rate-limit waits excluded",
-        "- Latency covers the 3 of 4 case(s) that returned a response; 1 errored case(s) are "
-        "left out.",
-        "- Rate-limit waits, left out of latency: 1 case(s) waited; p95 wait 3600 ms.",
-        "- How tickets ended: completed 1, timeout 1, not recorded 1.",
+        "- Latency and the notes below cover the 3 non-errored case(s) of 4; 1 errored case(s) "
+        "are left out.",
+        "- Rate-limit waits, left out of latency: recorded for 3 of 3; 1 case(s) waited; "
+        "p95 wait 3600 ms.",
+        "- How tickets ended: completed 1, timeout 1, not recorded 1. A `timeout` ticket hit a "
+        "time limit",
     ):
         assert line in md, line
-    stub = report.model_copy(update={"summary": s.model_copy(update={"mode": "stub"})})
-    assert "## Latency notes" not in render_markdown(stub)
+    assert "## Latency notes" not in _render(rec("happy-001", mode="stub"), mode="stub")
+
+
+def test_results_without_pacing_show_it_as_not_recorded() -> None:
+    old = rec("happy-001", mode="live").model_dump(mode="json")
+    del old["result"]["paced_ms"], old["result"]["stop"]  # written before the fields existed
+    loaded = CaseRecord.model_validate_json(json.dumps(old))
+    assert loaded.result.paced_ms is None and loaded.result.stop is None
+    md = _render(loaded, mode="live")
+    assert "- Rate-limit waits, left out of latency: n/a (not recorded in these results)." in md
+    mixed = _render(
+        loaded, _ended(rec("happy-002", mode="live"), LoopStop.COMPLETED, 500.0), mode="live"
+    )
+    assert "recorded for 1 of 2; 1 case(s) waited; p95 wait 500 ms." in mixed
+
+
+def test_replay_notes_say_pacing_is_not_reproduced() -> None:
+    md = _render(_ended(rec("happy-001"), LoopStop.TIMEOUT), mode="replay")
+    assert "- Rate-limit waits: not applicable; replay doesn't reproduce live pacing." in md
+    assert "- How replayed tickets ended: timeout 1." in md

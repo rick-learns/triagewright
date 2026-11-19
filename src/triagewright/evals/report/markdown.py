@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from triagewright.contracts.agents import LoopStop
-from triagewright.contracts.evals import EvalRunSummary
+from triagewright.contracts.evals import CaseResult, EvalRunSummary
 from triagewright.evals.report.aggregate import percentile
 from triagewright.evals.report.model import EvalReport
 from triagewright.evals.report.targets import _pct
@@ -31,25 +31,36 @@ def _met(met: bool | None) -> str:
     return {True: "met", False: "**not met**", None: "not measured"}[met]
 
 
+def _pacing_note(s: EvalRunSummary, timed: list[CaseResult]) -> str:
+    if s.mode == "replay":
+        return "- Rate-limit waits: not applicable; replay doesn't reproduce live pacing."
+    paced = [r.paced_ms for r in timed if r.paced_ms is not None]
+    if not paced:
+        return "- Rate-limit waits, left out of latency: n/a (not recorded in these results)."
+    return (
+        f"- Rate-limit waits, left out of latency: recorded for {len(paced)} of {len(timed)}; "
+        f"{sum(p > 0 for p in paced)} case(s) waited; p95 wait {percentile(paced, 95):.0f} ms."
+    )
+
+
 def _latency_notes(s: EvalRunSummary) -> list[str]:
-    """What the latency numbers cover: which cases, the waits left out, and how tickets
-    ended. A timeout stop means the budget capped that ticket's latency and code escalated it.
-    """
+    """What the latency numbers cover: which cases, the waits left out, and how the agent
+    loop ended on each, over the same non-errored cases."""
     timed = [r for r in s.results if r.error is None]
-    paced = [r.paced_ms for r in timed]
     stops = {stop.value: sum(r.stop is stop for r in timed) for stop in LoopStop}
     stops["not recorded"] = sum(r.stop is None for r in timed)
     counted = ", ".join(f"{name} {n}" for name, n in stops.items() if n)
+    ended = "How replayed tickets ended" if s.mode == "replay" else "How tickets ended"
     return [
         "",
         "## Latency notes",
         "",
-        f"- Latency covers the {len(timed)} of {s.n_cases} case(s) that returned a response; "
-        f"{s.n_cases - len(timed)} errored case(s) are left out.",
-        f"- Rate-limit waits, left out of latency: {sum(p > 0 for p in paced)} case(s) waited; "
-        f"p95 wait {percentile(paced, 95):.0f} ms.",
-        f"- How tickets ended: {counted or 'none'}. A `timeout` ticket stopped at the time "
-        "budget, which caps its latency, and was escalated by default.",
+        f"- Latency and the notes below cover the {len(timed)} non-errored case(s) of "
+        f"{s.n_cases}; {s.n_cases - len(timed)} errored case(s) are left out.",
+        _pacing_note(s, timed),
+        f"- {ended}: {counted or 'none'}. A `timeout` ticket hit a time limit (the request "
+        "budget, a model call's deadline, or a refused rate-limit wait), and the agent then "
+        "attempted a handoff to a person.",
     ]
 
 

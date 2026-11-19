@@ -325,3 +325,4 @@ async def test_a_timed_out_cases_latency_leaves_out_pacing() -> None:
     r = record.result
     assert r.error == "timed out after 0.05s"
     assert 40 <= r.latency_ms < 150  # ~50 ms of work, not ~200 ms of wall time
+    assert r.paced_ms is None and r.stop is None  # no response, so neither was recorded
