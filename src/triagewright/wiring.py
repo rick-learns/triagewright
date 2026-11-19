@@ -61,6 +61,7 @@ from triagewright.evals.judge import JudgeClientFactory
 from triagewright.guardrails import GuardedActionExecutor, RuleGuardrails, SqliteApprovalStore
 from triagewright.llm import ModelClients, ModelConfigError, build_model_clients, recording_path
 from triagewright.llm.factory import JUDGE_ROLE
+from triagewright.llm.ratelimit import RateLimits
 from triagewright.mcp_server import (
     InProcessToolGateway,
     McpToolGateway,
@@ -95,6 +96,8 @@ class _SharedHttp:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._client: httpx.AsyncClient | None = None
+        # Free-tier quotas are per model and project, so every client here shares one pacer.
+        self.limits = RateLimits(settings.requests_per_minute())
 
     def get(self) -> httpx.AsyncClient | None:
         if self._settings.llm_provider is Provider.REPLAY:
@@ -145,7 +148,9 @@ def _model_factory(settings: Settings, http: _SharedHttp | None = None) -> Model
     http = http or _SharedHttp(settings)
 
     def build(case_id: str | None) -> ModelClient:
-        clients = build_model_clients(settings, case_id=case_id, http_client=http.get())
+        clients = build_model_clients(
+            settings, case_id=case_id, http_client=http.get(), limits=http.limits
+        )
         return RoleRouter(clients)
 
     return build
@@ -470,7 +475,9 @@ def judge_client_factory() -> JudgeClientFactory:
         expected = recording_path(settings.recordings_dir, case_id, judge=True)
         if recordings != expected:
             raise ModelConfigError(f"judge recordings {recordings} are not {expected}")
-        clients = build_model_clients(settings, case_id=case_id, http_client=http.get())
+        clients = build_model_clients(
+            settings, case_id=case_id, http_client=http.get(), limits=http.limits
+        )
         return clients.for_role(JUDGE_ROLE)
 
     return build

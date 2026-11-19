@@ -34,6 +34,7 @@ from triagewright.contracts.rag import RetrievalQuery
 from triagewright.contracts.tools import ErrorCategory, ToolName, ToolResult
 from triagewright.evals import cli as evals_cli
 from triagewright.llm import ModelConfigError, ReplayClient, build_model_clients
+from triagewright.llm.openai_compat import GeminiClient
 from triagewright.mcp_server import McpToolGateway, MockSystems, ToolService, build_server
 from triagewright.testing import (
     TEST_APPROVAL_KEY,
@@ -531,3 +532,18 @@ def test_the_shared_http_pool_closes_on_the_loop_that_used_it() -> None:
 
     assert asyncio.run(use_then_close()).is_closed
     asyncio.run(http.aclose())  # idempotent
+
+
+def test_every_client_a_process_builds_shares_one_pacer(tmp_path: Path) -> None:
+    live = settings(tmp_path, llm_provider="gemini", gemini_api_key="k" * 20)
+    http = wiring._SharedHttp(live)
+    assert http.limits.per_minute == 15
+    factory = wiring._model_factory(live, http)
+    a = cast(wiring.RoleRouter, factory("case-a"))
+    b = cast(wiring.RoleRouter, factory("case-b"))
+    pacers = {
+        id(cast(GeminiClient, r.clients.for_role(role))._limiter)
+        for r in (a, b)
+        for role in ("triage", "action")
+    }
+    assert len(pacers) == 1

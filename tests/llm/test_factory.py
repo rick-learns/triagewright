@@ -16,6 +16,7 @@ from triagewright.llm import (
     ReplayClient,
     build_model_clients,
 )
+from triagewright.llm.ratelimit import RateLimits
 
 pytestmark = pytest.mark.anyio
 
@@ -87,3 +88,27 @@ async def test_record_mode_wraps_live_clients(
     await clients.aclose()
     with pytest.raises(ModelConfigError, match="needs a case id"):
         build_model_clients(s)
+
+
+def test_requests_per_minute_defaults_to_the_free_tier_quota() -> None:
+    assert Settings(_env_file=None, llm_provider="gemini").requests_per_minute() == 15
+    assert Settings(_env_file=None, llm_provider="openrouter").requests_per_minute() == 20
+    assert Settings(_env_file=None).requests_per_minute() is None  # replay
+    tuned = Settings(_env_file=None, llm_provider="gemini", llm_requests_per_minute=5)
+    assert tuned.requests_per_minute() == 5
+    off = Settings(_env_file=None, llm_provider="gemini", llm_requests_per_minute=0)
+    assert off.requests_per_minute() is None
+
+
+def test_clients_on_one_model_share_a_pacer() -> None:
+    settings = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="k" * 20)
+    limits = RateLimits(settings.requests_per_minute())
+    first = build_model_clients(settings, limits=limits)
+    second = build_model_clients(settings, limits=limits)
+    pacers = {
+        id(c._limiter)  # type: ignore[attr-defined]
+        for clients in (first, second)
+        for role, c in clients.clients.items()
+        if clients.models[role] == "gemini-3.5-flash-lite"
+    }
+    assert len(pacers) == 1
