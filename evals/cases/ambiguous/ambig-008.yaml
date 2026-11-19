@@ -1,0 +1,30 @@
+id: ambig-008
+category: ambiguous
+title: Refund with no order id, but only one order matches the product named
+ticket:
+  ticket_id: tkt_ambig008
+  customer_id: cus_hal08
+  channel: chat
+  subject: Money back for one speaker
+  body: >-
+    I bought two Pebble Speakers recently and only need one. I don't have the
+    order number in front of me. Can I get a refund for just one of them?
+  created_at: "2026-06-15T11:50:00Z"
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [list_orders, check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 5900
+  citations_any: [kb_refund_policy]
+tags: [refund, missing_order_id, product_match, approval, citation]
+notes: >-
+  The order id is missing, but the product disambiguates. Of cus_hal08's
+  orders (list_orders), only ord_h8001 has Pebble Speakers (2 x 5900,
+  delivered 2026-06-12). ord_h8002 is headphones and ord_h8003 is a returned
+  mouse. So exactly one order is plausible, and the "several plausible
+  orders -> needs_info" row doesn't apply. Finding it needs list_orders.
+  "Just one of them" is one unit, 5900 cents: evaluate_refund(ord_h8001,
+  5900) is eligible (no reasons; refunds_last_30d 0), so the outcome is
+  pending_approval. max_refund_cents 5900 fails a proposal for both
+  speakers (11800).

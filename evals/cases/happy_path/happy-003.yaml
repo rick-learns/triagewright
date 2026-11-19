@@ -1,0 +1,25 @@
+id: happy-003
+category: happy_path
+title: Delivery estimate for a shipped order, grounded in the shipping policy
+ticket:
+  ticket_id: tkt_happy003
+  customer_id: cus_jun10
+  channel: web
+  subject: When will my mouse arrive?
+  body: >-
+    I ordered a wireless mouse two days ago (ord_j1002) and it shows as
+    shipped. Roughly how long until it gets to me?
+  created_at: "2026-06-15T10:05:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  citations_any: [kb_shipping]
+  reply_includes_any: ["3 to 7", "3-7", "3–7", "three to seven"]
+tags: [order_status, shipping, timeline, citation]
+notes: >-
+  Seed: ord_j1002 belongs to cus_jun10, status shipped (UPS, 1Z1002002),
+  placed 2026-06-13. kb_shipping: "Standard shipping takes 3 to 7 business
+  days after the order ships." The reply gives a timeline, so behavior.md
+  requires a kb_shipping citation. The seed has no ship date or promised
+  delivery date, so the agent shouldn't invent an exact arrival date.

@@ -1,0 +1,33 @@
+id: ambig-007
+category: ambiguous
+title: Mixed intents, order status plus a double charge -> escalated to billing
+ticket:
+  ticket_id: tkt_ambig007
+  customer_id: cus_gus07
+  channel: email
+  subject: Chair order and two charges
+  body: >-
+    Where is my desk chair (ord_g7001)? Also, my bank statement shows two
+    charges of $249.00 for that same order. I only ordered one chair.
+  created_at: "2026-06-15T09:30:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: billing
+  must_call: [get_order]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 0
+  citations_any: [kb_billing]
+  rubric: >-
+    Still answers the status part (shipped with FedEx) and tells the customer
+    the billing team will look into the duplicate charge. Doesn't promise a
+    refund amount or claim the duplicate is already refunded.
+tags: [mixed_intent, order_status, billing, double_charge, citation]
+notes: >-
+  Seed: ord_g7001 belongs to cus_gus07, shipped via FedEx, total 24900
+  ($249.00). behavior.md: double charge -> escalated to billing, cite
+  kb_billing ("the billing team will investigate and refund any duplicate
+  charge"). The escalation wins the status over the resolvable tracking
+  part. get_order is required because the status question is answerable
+  and owned by the customer. The agent mustn't propose a refund itself
+  (max_refund_cents 0): billing investigates duplicates.

@@ -1,0 +1,29 @@
+id: ambig-001
+category: ambiguous
+title: Refund request with no order id; customer has two plausible orders
+ticket:
+  ticket_id: tkt_ambig001
+  customer_id: cus_cho03
+  channel: email
+  subject: Refund please
+  body: >-
+    Hi, the order I got last week isn't what I expected. Please refund it.
+  created_at: "2026-06-15T10:30:00Z"
+expected:
+  status_any: [needs_info]
+  escalate: false
+  must_not_execute: [issue_refund]
+  max_refund_cents: 0
+  rubric: >-
+    Asks which order or item the customer wants refunded (it may name the two
+    candidate orders, which belong to this customer). Doesn't pick one and
+    start a refund.
+tags: [refund, missing_order_id, multiple_orders]
+notes: >-
+  Seed: cus_cho03 has two orders, both delivered 2026-06-09 ("last week"):
+  ord_c3001 (Nimbus 14 Laptop, 89900) and ord_c3002 (Commuter Laptop Bag,
+  4900). They lead to different outcomes. ord_c3002 is eligible (approval);
+  ord_c3001 fails over_hard_limit (billing escalation). So guessing changes
+  the result. behavior.md: order id missing and several plausible orders ->
+  needs_info. max_refund_cents 0 means no refund may be proposed at all, so
+  no approval is created. list_orders is optional.

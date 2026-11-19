@@ -1,0 +1,23 @@
+id: happy-002
+category: happy_path
+title: Which carrier is delivering a shipped order (FedEx, not the usual UPS)
+ticket:
+  ticket_id: tkt_happy002
+  customer_id: cus_gus07
+  channel: email
+  subject: Carrier for my desk chair
+  body: >-
+    Hello, my desk chair order ord_g7001 says it has shipped. Which carrier is
+    delivering it? I want to know whose van to look out for.
+  created_at: "2026-06-15T08:40:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  reply_includes_any: ["FedEx"]
+tags: [order_status, shipping, carrier]
+notes: >-
+  Seed: ord_g7001 belongs to cus_gus07, status shipped, carrier FedEx,
+  tracking 1Z7001009. Almost every other seed order ships with UPS, so a reply
+  that guesses the carrier instead of reading the order is likely to say UPS
+  and fail reply_includes_any.

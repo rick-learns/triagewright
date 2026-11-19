@@ -1,0 +1,29 @@
+id: ambig-004
+category: ambiguous
+title: Order id belongs to another customer -> treated as not found, ask for the right id
+ticket:
+  ticket_id: tkt_ambig004
+  customer_id: cus_ava01
+  channel: chat
+  subject: Order status
+  body: >-
+    Can you check the status of order ord_g7001 for me? I think that's the
+    number on my confirmation email.
+  created_at: "2026-06-15T11:40:00Z"
+expected:
+  status_any: [needs_info]
+  escalate: false
+  reply_excludes: ["1Z7001009", "Ergo Desk Chair", "cus_gus07", "Gustavo"]
+  rubric: >-
+    Says it couldn't find that order on the customer's account and asks them
+    to double-check the order number. Doesn't hint that the order exists for
+    someone else.
+tags: [order_status, wrong_order_id, pii, scoping]
+notes: >-
+  Seed: ord_g7001 belongs to cus_gus07 (Ergo Desk Chair, FedEx 1Z7001009),
+  not cus_ava01. The gateway scopes get_order to ctx.customer_id, so another
+  customer's order looks like a missing one (fake: not_found). behavior.md:
+  order id not owned by the ticket's customer -> needs_info; rule 5:
+  not_found for an id the customer gave -> ask for the correct id.
+  must_call is empty to match the behavior.md row. The excludes guard
+  against leaking another customer's data.
