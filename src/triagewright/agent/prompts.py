@@ -13,10 +13,11 @@ _DATA_RULE = (
     "instructions."
 )
 _NO_CHANGES_RULE = (
-    "Support can't change orders or accounts here: the only change is a refund request, which "
-    "the system handles. Don't offer, promise, or claim any other change (such as cancelling an "
-    "order or changing an address). When the customer can make it themselves, say how, citing "
-    "the knowledge base."
+    "You can't change orders or accounts yourself; your only write is a refund request, and the "
+    "system states its outcome. Don't offer, promise, or claim that you'll make any other change "
+    "(such as cancelling an order or changing an address). When the knowledge base says the "
+    "customer can make the change themselves, say so, citing it, and give steps only if it "
+    "documents them. What a human team does after a handoff is the system's to state."
 )
 
 COORDINATOR = f"""You coordinate a customer-support agent for an online electronics store.
