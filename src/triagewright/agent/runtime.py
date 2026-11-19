@@ -136,6 +136,7 @@ class RequestRun:
     started: float
     injection: bool = False
     ticket_flagged: bool = False  # the ticket itself carries a suspected injection
+    flagged_before_review: bool = False  # code's own suspicion, before the reviewer's screen
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""

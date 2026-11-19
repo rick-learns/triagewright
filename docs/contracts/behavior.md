@@ -104,7 +104,12 @@ Worked example: `cus_ivo09` (closed) asks to refund `ord_i9001` (delivered
 
 The escalation subagent runs before every finalize. It can turn a draft
 `resolved` into `escalated` (never the other way, unless the draft came from a
-fallback). Its `handoff_summary` must let a human act without rereading the
+fallback). A review whose every reason is one code already handled is left to code,
+unless triage found a human need code didn't handle: `approval_required` once
+the request's one action is pending approval (that queue is the human step) or
+blocked (nothing to approve), and `injection_suspected` when code suspected
+injection before the reviewer did and the draft refuses (the injection rows
+above decide). Its `handoff_summary` must let a human act without rereading the
 ticket. That means stating:
 
 - the customer's goal
