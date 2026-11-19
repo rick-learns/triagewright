@@ -155,7 +155,7 @@ class _Builder:
             tier=rng.choice([CustomerTier.STANDARD] * 3 + [CustomerTier.PLUS, CustomerTier.VIP]),
             status=status,
             region=rng.choice(words.REGIONS),
-            created_at=self._at(rng.randint(60, 900)),
+            created_at=self._at(rng.randint(150, 900)),
         )
         locked = rng.random() < 0.15
         self.accounts.append(
@@ -318,7 +318,7 @@ _TEMPLATES: dict[TicketCategory, tuple[tuple[str, str], ...]] = {
         ("Invoice", "Can I get an invoice for order {order_id}? My billing address is {address}."),
     ),
     TicketCategory.ACCOUNT_ACCESS: (
-        ("Can't sign in", "I can't log in to my account. It says it is locked."),
+        ("Can't sign in", "I can't log in to my account. Can you help?"),
         ("Password reset", "The password reset email never arrives. What should I do?"),
     ),
     TicketCategory.PRODUCT_QUESTION: (
@@ -331,7 +331,7 @@ _TEMPLATES: dict[TicketCategory, tuple[tuple[str, str], ...]] = {
     ),
     TicketCategory.COMPLAINT: (
         ("Not happy", "The {item} from {order_id} feels cheap. I expected better."),
-        ("Poor service", "Your courier left order {order_id} in the rain. Very disappointed."),
+        ("Poor service", "Order {order_id} has been a hassle from start to finish."),
     ),
     TicketCategory.OTHER: (
         ("Hello", "Hi, {first} here. Do you have a newsletter I can join?"),
@@ -355,11 +355,12 @@ def generate(
     seed: int, customers: int, tickets: int, mix: Mapping[TicketCategory, int] | None = None
 ) -> Generated:
     """Build a world of ``customers`` customers and ``tickets`` tickets from ``seed``."""
-    if customers < 3:
-        raise ValueError("need at least 3 customers (normal, inactive, and frequent refunders)")
     if tickets < 0:
         raise ValueError("tickets must be >= 0")
     mix = dict(mix or DEFAULT_MIX)
+    counts = allocate(tickets, mix)
+    if customers < (3 if counts.get(TicketCategory.REFUND_REQUEST) else 1):
+        raise ValueError("refund tickets need 3 customers (normal, inactive, frequent refunder)")
     b = _Builder(seed)
     rng = b.rng
     inactive_n, frequent_n = _roles(rng, customers)
@@ -380,7 +381,6 @@ def generate(
                 days = rng.randint(10, POLICY.refund_window_days - 5)
                 b.refund(b.order(cid, OrderStatus.DELIVERED, delivered_days_ago=days))
 
-    counts = allocate(tickets, mix)
     categories = [c for c, k in counts.items() for _ in range(k)]
     rng.shuffle(categories)
     outcomes = list(RefundOutcome)

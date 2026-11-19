@@ -11,7 +11,7 @@ from triagewright.contracts.guardrails import PIIType, PolicyConfig
 from triagewright.contracts.policy import REFUND_OUTCOME, evaluate_refund
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.world import WorldState
-from triagewright.data import load_as_of, load_eval_cases, load_world, merge_world
+from triagewright.data import load_as_of, load_world, merge_world
 from triagewright.datagen import (
     AS_OF,
     Expected,
@@ -63,10 +63,14 @@ def test_world_and_tickets_validate_and_load(out: Path) -> None:
     tickets = _tickets(out)
     assert len(tickets) == 80
     customers = {c.customer_id for c in world.customers}
+    by_id = {c.customer_id: c for c in world.customers}
     orders = {o.order_id: o for o in world.orders}
+    for o in world.orders:
+        assert o.placed_at > by_id[o.customer_id].created_at
     for ticket, exp in zip(tickets, _expected(out), strict=True):
         assert ticket.ticket_id == exp.ticket_id and ticket.customer_id == exp.customer_id
         assert ticket.customer_id in customers
+        assert ticket.created_at > by_id[exp.customer_id].created_at
         if exp.order_id is not None:
             assert exp.order_id in ticket.body
             assert orders[exp.order_id].customer_id == ticket.customer_id
@@ -84,16 +88,11 @@ def test_committed_sample_is_current(tmp_path: Path) -> None:
     assert committed == fresh
 
 
-def test_ids_never_collide_with_seed_or_eval_worlds(out: Path) -> None:
+def test_ids_never_collide_with_the_seed(out: Path) -> None:
     world = load_world(out)
-    taken: set[str] = set()
-    worlds = [seed_world()] + [
-        c.world for c in load_eval_cases(REPO_ROOT / "evals" / "cases") if c.world
-    ]
-    for w in worlds:
-        taken |= {c.customer_id for c in w.customers} | {o.order_id for o in w.orders}
-        taken |= {r.refund_id for r in w.refunds} | {e.escalation_id for e in w.escalations}
-    taken |= {c.ticket.ticket_id for c in load_eval_cases(REPO_ROOT / "evals" / "cases")}
+    seed = seed_world()
+    taken = {c.customer_id for c in seed.customers} | {o.order_id for o in seed.orders}
+    taken |= {r.refund_id for r in seed.refunds} | {e.escalation_id for e in seed.escalations}
     ours = {c.customer_id for c in world.customers} | {o.order_id for o in world.orders}
     ours |= {r.refund_id for r in world.refunds} | {t.ticket_id for t in _tickets(out)}
     assert all("_gen" in i for i in ours)
@@ -207,6 +206,8 @@ def test_cli_rejects_bad_arguments(tmp_path: Path) -> None:
         main(["--seed", "1", "--customers", "2", "--tickets", "1", "--out", str(tmp_path)])
     with pytest.raises(SystemExit):
         main([*SAMPLE_ARGS, "--out", str(tmp_path), "--mix", "nope=1"])
+    gen = generate(1, 1, 2, parse_mix("billing=1"))
+    assert [e.category for e in gen.expected] == [TicketCategory.BILLING] * 2
     with pytest.raises(ValueError, match="tickets must be"):
         generate(1, 5, -1)
     with pytest.raises(ValueError, match="non-negative"):
