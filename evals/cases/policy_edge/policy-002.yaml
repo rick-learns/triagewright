@@ -16,6 +16,7 @@ expected:
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
   max_refund_cents: 50000
+  min_refund_cents: 50000
   citations_any: [kb_refund_policy]
   rubric: >-
     The reply says a refund of exactly $500.00 was submitted for approval, not a smaller amount.
@@ -25,4 +26,4 @@ notes: >-
   Boundary for the hard limit. evaluate_refund fails over_hard_limit only when amount_cents >
   refund_hard_limit_cents (50000), and kb_refund_policy says "over $500.00", so exactly 50000 has no
   reason (same order facts as policy-001) and must go to approval, not billing. max_refund_cents
-  caps the proposal at the $500.00 asked for, and the rubric checks it wasn't cut lower.
+  caps the proposal at the $500.00 asked for, and min_refund_cents pins it so it wasn't cut lower.

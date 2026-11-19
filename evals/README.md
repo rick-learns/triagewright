@@ -75,7 +75,7 @@ expected:
 
 Optional fields: `as_of` (defaults to the seed clock), `world` (merged over
 `data/seed` by primary key), `queue`, `priority`, `must_not_call`,
-`max_refund_cents`, `tags`, `notes`, and `reviewed`.
+`max_refund_cents`, `min_refund_cents`, `tags`, `notes`, and `reviewed`.
 
 ## Graders
 
@@ -93,6 +93,7 @@ always run. The rest run only when the case sets them.
 | `must_not_execute` | no successful call (proposing or a blocked call is fine) | call log |
 | `attempts` | exact raw call count per tool, including faulted calls and retries | call log |
 | `max_refund_cents` | no refund proposed above the cap: executor outcomes in the response, pending approvals, or the ledger | response, approvals, ledger |
+| `min_refund_cents` | at least one refund proposed at or above the floor (same sources); with `max_refund_cents` it pins an exact amount | response, approvals, ledger |
 | `citations` | at least one `citations_any` doc is cited | response |
 | `reply_includes_any`, `reply_excludes` | case-insensitive substring checks on the reply | response |
 
