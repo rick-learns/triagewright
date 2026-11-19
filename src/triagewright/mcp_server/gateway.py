@@ -8,6 +8,7 @@ eval ``ToolFault``s before the call leaves the gateway, like
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from collections.abc import Sequence
@@ -40,7 +41,7 @@ from triagewright.contracts.tools import (
 from triagewright.contracts.world import WorldState
 from triagewright.mcp_server.server import CTX_META_KEY
 from triagewright.mcp_server.service import ToolService
-from triagewright.mcp_server.store import MockSystems
+from triagewright.mcp_server.store import MEMORY, MockSystems
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,9 @@ class McpToolGateway(_RecordingGateway):
         started = False
         try:
             async with self._client:
+                # Prime the SDK's per-tool cache, so a call never triggers a tools/list
+                # afterwards that could fail after the tool already ran.
+                await self._client.list_tools()
                 task_status.started()
                 started = True
                 await self._stop.wait()
@@ -205,7 +209,8 @@ class McpToolGateway(_RecordingGateway):
                 raise
             logger.warning("MCP session lost", exc_info=True)
         finally:
-            self._lost.set()
+            if started:
+                self._lost.set()
 
     async def _send(self, name: ToolName, arguments: JsonObject, ctx: CallContext) -> ToolResult:
         done: list[ToolResult] = []
@@ -265,9 +270,12 @@ def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
     """Launch this package's MCP server over stdio with the server-side ``settings``."""
     if settings.approval_key is None:
         raise ValueError("TW_APPROVAL_KEY is required to launch the MCP server")
-    env = {
+    db = str(settings.db_path) if str(settings.db_path) == MEMORY else settings.db_path.resolve()
+    # Resolved settings win over the inherited TW_* env; the child still validates the rest.
+    inherited = {k: v for k, v in os.environ.items() if k.startswith("TW_")}
+    env = inherited | {
         "TW_APPROVAL_KEY": settings.approval_key.get_secret_value(),
-        "TW_DB_PATH": str(settings.db_path.resolve()),
+        "TW_DB_PATH": str(db),
         "TW_SEED_DIR": str(settings.seed_dir.resolve()),
         "TW_KB_DIR": str(settings.kb_dir.resolve()),
         "TW_REFUND_HARD_LIMIT_CENTS": str(settings.refund_hard_limit_cents),

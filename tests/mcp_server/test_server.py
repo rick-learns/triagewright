@@ -181,7 +181,25 @@ def test_from_settings_picks_the_transport(tmp_path: Path) -> None:
     assert params.env["TW_DB_PATH"] == str(tmp_path / "db.sqlite")
     assert params.env["TW_REFUND_WINDOW_DAYS"] == "14"
     assert Path(params.env["TW_SEED_DIR"]).is_absolute()
+    unkeyed = Settings(_env_file=None, mcp_transport="inprocess", approval_key=None)
     with pytest.raises(ValueError, match="inprocess"):
-        McpToolGateway.from_settings(Settings(_env_file=None))
+        McpToolGateway.from_settings(unkeyed)
     with pytest.raises(ValueError, match="TW_APPROVAL_KEY"):
-        stdio_server_parameters(Settings(_env_file=None))
+        stdio_server_parameters(unkeyed)
+
+
+def test_stdio_child_keeps_memory_db_and_inherited_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TW_LLM_PROVIDER", "replay")
+    monkeypatch.setenv("TW_DB_PATH", "/elsewhere.sqlite")
+    settings = Settings(_env_file=None, approval_key="s" * 40, db_path=Path(":memory:"))
+    env = stdio_server_parameters(settings).env
+    assert env and env["TW_DB_PATH"] == ":memory:" and env["TW_LLM_PROVIDER"] == "replay"
+
+
+async def test_a_rejected_reentry_keeps_the_live_session() -> None:
+    gw = McpToolGateway(Client(build_server(new_service()), mode="legacy"))
+    async with gw:
+        with pytest.raises(RuntimeError, match="already entered"):
+            await gw.__aenter__()
+        ok = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+        assert not ok.is_error
