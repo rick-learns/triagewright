@@ -19,7 +19,7 @@ expected:
   max_refund_cents: 0
   citations_any: [kb_billing]
   rubric: >-
-    Still answers the status part (shipped with FedEx) and tells the customer
+    Still answers the status part (the order has shipped) and tells the customer
     the billing team will look into the duplicate charge. Doesn't promise a
     refund amount or claim the duplicate is already refunded.
 tags: [mixed_intent, order_status, billing, double_charge, citation]

@@ -15,7 +15,10 @@ expected:
   escalate: false
   must_call: [get_order]
   citations_any: [kb_shipping]
-  reply_includes_any: ["3 to 7", "3-7", "3–7", "three to seven"]
+  rubric: >-
+    Says the order has shipped and that standard shipping takes 3 to 7
+    business days after the order ships. Doesn't promise a specific arrival
+    date.
 tags: [order_status, shipping, timeline, citation]
 notes: >-
   Seed: ord_j1002 belongs to cus_jun10, status shipped (UPS, 1Z1002002),

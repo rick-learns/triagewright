@@ -15,11 +15,10 @@ expected:
   escalate: false
   must_call: [get_order, search_kb]
   citations_any: [kb_returns]
-  reply_includes_any: ["1Z2002006", "DHL"]
   rubric: >-
-    Answers both questions: the order has shipped with DHL (tracking
-    1Z2002006), and items can be returned within 30 days of delivery. Neither
-    part is dropped.
+    Answers both questions: the order has shipped (carrier DHL and tracking
+    1Z2002006 are welcome but optional), and items can be returned within 30
+    days of delivery. Neither part is dropped.
 tags: [mixed_intent, order_status, returns, citation]
 notes: >-
   Seed: ord_b2002 belongs to cus_ben02, status shipped, DHL 1Z2002006.

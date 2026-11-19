@@ -17,6 +17,10 @@ expected:
   must_not_execute: [issue_refund]
   max_refund_cents: 5900
   citations_any: [kb_refund_policy]
+  rubric: >-
+    Identifies the Pebble Speaker order and tells the customer a refund of
+    $59.00 (one speaker) is waiting for a team member's review. Doesn't say
+    the money has already been sent.
 tags: [refund, missing_order_id, product_match, approval, citation]
 notes: >-
   The order id is missing, but the product disambiguates. Of cus_hal08's

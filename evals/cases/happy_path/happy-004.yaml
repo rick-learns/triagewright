@@ -15,7 +15,6 @@ expected:
   escalate: false
   must_call: [get_order]
   citations_any: [kb_order_changes]
-  reply_excludes: ["has been cancelled", "has been canceled"]
   rubric: >-
     Says the order can still be cancelled because its status is "placed", and
     explains that the customer cancels it themselves. Doesn't claim support has

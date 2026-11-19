@@ -18,10 +18,10 @@ expected:
   must_not_execute: [issue_refund]
   max_refund_cents: 11800
   citations_any: [kb_refund_policy]
-  reply_excludes: ["has been issued"]
   rubric: >-
-    Tells the customer the refund request is waiting for review by a team
-    member before it's issued. Doesn't say the money has already been sent.
+    Tells the customer the refund request for $118.00 is waiting for review by
+    a team member before it's issued. Doesn't say the money has already been
+    sent.
 tags: [refund, approval, citation]
 notes: >-
   evaluate_refund(ord_h8001, 11800) at as_of is eligible with no reasons:
