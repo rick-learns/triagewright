@@ -144,8 +144,12 @@ The report states the provider, models, mode, and git sha. It gives:
 - escalation precision and recall (from created escalations), overall and per
   category
 - cost per ticket (judge excluded)
-- p50/p95 latency for the run's mode: live wall time, or replay *estimated*
-  latency
+- p50/p95 latency for the run's mode: live wall time less rate-limit waits, or
+  replay *estimated* latency, over the cases that returned a response
+- latency notes (live and replay): how many errored cases latency leaves out,
+  the rate-limit waits it leaves out (cases that waited, p95 wait), and how
+  tickets ended (completed, timeout, max_turns, refusal, error); a `timeout`
+  ticket's latency is capped by the budget, and it was escalated by default
 
 - each failing case's failed checks, with expected (from the case) and actual
   (from the grader)

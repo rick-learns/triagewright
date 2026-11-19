@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from tests.evals.test_report_support import cases_for, failing, rec, summary_of
+from triagewright.contracts.agents import LoopStop
 from triagewright.contracts.evals import EvalCategory, GradeResult
 from triagewright.evals.report import Baseline, build_report, judge_report, render_markdown
+from triagewright.evals.runner import CaseRecord
 
 
 def test_markdown_states_mode_provider_models_and_failures() -> None:
@@ -149,3 +151,36 @@ def test_zero_cost_does_not_claim_the_models_are_free() -> None:
         "Cost is $0: the models are free, or the tickets it counts (errored cases and the "
         "judge are excluded) recorded no billable usage, so the cost target is met trivially." in md
     )
+
+
+def _ended(record: CaseRecord, stop: LoopStop | None, paced_ms: float = 0.0) -> CaseRecord:
+    result = record.result.model_copy(update={"stop": stop, "paced_ms": paced_ms})
+    return record.model_copy(update={"result": result})
+
+
+def test_latency_notes_count_errors_waits_and_how_tickets_ended() -> None:
+    s = summary_of(
+        _ended(rec("happy-001", mode="live"), LoopStop.COMPLETED),
+        _ended(rec("happy-002", mode="live"), LoopStop.TIMEOUT, paced_ms=4000.0),
+        _ended(rec("happy-003", mode="live"), None),
+        rec("happy-004", mode="live", passed=False, error="timed out"),
+        mode="live",
+    )
+    report = build_report(
+        s,
+        cases=cases_for("happy-001", "happy-002", "happy-003", "happy-004"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    md = render_markdown(report)
+    for line in (
+        "- Mode: live: latency is the agent's elapsed time per ticket, rate-limit waits excluded",
+        "- Latency covers the 3 of 4 case(s) that returned a response; 1 errored case(s) are "
+        "left out.",
+        "- Rate-limit waits, left out of latency: 1 case(s) waited; p95 wait 3600 ms.",
+        "- How tickets ended: completed 1, timeout 1, not recorded 1.",
+    ):
+        assert line in md, line
+    stub = report.model_copy(update={"summary": s.model_copy(update={"mode": "stub"})})
+    assert "## Latency notes" not in render_markdown(stub)

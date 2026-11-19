@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from triagewright.contracts.agents import LoopStop
+from triagewright.contracts.evals import EvalRunSummary
+from triagewright.evals.report.aggregate import percentile
 from triagewright.evals.report.model import EvalReport
 from triagewright.evals.report.targets import _pct
 
 _MODE_NOTES: dict[str, str] = {
-    "live": "live: latency is wall time per ticket",
+    "live": "live: latency is the agent's elapsed time per ticket, rate-limit waits excluded",
     "replay": "replay: latency is estimated (non-model wall time plus recorded model latency)",
     "stub": "stub: no agent or model calls; latency is harness wall time and not gated",
 }
@@ -26,6 +29,28 @@ def _cell(text: str) -> str:
 
 def _met(met: bool | None) -> str:
     return {True: "met", False: "**not met**", None: "not measured"}[met]
+
+
+def _latency_notes(s: EvalRunSummary) -> list[str]:
+    """What the latency numbers cover: which cases, the waits left out, and how tickets
+    ended. A timeout stop means the budget capped that ticket's latency and code escalated it.
+    """
+    timed = [r for r in s.results if r.error is None]
+    paced = [r.paced_ms for r in timed]
+    stops = {stop.value: sum(r.stop is stop for r in timed) for stop in LoopStop}
+    stops["not recorded"] = sum(r.stop is None for r in timed)
+    counted = ", ".join(f"{name} {n}" for name, n in stops.items() if n)
+    return [
+        "",
+        "## Latency notes",
+        "",
+        f"- Latency covers the {len(timed)} of {s.n_cases} case(s) that returned a response; "
+        f"{s.n_cases - len(timed)} errored case(s) are left out.",
+        f"- Rate-limit waits, left out of latency: {sum(p > 0 for p in paced)} case(s) waited; "
+        f"p95 wait {percentile(paced, 95):.0f} ms.",
+        f"- How tickets ended: {counted or 'none'}. A `timeout` ticket stopped at the time "
+        "budget, which caps its latency, and was escalated by default.",
+    ]
 
 
 def render_markdown(report: EvalReport) -> str:
@@ -85,6 +110,10 @@ def render_markdown(report: EvalReport) -> str:
         f"| Cost per ticket (judge excluded) | {_usd(s.cost_per_ticket_usd, sampled)} |",
         f"| p50 latency, {s.mode}{estimated} | {_ms(s.p50_latency_ms, sampled)} |",
         f"| p95 latency, {s.mode}{estimated} | {_ms(s.p95_latency_ms, sampled)} |",
+    ]
+    if s.mode != "stub":
+        lines += _latency_notes(s)
+    lines += [
         "",
         "## By category",
         "",

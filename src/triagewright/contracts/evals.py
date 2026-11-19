@@ -20,7 +20,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
-from triagewright.contracts.agents import ResolutionStatus
+from triagewright.contracts.agents import LoopStop, ResolutionStatus
 from triagewright.contracts.common import Contract, DocId
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ToolError, ToolName
@@ -114,7 +114,9 @@ class CaseResult(Contract):
     grades: list[GradeResult]
     cost_usd: Annotated[float, Field(ge=0)] = 0.0
     latency_ms: Annotated[float, Field(ge=0)] = 0.0
+    paced_ms: Annotated[float, Field(ge=0)] = 0.0  # rate-limit waits, left out of latency_ms
     ttft_ms: float | None = None
+    stop: LoopStop | None = None  # how the agent loop ended; None without a response
     error: str | None = None
 
 

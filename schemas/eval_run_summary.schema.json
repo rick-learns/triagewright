@@ -49,6 +49,12 @@
           "title": "Latency Ms",
           "type": "number"
         },
+        "paced_ms": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Paced Ms",
+          "type": "number"
+        },
         "passed": {
           "title": "Passed",
           "type": "boolean"
@@ -62,6 +68,17 @@
               "type": "null"
             }
           ]
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LoopStop"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "ttft_ms": {
           "anyOf": [
@@ -144,6 +161,17 @@
       ],
       "title": "GradeResult",
       "type": "object"
+    },
+    "LoopStop": {
+      "enum": [
+        "completed",
+        "max_turns",
+        "timeout",
+        "refusal",
+        "error"
+      ],
+      "title": "LoopStop",
+      "type": "string"
     },
     "ResolutionStatus": {
       "enum": [
