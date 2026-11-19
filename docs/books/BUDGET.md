@@ -9,6 +9,8 @@ Reviewer and worker model usage (sol-loop, council, delegates) is tracked separa
 | --- | --- | --- | --- | --- | --- |
 | 2026-11-19 | W0 | openrouter | key metadata check (`GET /api/v1/key`, no model call) | 0.00 | 0.00 |
 | 2026-11-19 | W0.4 | gemini (free plan) | 2× `models.list`; 7 one-turn tool-call probes (about 85 tokens each; 3 OK, 3× 503, 1 timeout) | 0.00 | 0.00 |
+| 2026-11-19 | Q1–Q4 | gemini (free plan) | live smoke runs (happy-* ×10, several times), one full 54-case eval, single-case repros; free plan, no billing; daily per-model quota (500 requests) reached once | 0.00 | 0.00 |
+| 2026-11-19 | Q4 | openrouter (`:free`) | 3-case spot check; all 429 (free-model rate limit) | 0.00 | 0.00 |
 
 ## Harness usage (reviewers/workers)
 

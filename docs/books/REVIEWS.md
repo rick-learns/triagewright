@@ -9,3 +9,13 @@
 | #1 | W0.2 contracts | council r4: gpt-6.2-sol 8/10, gpt-6.2-astra 9/10 approve, claude-opus-5-5 9/10 approve (high) | 4 | changes | `ActionOutcome.eligibility` carries the executor's typed lookup; lane B routes a blocked refund on `REFUND_OUTCOME[reasons[0]]`; test for closed+expired -> tier2 | Opus nit (repeat approve on an executed request returns 409) deferred to lane D | not reported |
 | #1 | W0.2 contracts | council r5: gpt-6.2-sol 9/10 approve (Astra and Opus approved r4) (high) | 5 | approve | – | – | not reported |
 | #4 | W0.4 Gemini free provider | sol-loop: gpt-6.2-sol (high) | 3 | approve | reject Gemma `-latest` aliases; allow `gemini-3-flash-preview`; B1 depends on W0.4; only listed Gemini previews allowed (retired previews rejected) | – | not reported |
+| #11 | B1 model adapters | sol-loop: gpt-6.2-sol (high) | 3 + confirm | approve | non-object tool args no longer become empty calls (orchestrator fix) | – | not reported |
+| #12 | F1 eval harness | sol-loop: gpt-6.2-sol (high) | 3 + confirm | approve | judge resume key tested (orchestrator fix) | – | not reported |
+| #14 | B2 coordinator + subagents | sol-loop: gpt-6.2-sol (high) | 5 | approve | see PR | – | not reported |
+| #15 | F1b `min_refund_cents` | sol-loop: gpt-6.2-sol (high) | 2 | approve | resume keys hash cases without defaults | – | not reported |
+| #16 | D1 guardrails + approvals | sol-loop: gpt-6.2-sol (high) | 5 + 3 confirms | approve | S14/S15 (Luhn card left visible), S16; S17/S18 redaction bypasses | – | not reported |
+| #17 | X1 wiring | sol-loop: gpt-6.2-sol (high) | 3 + 2 confirms | approve | S2 untrusted KB opt-in, S3, S5 teardown, S7, S8–S14 | – | not reported |
+| #18 | Q1 free-tier pacing | sol-loop: gpt-6.2-sol (high) | 3 + confirm | approve | S4 trailing-slash quota id, S6 pacing out of timeout latency | grouping keys by Gemini project (lower the RPM instead) | not reported |
+| #19 | Q2 code decides refunds | sol-loop: gpt-6.2-sol (high) | 5 | approve | S1 handoffs drop the model's refund text, S5 full page never narrows to one order | – | not reported |
+| #20 | Q3 pending refunds stay with the approver; model-error spans | sol-loop: gpt-6.2-sol (high) | 3 | approve | S1 explicit span error wins, S2 no exception messages in spans, S3 approval-only narrowed (incl. unexplained human need) | – | not reported |
+| #21 | Q4 reviewer reasons code already handled | sol-loop: gpt-6.2-sol (high) | 2 | approve | S1 injection-only non-refusal keeps the handoff, S2 pre-review flag, S3 triage approval needs an action, S4 prompt | – | not reported |

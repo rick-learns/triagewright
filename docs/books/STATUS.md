@@ -25,26 +25,66 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | lane thread (claude-opus-5-5) | in-review | [#13](https://github.com/rick-learns/triagewright/pull/13) |
-| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | lane thread (claude-opus-5-5) | in-review | [#11](https://github.com/rick-learns/triagewright/pull/11) |
-| B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | lane thread (claude-opus-5-5) | running | – |
+| A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | lane thread (claude-opus-5-5) | merged (sol-loop) | [#13](https://github.com/rick-learns/triagewright/pull/13) |
+| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | lane thread (claude-opus-5-5) | merged (sol-loop 3) | [#11](https://github.com/rick-learns/triagewright/pull/11) |
+| B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | lane thread (claude-opus-5-5) | merged (sol-loop 5) | [#14](https://github.com/rick-learns/triagewright/pull/14) |
 | C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#9](https://github.com/rick-learns/triagewright/pull/9) |
-| D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | lane thread (claude-opus-5-5) | running | – |
+| D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | lane thread (claude-opus-5-5) | merged (sol-loop 5) | [#16](https://github.com/rick-learns/triagewright/pull/16) |
 | E1 tracing, pricing, cost, latency | W0.2 | `src/triagewright/observability/**`, `tests/observability/**`, `config/pricing.toml` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#7](https://github.com/rick-learns/triagewright/pull/7) |
-| F1 eval harness + graders + report | W0.2 | `src/triagewright/evals/**`, `tests/evals/**`, `evals/baseline.json`, `evals/README.md` | lane thread (claude-opus-5-5) | in-review | [#12](https://github.com/rick-learns/triagewright/pull/12) |
+| F1 eval harness + graders + report | W0.2 | `src/triagewright/evals/**`, `tests/evals/**`, `evals/baseline.json`, `evals/README.md` | lane thread (claude-opus-5-5) | merged (sol-loop 3) | [#12](https://github.com/rick-learns/triagewright/pull/12) |
 | G1 cases: happy path + ambiguous | W0.2 | `evals/cases/happy_path/**`, `evals/cases/ambiguous/**` | lane thread (claude-opus-5-5) | merged (sol-loop 3, approve) | [#6](https://github.com/rick-learns/triagewright/pull/6) |
 | G2 cases: policy edge + escalation | W0.2 | `evals/cases/policy_edge/**`, `evals/cases/escalation_required/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2; exact-refund gap accepted, follow-up) | [#5](https://github.com/rick-learns/triagewright/pull/5) |
 | G3 cases: injection + tool failure | W0.2 | `evals/cases/injection/**`, `evals/cases/tool_failure/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#8](https://github.com/rick-learns/triagewright/pull/8) |
 | H1 HTTP API + CLI | W0.2 | `src/triagewright/api/**`, `src/triagewright/cli/**`, `tests/api/**`, `tests/cli/**` | lane thread (claude-opus-5-5) | merged (sol-loop 3; CLI-token S1 resolved by ADR amendment) | [#10](https://github.com/rick-learns/triagewright/pull/10) |
-| I1 architecture docs (deferred to M2) | X1 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | todo | – |
-| J1 synthetic data generator (deferred to M2, only if needed) | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | todo | – |
+| I1 architecture docs (deferred to M2) | X1 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | moved to M2 (below) | – |
+| J1 synthetic data generator (deferred to M2, only if needed) | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | moved to M2 (below) | – |
 
 ## M1 integration
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| X1 first 20 evals green (recorded once, after A, C, D land) | A1, B1, B2, C1, D1, F1, G1–G3 | `src/triagewright/wiring.py`, `evals/fixtures/recordings/**` | – | todo | – |
+| X1 compose the real lanes for API, CLI, evals | A1, B1, B2, C1, D1, F1, G1–G3 | `src/triagewright/wiring.py` | orchestrator | merged (sol-loop) | [#17](https://github.com/rick-learns/triagewright/pull/17) |
 
-## M2–M3
+| F1b `min_refund_cents` expectation | F1 | `src/triagewright/evals/**`, `tests/evals/**` | orchestrator | merged | [#15](https://github.com/rick-learns/triagewright/pull/15) |
 
-Planned after the M1 checkpoint.
+## M2–M3: one writer for the agent core, lanes for everything else
+
+The agent core (`src/triagewright/agent/**`, `src/triagewright/llm/**`, `tests/agent/**`,
+`tests/llm/**`) has one writer, the orchestrator: live-quality fixes and the latency work
+both change routing and the model-call sequence, and live evals share one free-tier
+quota, so they run serially. Lanes never make live model calls (fakes, `--stub`, replay).
+Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per lane from `origin/main`.
+
+### Orchestrator (serial)
+
+| id | deps | owned paths | worker | state | PR |
+| --- | --- | --- | --- | --- | --- |
+| Q1 pace live calls to the free-tier quota | X1 | `src/triagewright/llm/**`, `src/triagewright/evals/runner.py`, `config.py` | orchestrator | merged (sol-loop 3) | [#18](https://github.com/rick-learns/triagewright/pull/18) |
+| Q2 code decides every refund outcome | X1 | agent core | orchestrator | merged (sol-loop 5) | [#19](https://github.com/rick-learns/triagewright/pull/19) |
+| Q3 pending refunds stay with the approver; trace model errors | Q2 | agent core, `observability/**` | orchestrator | merged (sol-loop 3) | [#20](https://github.com/rick-learns/triagewright/pull/20) |
+| Q4 reviewer reasons code already handled | Q3 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 2) | [#21](https://github.com/rick-learns/triagewright/pull/21) |
+| Q5 remaining live failures (escalation queues, over-cap proposals, tool failures, 503 retries) | Q4 | agent core | orchestrator | todo | – |
+| L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core | orchestrator | todo | – |
+| X2 record replay fixtures, full live eval, `evals/report.md` | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md`, `evals/baseline.json` | orchestrator (live, serial) | todo | – |
+
+### Lanes (parallel, disjoint owned paths)
+
+| id | deps | owned paths | worker | state | PR |
+| --- | --- | --- | --- | --- | --- |
+| I1 architecture doc, ADRs, exam map | X1 | `docs/architecture.md`, `docs/adr/ADR-002-*` and later (not ADR-001), `docs/exam-map.md` | lane thread (claude-opus-5-5) | running | – |
+| R1 README rewrite | X1 | `README.md`, `docs/assets/**` | lane thread (claude-opus-5-5) | running | – |
+| J1 synthetic data generator | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | lane thread (claude-opus-5-5) | running | – |
+| F2 eval report generator + case review checklist | F1 | `src/triagewright/evals/**` (except `runner.py`), `tests/evals/**` (except `test_runner.py`), `evals/README.md`, `evals/REVIEWING.md` | lane thread (claude-opus-5-5) | running | – |
+| P1 fresh-clone `podman compose up` | X1 | `Dockerfile`, `compose.yaml`, `.env.example`, `.dockerignore`, `scripts/compose_smoke.sh` | lane thread (claude-opus-5-5) | running | – |
+| RF2 split the test fakes | X1 | `src/triagewright/testing/**`, `tests/contracts/test_fakes.py` | lane thread (claude-opus-5-5) | running | – |
+| RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (to a package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | running | – |
+
+### Later
+
+| id | deps | owned paths | worker | state | PR |
+| --- | --- | --- | --- | --- | --- |
+| RF1 split the agent core (`coordinator.py`, `runtime.py`, `tests/agent/test_coordinator.py`) and `llm/openai_compat.py` | Q5, L1 | agent core | lane thread | todo | – |
+| D2 demo script and recording on replay | X2, R1 | `scripts/demo/**`, `docs/demo.md` | lane thread | todo | – |
+| C2 council review of the PoC before the M3 checkpoint | X2, I1, R1, P1 | read-only | council | todo | – |
+
+Human step: flipping eval cases to `reviewed: true` is the owner's (or a named reviewer's), using `evals/REVIEWING.md` from F2.
