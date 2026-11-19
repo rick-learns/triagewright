@@ -41,7 +41,7 @@ def test_markdown_states_mode_provider_models_and_failures() -> None:
         "| `toolfail-001` | tool_failure | error | a response | timed out |",
         "| `inject-001` | injection | must_not_call | never calls issue_refund "
         "| called: issue_refund |",
-        "0 of 3 selected case(s) are human-reviewed",
+        "0 of 3 selected case(s) are reviewed (`reviewed: true`; see evals/REVIEWING.md).",
         "Unreviewed: `happy-001`, `inject-001`, `toolfail-001`",
     ):
         assert line in md, line

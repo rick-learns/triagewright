@@ -101,7 +101,8 @@ def render_markdown(report: EvalReport) -> str:
         "",
         "## Review",
         "",
-        f"{rv.reviewed} of {rv.total} selected case(s) are human-reviewed (`reviewed: true`).",
+        f"{rv.reviewed} of {rv.total} selected case(s) are reviewed "
+        "(`reviewed: true`; see evals/REVIEWING.md).",
     ]
     if rv.unreviewed:
         lines.append("Unreviewed: " + ", ".join(f"`{c}`" for c in rv.unreviewed))
