@@ -50,9 +50,11 @@ def test_healthz_and_request_ids(stack: Stack, caplog: pytest.LogCaptureFixture)
     with caplog.at_level(logging.INFO, logger="triagewright.api"):
         r = c.get("/healthz", headers={"X-Request-ID": "555-0100"})
         c.get("/cus_ava01/4111111111111111")
+        c.request("CALL5550100", "/healthz")
     assert r.status_code == 200 and r.json() == {"status": "ok"}
     assert len(r.headers["X-Request-ID"]) == 32  # server-generated, never the caller's
     assert "GET /healthz 200" in caplog.text and "GET <unmatched> 404" in caplog.text
+    assert "<other> /healthz" in caplog.text and "5550100" not in caplog.text
     assert "555-0100" not in caplog.text and "4111111111111111" not in caplog.text
 
 

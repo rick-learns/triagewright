@@ -36,6 +36,7 @@ log = logging.getLogger("triagewright.api")
 
 REQUEST_ID_HEADER = "X-Request-ID"
 _STATUS_CODES = {404: "not_found", 405: "method_not_allowed"}
+_LOGGED_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 
 
 class ApiError(Exception):
@@ -111,10 +112,11 @@ def create_app(
             log.error("unhandled %s request_id=%s", type(exc).__name__, request_id)
             response = _error(request_id, 500, "internal", "internal server error")
         response.headers[REQUEST_ID_HEADER] = request_id
+        method = request.method if request.method in _LOGGED_METHODS else "<other>"
         route = getattr(request.scope.get("route"), "path", "<unmatched>")
         log.info(
             "%s %s %d %.1fms request_id=%s",
-            request.method,
+            method,
             route,
             response.status_code,
             (time.perf_counter() - started) * 1000,
