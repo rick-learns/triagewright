@@ -101,8 +101,14 @@ until curl -fsS --max-time 2 "$base/healthz" >/dev/null 2>&1; do
     ((SECONDS < deadline)) || fail "API not healthy within ${timeout_s}s"
     sleep 2
 done
-until run exec -T mcp python -c "import socket; socket.create_connection(('127.0.0.1', 8765), 2)" \
-    >/dev/null 2>&1; do
+mcp_listening() {
+    local left=$((deadline - SECONDS))
+    ((left > 0)) || return 1
+    timeout "$((left < 10 ? left : 10))" "${compose[@]}" -p "$project" -f compose.yaml \
+        -f "$override" exec -T mcp \
+        python -c "import socket; socket.create_connection(('127.0.0.1', 8765), 2)" >/dev/null 2>&1
+}
+until mcp_listening; do
     ((SECONDS < deadline)) || fail "MCP server not listening within ${timeout_s}s"
     sleep 2
 done

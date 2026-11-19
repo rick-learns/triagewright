@@ -39,9 +39,10 @@ services:
       TW_MCP_TRANSPORT: http
       TW_MCP_URL: http://mcp:8765/mcp
       TW_OTLP_ENDPOINT: http://jaeger:4318
-      # Podman forwards the host's proxy variables; keep the stack's own traffic off the proxy.
-      NO_PROXY: mcp,jaeger,localhost,127.0.0.1
-      no_proxy: mcp,jaeger,localhost,127.0.0.1
+      # Podman forwards the host's proxy variables; keep the stack's own traffic off the proxy,
+      # on top of the host's NO_PROXY.
+      NO_PROXY: ${NO_PROXY:-localhost},mcp,jaeger,127.0.0.1
+      no_proxy: ${NO_PROXY:-localhost},mcp,jaeger,127.0.0.1
     ports: ["127.0.0.1:${TW_API_PORT:-8080}:8080"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
