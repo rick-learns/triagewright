@@ -32,6 +32,7 @@ def record() -> list[Text]:
     out = Console(
         record=True,
         width=tour.WIDTH,
+        height=ROWS,  # with both set, Rich keeps the size even under TERM=dumb
         file=io.StringIO(),
         force_terminal=True,
         color_system="truecolor",
@@ -104,7 +105,7 @@ def keyframes(name: str, stops: list[tuple[float, float]], total: float) -> str:
 
 
 def render(lines: list[Text]) -> str:
-    console = Console(color_system="truecolor", width=tour.WIDTH)
+    console = Console(color_system="truecolor", width=tour.WIDTH, height=ROWS)
     clock = 0.0
     reveals: list[tuple[float, float]] = []  # (time, cover offset)
     scrolls: list[tuple[float, float]] = [(0.0, 0.0)]
@@ -121,6 +122,10 @@ def render(lines: list[Text]) -> str:
     height = TOP + view_h + 14
     content = len(lines) * LINE_H
     body = [part for row, line in enumerate(lines) for part in draw_line(line, row, console)]
+    # Reduced motion: no animation, a static outline instead (the command, each step, the end).
+    steps = [line for line in lines if pause_before(line) == STEP_S]
+    outline = [lines[0], *steps, next(line for line in reversed(lines) if line.plain.strip())]
+    summary = [part for row, line in enumerate(outline) for part in draw_line(line, row, console)]
     background = THEME.background_color.hex
     style = (
         "text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',"
@@ -129,8 +134,8 @@ def render(lines: list[Text]) -> str:
         f"#cover{{animation:cover {total:.2f}s step-end infinite}}"
         f"{keyframes('scroll', scrolls, total)}"
         f"{keyframes('cover', [(0.0, 0.0), *reveals], total)}"
-        "@media (prefers-reduced-motion:reduce){#scroll,#cover{animation:none}"
-        f"#cover{{transform:translateY({content:.1f}px)}}}}"
+        "#summary{display:none}"
+        "@media (prefers-reduced-motion:reduce){#scroll{display:none}#summary{display:inline}}"
     )
     title = "bash scripts/demo.sh: the real stack, a scripted model in place of the LLM, offline"
     return "\n".join(
@@ -152,6 +157,9 @@ def render(lines: list[Text]) -> str:
             *body,
             f'<rect id="cover" x="0" y="0" width="{width:.0f}" height="{content + view_h:.0f}" '
             f'fill="{background}"/>',
+            "</g>",
+            '<g id="summary">',
+            *summary,
             "</g>",
             "</g>",
             "</svg>",
