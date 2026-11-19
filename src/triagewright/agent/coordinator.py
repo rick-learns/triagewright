@@ -199,6 +199,7 @@ class Coordinator:
             run.injection = run.injection or run.ticket_flagged
             final = self._own_refund_reply(run, await self._coordinate(run))
             citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
+            run.flagged_before_review = run.injection
             try:
                 review = await subagents.review(run, self._draft(run, final, citations))
             except Refused:
@@ -334,7 +335,7 @@ class Coordinator:
     # ---- routing and the response ------------------------------------------------
 
     def _route(
-        self, run: RequestRun, review: EscalationDecision | None
+        self, run: RequestRun, review: EscalationDecision | None, proposed: ResolutionStatus
     ) -> EscalationDecision | None:
         """Code's escalation decision. The reviewer can add an escalation, never remove one."""
         queue: EscalationQueue | None = None
@@ -351,7 +352,11 @@ class Coordinator:
                     EscalationReason.ACCOUNT_INACTIVE if inactive else EscalationReason.POLICY_LIMIT
                 )
                 why.append(f"refund blocked by policy ({winning})")
-        reviewed = review is not None and review.escalate and not _left_to_code(run, review)
+        reviewed = (
+            review is not None
+            and review.escalate
+            and not _left_to_code(run, review, refusing=proposed is ResolutionStatus.REFUSED)
+        )
         if review is not None and reviewed:
             queue = queue or review.queue or EscalationQueue.TIER1
             priority = review.priority
@@ -399,7 +404,7 @@ class Coordinator:
         review: EscalationDecision | None,
         stop: LoopStop,
     ) -> FinalResponse:
-        decision = self._route(run, review)
+        decision = self._route(run, review, proposed)
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
         if run.triage is not None and _refund_requested(run):
             reply = self._refund_reply(run, reply, decision, notes)
@@ -593,30 +598,28 @@ def _refund_requested(run: RequestRun) -> bool:
     return run.triage.category is TicketCategory.REFUND_REQUEST or run.triage.refund_requested
 
 
-_CODE_OWNED = frozenset({EscalationReason.APPROVAL_REQUIRED, EscalationReason.INJECTION_SUSPECTED})
-
-
-def _left_to_code(run: RequestRun, review: EscalationDecision) -> bool:
-    """A review whose every reason is one code decides itself adds nothing, unless triage
-    found another human need:
+def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool) -> bool:
+    """A review whose every reason is one code already handled adds nothing, unless triage
+    found a human need code didn't handle:
 
     - ``approval_required`` once the request's one action is decided: a pending approval
       is that human step, and a blocked action has nothing to approve.
-    - ``injection_suspected`` once code suspects it too: the injection rule in ``_route``
-      sends a write or handoff request to security and leaves the rest refused.
+    - ``injection_suspected`` when code suspected it before the reviewer did and the draft
+      refuses: the injection rule in ``_route`` still sends a write or handoff request to
+      security.
     """
+    handled: set[EscalationReason] = set()
+    decided = (ActionStatus.PENDING_APPROVAL, ActionStatus.BLOCKED)
+    if len(run.outcomes) == 1 and run.outcomes[0].status in decided:
+        handled.add(EscalationReason.APPROVAL_REQUIRED)
+    if run.flagged_before_review and refusing:
+        handled.add(EscalationReason.INJECTION_SUSPECTED)
     reasons = set(review.reasons)
-    if not reasons or not reasons <= _CODE_OWNED:
-        return False
-    if EscalationReason.APPROVAL_REQUIRED in reasons:
-        decided = (ActionStatus.PENDING_APPROVAL, ActionStatus.BLOCKED)
-        if len(run.outcomes) != 1 or run.outcomes[0].status not in decided:
-            return False
-    if EscalationReason.INJECTION_SUSPECTED in reasons and not run.injection:
+    if not reasons or not reasons <= handled:
         return False
     triage = run.triage
     other_need = triage is not None and (
-        bool(set(triage.needs_human_reasons) - _CODE_OWNED)
+        bool(set(triage.needs_human_reasons) - handled)
         or (triage.needs_human and not triage.needs_human_reasons)
     )
     return not other_need
