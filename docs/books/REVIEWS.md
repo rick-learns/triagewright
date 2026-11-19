@@ -20,3 +20,8 @@
 | #19 | Q2 code decides refunds | sol-loop: gpt-6.2-sol (high) | 5 | approve | S1 handoffs drop the model's refund text, S5 full page never narrows to one order | – | not reported |
 | #20 | Q3 pending refunds stay with the approver; model-error spans | sol-loop: gpt-6.2-sol (high) | 3 | approve | S1 explicit span error wins, S2 no exception messages in spans, S3 approval-only narrowed (incl. unexplained human need) | – | not reported |
 | #21 | Q4 reviewer reasons code already handled | sol-loop: gpt-6.2-sol (high) | 2 | approve | S1 injection-only non-refusal keeps the handoff, S2 pre-review flag, S3 triage approval needs an action, S4 prompt | – | not reported |
+| #22 | books: M1 + Q1–Q4 merges, M2/M3 lane plan, ADR-001 approval boundary | sol-loop: gpt-6.2-sol (high) | 3 | changes (r3: one status-drift should, one nit, both applied after the round, docs only) | S1 path handoffs, S2 approval-key wording, S3/S4/S13 deps, S5/S6 ledger, S7 new-path labels, S10/S11/S14 lane rows | – | not reported |
+| #23 | RF2 split the test fakes | sol-loop: gpt-6.2-sol (high) | 1 | approve | nit: ineffective import-cycle test removed | – | not reported |
+| #24 | RF3 split the wiring module | sol-loop: gpt-6.2-sol (high) | 1 | approve | – | – | not reported |
+| #25 | J1 synthetic data generator | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
+| #26 | F2 eval report generator + review checklist | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
