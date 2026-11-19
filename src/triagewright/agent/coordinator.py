@@ -234,6 +234,7 @@ class Coordinator:
             "finalize",
             prompts.FINALIZE_DESCRIPTION,
             check=lambda final: self._check_final(run, final),
+            settle=lambda: _settled(run),
         )
 
     def _check_final(self, run: RequestRun, final: FinalizeArgs) -> str | None:
@@ -281,6 +282,10 @@ class Coordinator:
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, "action subagent refused"
                 ) from None
+            if _refund_requested(run) and _refund_proposed(run) and not _policy_citation(run):
+                # Code cites the policy itself, so the reply settles without another turn.
+                search = run.business_tool(ToolName.SEARCH_KB, "coordinator")
+                await search.handler({"query": "refund policy"})
             return as_data(canonical_json(result.model_dump(mode="json")), flagged), False
 
         reads = REFUND_READ_TOOLS if _refund_requested(run) else READ_TOOLS
@@ -424,14 +429,12 @@ class Coordinator:
     def _refund_reply(
         self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
     ) -> str:
-        """Code states every refund outcome (``_note``), and the model wrote its reply before
-        the executor decided, so a reply beside an outcome is dropped; a security handoff
-        never carries model text. What's left is a reply code wrote (``_own_refund_reply``)."""
+        """Code states every refund outcome (``_note``), and a security handoff never carries
+        model text. No model writes a reply beside a proposal: code settles it (``_settled``).
+        What's left is a reply code wrote (``_own_refund_reply``)."""
         security = decision is not None and decision.queue is EscalationQueue.SECURITY
         if security:
             return prompts.FALLBACK_REPLY
-        if _refund_proposed(run):  # with or without a note: a policy handoff has none
-            return prompts.REFUND_OUTCOME_REPLY
         return reply
 
     async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
@@ -623,6 +626,35 @@ def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool
         or (triage.needs_human and not triage.needs_human_reasons)
     )
     return not other_need
+
+
+def _settled(run: RequestRun) -> FinalizeArgs | None:
+    """A refund request is settled once a refund is proposed and the policy is cited: the
+    executor decides the outcome and code states it (``_note``), so a model's reply would
+    only guess at it. Code writes the reply and the citation instead."""
+    if not (_refund_requested(run) and _refund_proposed(run)):
+        return None
+    citation = _policy_citation(run)
+    if citation is None:
+        return None
+    cited = CitationCandidate(chunk_id=citation.chunk_id, quote=citation.quote)
+    return FinalizeArgs(status="resolved", reply=prompts.REFUND_OUTCOME_REPLY, citations=[cited])
+
+
+def _policy_citation(run: RequestRun) -> Citation | None:
+    """The first trusted refund-policy hit seen, quoting its first sentence."""
+    for hit in run.kb_hits.values():
+        if hit.doc_id != _REFUND_POLICY_DOC:
+            continue
+        if (citation := run.cite(hit.chunk_id, first_sentence(hit.text))) is not None:
+            return citation
+    return None
+
+
+def first_sentence(text: str) -> str:
+    """The first sentence of a chunk's first line of prose (chunks open with a heading)."""
+    lines = [line for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    return lines[0].split(". ")[0][:400] if lines else ""
 
 
 def _refund_proposed(run: RequestRun) -> bool:

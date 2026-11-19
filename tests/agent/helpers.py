@@ -117,21 +117,22 @@ def propose_refund(order_id: str, amount_cents: int) -> ModelResponse:
     )
 
 
+def together(*responses: ModelResponse) -> ModelResponse:
+    """One turn calling every tool the given responses call."""
+    return model_response(*(block for r in responses for block in r.content))
+
+
 REFUND_POLICY = "kb_refund_policy#0"
 
 
 def refund_script(order_id: str, amount_cents: int, **review_kw: Any) -> list[ModelResponse]:
-    """Triage, a policy search, the action subagent proposing one refund, finalize, and review."""
+    """Triage, a policy search, the action subagent proposing one refund, and review: once
+    the refund is proposed and the policy seen, code settles the action and the finalize."""
     return [
         triage("refund_request", intent="Get a refund"),
         call("search_kb", {"query": "refund policy"}),
         call("action"),
         propose_refund(order_id, amount_cents),
-        submit("action", {"summary": "Proposed a refund."}),
-        finalize(
-            "Thanks, I've looked into your refund request.",
-            citations=[(REFUND_POLICY, "Delivered orders can be refunded within 30 days")],
-        ),
         review(**review_kw),
     ]
 
