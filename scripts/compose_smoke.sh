@@ -6,7 +6,7 @@
 # nothing listens on (127.0.0.1:9 inside the api container), so every model call fails at once
 # and the agent takes its safe fallback: code escalates the ticket over MCP. The ticket must come
 # back `escalated` with stop `error`, and its escalation must be in the MCP server's database.
-# These settings override anything in .env, so a real key there is never used.
+# The smoke ignores .env (its env_file is reset), so a real key there is never used.
 #
 # Usage: scripts/compose_smoke.sh
 #   TW_COMPOSE        compose command, e.g. "docker compose" or "podman-compose"
@@ -14,8 +14,7 @@
 #                     docker compose)
 #   TW_SMOKE_PORT     host port for the API (default 18080, apart from a dev stack on 8080)
 #   TW_SMOKE_TIMEOUT  seconds to wait for health (default 180)
-#   TW_SMOKE_PROJECT  compose project name (default tw-smoke); its volume is removed at the end
-#   TW_SMOKE_ENV_FILE extra env file for both services, e.g. .env.example (default: none)
+#   TW_SMOKE_PROJECT  compose project name (default tw-smoke-<pid>); its volume is removed at the end
 # Exits non-zero on any failure.
 set -euo pipefail
 
@@ -36,7 +35,7 @@ fi
 
 port="${TW_SMOKE_PORT:-18080}"
 timeout_s="${TW_SMOKE_TIMEOUT:-180}"
-project="${TW_SMOKE_PROJECT:-tw-smoke}"
+project="${TW_SMOKE_PROJECT:-tw-smoke-$$}"
 base="http://127.0.0.1:${port}"
 ticket_id="tkt_smoke$(date +%s)"
 
@@ -48,17 +47,12 @@ export TW_API_PORT="$port"
 TW_APPROVAL_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 export TW_APPROVAL_KEY
 
-extra_env=""
-if [[ -n "${TW_SMOKE_ENV_FILE:-}" ]]; then
-    extra_env="    env_file: [\"$(realpath "$TW_SMOKE_ENV_FILE")\"]"
-fi
 cat >"$override" <<EOF
 services:
   mcp:
-$extra_env
-    environment: {}
+    env_file: !reset []
   api:
-$extra_env
+    env_file: !reset []
     environment:
       TW_LLM_PROVIDER: gemini
       GEMINI_API_KEY: offline-smoke-placeholder
@@ -69,24 +63,33 @@ $extra_env
 EOF
 
 run() { "${compose[@]}" -p "$project" -f compose.yaml -f "$override" "$@"; }
+curl() { command curl --noproxy '*' "$@"; }
 
 fail() {
     echo "compose_smoke: FAIL: $*" >&2
     exit 1
 }
 
-teardown() {
+down() {
+    run down -v --remove-orphans >/dev/null 2>&1 || {
+        echo "compose_smoke: FAIL: teardown (${compose[*]} -p $project down -v)" >&2
+        return 1
+    }
+}
+
+on_exit() {
     local status=$?
+    trap - EXIT
     if ((status != 0)); then
         echo "--- logs (last 40 lines per service) ---" >&2
         run logs --tail 40 mcp >&2 || true
         run logs --tail 40 api >&2 || true
+        down || true
     fi
-    run down -v --remove-orphans >/dev/null 2>&1 || echo "compose_smoke: teardown failed" >&2
     rm -rf "$tmp"
     exit "$status"
 }
-trap teardown EXIT
+trap on_exit EXIT
 
 echo "compose_smoke: ${compose[*]} (project $project, API on $base)"
 started=$SECONDS
@@ -98,9 +101,12 @@ until curl -fsS --max-time 2 "$base/healthz" >/dev/null 2>&1; do
     ((SECONDS < deadline)) || fail "API not healthy within ${timeout_s}s"
     sleep 2
 done
+until run exec -T mcp python -c "import socket; socket.create_connection(('127.0.0.1', 8765), 2)" \
+    >/dev/null 2>&1; do
+    ((SECONDS < deadline)) || fail "MCP server not listening within ${timeout_s}s"
+    sleep 2
+done
 echo "compose_smoke: healthy after $((SECONDS - started))s"
-run exec -T mcp python -c "import socket; socket.create_connection(('127.0.0.1', 8765), 2)" ||
-    fail "MCP server is not listening"
 
 # ---- a ticket ----
 body="$tmp/ticket.json"
@@ -156,4 +162,5 @@ code="$(curl -sS --max-time 10 -o "$body" -w '%{http_code}' -H 'Content-Type: ap
 [[ "$code" == 404 ]] || fail "decision with the token returned $code, not 404"
 echo "compose_smoke: approval decisions refuse a missing or wrong token (401)"
 
+down
 echo "compose_smoke: PASS in $((SECONDS - started))s"
