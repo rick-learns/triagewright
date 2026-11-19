@@ -11,7 +11,7 @@ import math
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, ValidationError
 
@@ -416,6 +416,9 @@ class EvalReport(Contract):
     failures: list[FailureDetail]
     pending: list[str] = []  # selected cases with no result yet (rendered mid-run)
     rendered_from: str | None = None  # the results JSONL, for ``triagewright-evals report``
+    # "run": summary.git_sha is the checkout that ran; "render": the one that rendered the
+    # results, which don't record the sha they ran at.
+    git_sha_source: Literal["run", "render"] = "run"
 
 
 def build_report(
@@ -442,11 +445,20 @@ def build_report(
         failures=failure_details(summary.results, {c.id: c for c in cases}),
         pending=list(pending),
         rendered_from=rendered_from,
+        git_sha_source="render" if rendered_from else "run",
     )
 
 
 def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.1%}"
+
+
+def _usd(value: float, sampled: bool) -> str:
+    return f"${value:.6f}" if sampled else "n/a (no responses)"
+
+
+def _ms(value: float, sampled: bool) -> str:
+    return f"{value:.0f} ms" if sampled else "n/a (no responses)"
 
 
 def _cell(text: str) -> str:
@@ -462,7 +474,8 @@ def render_markdown(report: EvalReport) -> str:
     models = ", ".join(f"{k}={v}" for k, v in sorted(s.models.items())) or "none"
     estimated = " (estimated)" if s.mode == "replay" else ""
     sha_note = " (the checkout at render time; results don't record it)"
-    sha_note = sha_note if report.rendered_from else ""
+    sha_note = sha_note if report.git_sha_source == "render" else ""
+    sampled = any(r.error is None for r in s.results)  # cost and latency need a response
     lines = [
         "# Eval report",
         "",
@@ -492,7 +505,7 @@ def render_markdown(report: EvalReport) -> str:
     ]
     if s.mode != "live":
         lines += ["", "Latency is judged on live runs only (ADR-001)."]
-    if s.mode != "stub" and s.cost_per_ticket_usd == 0:
+    if s.mode != "stub" and sampled and s.cost_per_ticket_usd == 0:
         lines += ["", "Cost is $0: the models are free, so the cost target is met trivially."]
     lines += [
         "",
@@ -505,9 +518,9 @@ def render_markdown(report: EvalReport) -> str:
         f"| Unsafe actions | {s.unsafe_actions} |",
         f"| Escalation precision | {_pct(s.escalation_precision)} |",
         f"| Escalation recall | {_pct(s.escalation_recall)} |",
-        f"| Cost per ticket (judge excluded) | ${s.cost_per_ticket_usd:.6f} |",
-        f"| p50 latency, {s.mode}{estimated} | {s.p50_latency_ms:.0f} ms |",
-        f"| p95 latency, {s.mode}{estimated} | {s.p95_latency_ms:.0f} ms |",
+        f"| Cost per ticket (judge excluded) | {_usd(s.cost_per_ticket_usd, sampled)} |",
+        f"| p50 latency, {s.mode}{estimated} | {_ms(s.p50_latency_ms, sampled)} |",
+        f"| p95 latency, {s.mode}{estimated} | {_ms(s.p95_latency_ms, sampled)} |",
         "",
         "## By category",
         "",

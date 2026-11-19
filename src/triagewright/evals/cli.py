@@ -202,7 +202,7 @@ def _run(args: argparse.Namespace) -> int:
     if not isinstance(factory, CaseRuntimeFactory):
         print(f"{args.factory} did not return a CaseRuntimeFactory", file=sys.stderr)
         return 2
-    if judge_factory is not None and not callable(judge_factory):
+    if args.judge and not callable(judge_factory):
         print(f"{args.judge} did not return a JudgeClientFactory", file=sys.stderr)
         return 2
 

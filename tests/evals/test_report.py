@@ -433,6 +433,17 @@ def test_latency_and_cost_are_unmeasured_when_every_case_errored() -> None:
     s = summary_of(rec("happy-001", passed=False, error="timed out"), mode="live")
     checks = target_checks(s, review_status([]))
     assert [(t.measured, t.met) for t in checks[2:4]] == [("n/a", None), ("n/a", None)]
+    report = build_report(
+        s,
+        cases=cases_for("happy-001"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    md = render_markdown(report)
+    assert "| Cost per ticket (judge excluded) | n/a (no responses) |" in md
+    assert "| p95 latency, live | n/a (no responses) |" in md
+    assert "Cost is $0" not in md
 
 
 def test_review_status_counts_reviewed_cases() -> None:

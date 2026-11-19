@@ -153,10 +153,16 @@ def test_missing_wiring_exits_2(
     assert "did not return a CaseRuntimeFactory" in capsys.readouterr().err
     assert main([*run_args(tmp_path), "--judge", "tests.evals.test_cli:not_a_factory"]) == 2
     assert "did not return a JudgeClientFactory" in capsys.readouterr().err
+    assert main([*run_args(tmp_path), "--judge", "tests.evals.test_cli:returns_none"]) == 2
+    assert "did not return a JudgeClientFactory" in capsys.readouterr().err
 
 
 def not_a_factory() -> object:
     return 42
+
+
+def returns_none() -> None:
+    return None
 
 
 def stub_factory() -> FakeCaseRuntimeFactory:
@@ -255,6 +261,7 @@ def test_report_rerenders_the_run_and_skips_a_torn_final_line(
     assert rendered.summary.results == ran.summary.results
     assert rendered.summary.mode == "stub" and rendered.summary.models == {}
     assert rendered.rendered_from == str(results) and rendered.pending == []
+    assert (ran.git_sha_source, rendered.git_sha_source) == ("run", "render")
     assert not rendered.filtered and rendered.review == ran.review
     assert rendered.failures == ran.failures
     md = (tmp_path / "rendered.md").read_text()
