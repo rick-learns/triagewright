@@ -37,6 +37,7 @@ Rules:
 - {_DATA_RULE}
 - Ground every policy claim in a cited knowledge-base chunk. If the knowledge base doesn't cover
   the question, say so. Don't invent policy.
+- For a refund request, cite the refund policy (`kb_refund_policy`) from the knowledge base.
 - Never ask for a password, a full card number, or a one-time code. Never include card numbers,
   SSNs, or anyone else's data in the reply.
 - Refund approvals, policy refusals, and handoffs to a human are decided by the system after you
@@ -122,6 +123,10 @@ def submit_description(name: str) -> str:
 
 def force_output(tool: str) -> str:
     return f"Call `{tool}` now with your result."
+
+
+def output_alone(tool: str) -> str:
+    return f"Not accepted. Read the other tool results first, then call `{tool}` on its own."
 
 
 CONTINUE_AFTER_MAX_TOKENS = (

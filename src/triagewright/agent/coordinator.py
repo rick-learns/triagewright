@@ -50,6 +50,7 @@ from triagewright.contracts.agents import (
     LoopStop,
     ResolutionStatus,
     SubagentName,
+    TicketCategory,
     TriageResult,
 )
 from triagewright.contracts.common import (
@@ -77,6 +78,7 @@ from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import (
     TOOL_SPECS,
     CreateEscalationInput,
+    ErrorCategory,
     RefundReason,
     SideEffect,
     ToolName,
@@ -89,6 +91,14 @@ PURPOSES: tuple[str, ...] = ("coordinator", *(name.value for name in SubagentNam
 READ_TOOLS: tuple[ToolName, ...] = tuple(
     name for name, spec in TOOL_SPECS.items() if spec.side_effect is SideEffect.READ
 )
+
+# With an injection in the ticket, these intents get the security handoff (behavior.md).
+_SENSITIVE = frozenset({TicketCategory.REFUND_REQUEST, TicketCategory.ACCOUNT_ACCESS})
+# Errors the customer can fix by giving other details; anything else is a tool failure.
+_ASK_CUSTOMER = frozenset(
+    {ErrorCategory.NOT_FOUND, ErrorCategory.VALIDATION, ErrorCategory.PERMISSION}
+)
+_SUMMARY_MAX = 2000
 
 _NO_ARGS: JsonObject = {"type": "object", "properties": {}, "additionalProperties": False}
 
@@ -174,10 +184,13 @@ class Coordinator:
     # ---- flow --------------------------------------------------------------------
 
     async def _resolve(self, run: RequestRun) -> FinalResponse:
-        run.screen(f"{run.ticket.subject}\n{run.ticket.body}", ContentSource.CUSTOMER)
+        # Metadata reaches the models with the ticket, so it is screened with it.
+        texts = [run.ticket.subject, run.ticket.body, *run.ticket.metadata.values()]
+        run.ticket_flagged = run.screen("\n".join(texts), ContentSource.CUSTOMER)
         try:
             run.triage = await subagents.triage(run)
-            run.injection = run.injection or run.triage.injection_suspected
+            run.ticket_flagged = run.ticket_flagged or run.triage.injection_suspected
+            run.injection = run.injection or run.ticket_flagged
             final = await self._coordinate(run)
             citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
             try:
@@ -250,9 +263,13 @@ class Coordinator:
         )
 
     async def _propose_deferred(self, run: RequestRun) -> None:
-        """Send queued irreversible proposals, now that ``injection_suspected`` is final."""
-        run.ensure_time()
+        """Send queued irreversible proposals, now that ``injection_suspected`` is final.
+
+        The budget is checked around each proposal: one in flight is never cancelled, its
+        outcome is kept, and an overrun hands the ticket off.
+        """
         while run.deferred:
+            run.ensure_time()
             proposal = run.deferred.pop(0)
             with run.telemetry.span(
                 "executor.propose", SpanKind.APPROVAL, {"tool": proposal.tool.value}
@@ -262,10 +279,10 @@ class Coordinator:
                 )
                 span.set_attribute("status", outcome.status.value)
             run.outcomes.append(outcome)
-            error = outcome.result.error if outcome.result else None
-            if outcome.status is ActionStatus.FAILED and error is not None and error.retryable:
-                assert outcome.result is not None
+            failed = outcome.status is ActionStatus.FAILED and outcome.result is not None
+            if failed and outcome.result is not None and not _needs_info(outcome):
                 run.tool_failures.append(outcome.result.tool)
+            run.ensure_time()
 
     # ---- routing and the response ------------------------------------------------
 
@@ -297,7 +314,9 @@ class Coordinator:
             reasons.append(EscalationReason.TOOL_FAILURE)
             failed = sorted({t.value for t in run.tool_failures})
             why.append(f"tool kept failing after retries ({', '.join(failed)})")
-        if run.injection and (queue is not None or run.irreversible_requested):
+        category = run.triage.category if run.triage else None
+        forced_write = run.ticket_flagged and category in _SENSITIVE
+        if run.injection and (queue is not None or run.irreversible_requested or forced_write):
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
             why.insert(0, "possible prompt injection alongside a write or handoff request")
@@ -305,13 +324,14 @@ class Coordinator:
             return None
         summary = review.handoff_summary if review is not None and reviewed else ""
         if summary and why:
-            summary = f"{summary}\nAlso: {'; '.join(why)}."
+            also = f"\nAlso: {'; '.join(why)}."[:_SUMMARY_MAX]
+            summary = summary[: _SUMMARY_MAX - len(also)] + also
         return EscalationDecision(
             escalate=True,
             reasons=list(dict.fromkeys(reasons)) or [EscalationReason.LOW_CONFIDENCE],
             queue=queue,
             priority=priority,
-            handoff_summary=self._redact(summary or self._summary(run, why)),
+            handoff_summary=self._redact(summary or self._summary(run, why))[:_SUMMARY_MAX],
         )
 
     async def _respond(
@@ -354,14 +374,15 @@ class Coordinator:
             reasons=list(dict.fromkeys(reasons)),
             queue=queue,
             priority=Priority.NORMAL,
-            handoff_summary=self._redact(self._summary(run, why)),
+            handoff_summary=self._redact(self._summary(run, why))[:_SUMMARY_MAX],
         )
-        note = await self._handoff(run, decision)
+        notes = [note for o in run.outcomes if (note := self._note(run, o))]
+        notes.append(await self._handoff(run, decision))
         return self._final(
             run,
             ResolutionStatus.ESCALATED,
             prompts.FALLBACK_REPLY,
-            [note],
+            notes,
             [],
             decision,
             fallback.stop,
@@ -436,12 +457,17 @@ class Coordinator:
                     return f"That's more than the refundable balance on order {order} ({left})."
             return f"Order {order} can't be refunded under our refund policy."
         if _needs_info(outcome):
+            assert outcome.result is not None and outcome.result.error is not None
             if run.ticket.customer_id is None:
                 return (
                     "I can't look up orders without knowing your account. Please write to us "
                     "while signed in to the account that placed the order."
                 )
-            return f"I couldn't find order {order} on your account. Could you check the order id?"
+            if outcome.result.error.category is ErrorCategory.NOT_FOUND:
+                return (
+                    f"I couldn't find order {order} on your account. Could you check the order id?"
+                )
+            return "I couldn't process that refund request. Could you confirm the order and amount?"
         return None
 
     def _summary(self, run: RequestRun, why: list[str]) -> str:
@@ -456,7 +482,7 @@ class Coordinator:
             f"Attempted: {'; '.join(attempted) or 'no actions'}",
             f"Why escalated: {'; '.join(why) or 'reviewer decision'}",
         ]
-        return "\n".join(lines)[:2000]
+        return "\n".join(lines)[:_SUMMARY_MAX]
 
     # ---- redaction ---------------------------------------------------------------
 
@@ -494,9 +520,9 @@ def _refused(outcome: ActionOutcome) -> bool:
 
 
 def _needs_info(outcome: ActionOutcome) -> bool:
-    """A proposal that failed on its arguments or a missing record, not on a flaky tool."""
+    """A proposal that failed on its arguments, scope, or a missing record, not on the backend."""
     error = outcome.result.error if outcome.result else None
-    if error is None or error.retryable:
+    if error is None or error.category not in _ASK_CUSTOMER:
         return False
     return outcome.status is ActionStatus.FAILED or (
         outcome.status is ActionStatus.BLOCKED and outcome.verdict is None

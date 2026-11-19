@@ -131,6 +131,7 @@ class RequestRun:
     sleep: Sleep
     started: float
     injection: bool = False
+    ticket_flagged: bool = False  # the ticket itself carries a suspected injection
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""
@@ -423,8 +424,13 @@ class RequestRun:
                 results: list[ContentBlock] = []
                 value: T | None = None
                 invalid = False
+                mixed = len(uses) > 1
                 for use in uses:
-                    if use.name == output_tool:
+                    if use.name == output_tool and mixed:
+                        # The result must not be accepted before the model sees the others.
+                        content, is_error = prompts.output_alone(output_tool), True
+                        force = True
+                    elif use.name == output_tool:
                         try:
                             value = output.model_validate(use.input)
                         except ValidationError as exc:

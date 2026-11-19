@@ -278,6 +278,28 @@ async def test_non_retryable_errors_are_not_retried() -> None:
 # ---- structured output -------------------------------------------------------------
 
 
+async def test_finalize_mixed_with_other_tools_waits_for_their_results() -> None:
+    mixed = model_response(
+        *call("get_order", {"order_id": "ord_zzzz"}).content,
+        *finalize().content,
+    )
+    s = stack(
+        [
+            triage(),
+            mixed,
+            finalize("I couldn't find that order. Could you check the id?", "needs_info"),
+            review(),
+        ]
+    )
+    response = await s.resolve(sample_ticket("Where is ord_zzzz?"))
+    assert response.status is ResolutionStatus.NEEDS_INFO
+    retry = s.requests("coordinator")[1]
+    found, rejected = tool_results(retry)
+    assert found.is_error and not found.content.startswith("Not accepted")
+    assert rejected.is_error and rejected.content == prompts.output_alone("finalize")
+    assert retry.tool_choice == ToolChoice(type="tool", name="finalize")
+
+
 async def test_invalid_subagent_output_gets_one_repair() -> None:
     bad = submit("triage", {"category": "nope"})
     s = stack([bad, triage(), finalize(), review()])
