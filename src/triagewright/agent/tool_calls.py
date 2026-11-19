@@ -20,6 +20,7 @@ from triagewright.contracts.tools import (
     TOOL_SPECS,
     CallContext,
     Caller,
+    ErrorCategory,
     KBHit,
     KBSearchResult,
     ListOrdersInput,
@@ -31,6 +32,27 @@ from triagewright.contracts.tools import (
 from triagewright.contracts.world import Customer, EscalationReason
 
 _HANDOFF_FLOOR_S = 1.0
+# The backend itself failing, as opposed to a bad call (validation, not_found, policy, ...).
+_SERVICE_ERRORS = frozenset(
+    {
+        ErrorCategory.RATE_LIMITED,
+        ErrorCategory.TRANSIENT,
+        ErrorCategory.TIMEOUT,
+        ErrorCategory.INTERNAL,
+    }
+)
+
+
+def _call_key(name: ToolName, arguments: JsonObject) -> str:
+    """A call's arguments with defaults filled in, so equivalent calls share a key. Arguments
+    that don't validate are keyed as given."""
+    if name is ToolName.SEARCH_KB and (search := _search_key(arguments)) is not None:
+        return search
+    try:
+        validated = TOOL_SPECS[name].input_model.model_validate(arguments)
+    except ValidationError:
+        return canonical_json(arguments)
+    return canonical_json(validated.model_dump(mode="json"))
 
 
 def _search_key(arguments: JsonObject) -> str | None:
@@ -63,8 +85,14 @@ class ToolCalls(RunState):
         """Call the gateway, retrying retryable errors up to ``tool_retries`` times.
 
         Every attempt is a raw gateway call, so ``ExpectedOutcome.attempts`` counts them all.
-        A retryable error that outlasts the retries is recorded as a tool failure.
+        A final service error (a retryable one that outlasts the retries, or one marked not
+        retryable) is a tool failure, and that call stays failed for the rest of the request:
+        the same tool with equivalent arguments (``_call_key``) returns the failure without a
+        raw call, so a model asking again can't multiply the attempts.
         """
+        key = (name, _call_key(name, arguments))
+        if (failed := self.broken.get(key)) is not None:
+            return failed
         ctx = self.context(caller)
         attempt = 0
         while True:
@@ -91,7 +119,11 @@ class ToolCalls(RunState):
                 if result.error is not None:
                     span.set_error(result.error.category.value)
             error = result.error
-            if error is None or not error.retryable:
+            if error is None:
+                return result
+            if not error.retryable:
+                if error.category in _SERVICE_ERRORS:
+                    self._break(key, result)
                 return result
             if attempt > self.config.tool_retries:
                 break
@@ -103,8 +135,12 @@ class ToolCalls(RunState):
                 break
             if delay > 0:
                 await self.sleep(delay)
-        self.tool_failures.append(name)
+        self._break(key, result)
         return result
+
+    def _break(self, key: tuple[ToolName, str], result: ToolResult) -> None:
+        self.tool_failures.append(key[0])
+        self.broken[key] = result
 
     def observe(self, result: ToolResult, arguments: JsonObject) -> str:
         """Screen a tool result, keep its facts and KB hits, and return what models see."""

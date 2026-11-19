@@ -103,8 +103,9 @@ from `triagewright.agent.state`, `triagewright.agent.tool_calls`,
    verified facts) and may call only `search_kb`. Its `AnswerDraft` citations
    are re-checked by code.
 9. **Action subagent.** `subagents.action` gets `ActionInput` and calls the
-   read tools in `ACTION_TOOLS`. Writes go only through its `propose_action`
-   tool, which validates and *defers* irreversible proposals
+   read tools in `ACTION_TOOLS`. These leave out `check_refund_eligibility`:
+   the executor looks it up for every refund proposal. Writes go only through
+   its `propose_action` tool, which validates and *defers* irreversible proposals
    (`RequestRun.defer`). Nothing irreversible runs in the loop.
 10. **Finalize and code checks.** The model's `finalize` call supplies only
     `FinalizeArgs`: a reply, citation candidates, and a proposed status
@@ -383,15 +384,22 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   `LoopConfig.max_pacing_s` (120 s) caps waiting per request; beyond that the
   ticket is handed off.
 - **Model retries.** The OpenAI-compatible client retries 408, 429, 500, 502,
-  503, 504, timeouts, and connection errors with exponential backoff, honors
+  503, 504, timeouts, and connection errors with exponential backoff (an
+  OpenRouter 200 with an error body takes the body's HTTP code, else 502; a
+  choice that finished with `error` counts as a 502), honors
   `Retry-After` and Gemini's `RetryInfo`, and skips a retry unless the
   backoff plus a 2 s attempt window (`MIN_ATTEMPT_S`) fits before the
   deadline. 401/403 and other 4xx fail at once.
-- **Tool retries.** Only `RequestRun.call_tool` retries retryable tool errors,
-  up to `LoopConfig.tool_retries` (2), with backoff from `retry_after_ms` or
-  `retry_backoff_s`. A tool that keeps failing is recorded and escalated with
-  `tool_failure`, to `tier1` unless another queue already won. The executor's eligibility lookup retries the
-  same way.
+- **Tool retries.** The agent's tool calls go through `RequestRun.call_tool`,
+  which retries retryable tool errors up to `LoopConfig.tool_retries` (2), with
+  backoff from `retry_after_ms` or `retry_backoff_s`. A retryable error that
+  outlasts the retries, or a service error (`internal`, `transient`,
+  `rate_limited`, `timeout`) marked not retryable, is recorded and escalated
+  with `tool_failure`, to `tier1` unless another queue already won. That call
+  then stays failed for the request: the same tool with equivalent arguments
+  (validated, defaults filled in) gets the same error with no new raw call.
+  The refund executor retries its own eligibility lookup the same way, but
+  separately for each proposal and without that cache.
 - **Deadlines.** `turn_timeout_s` (20 s) per model call, `total_timeout_s`
   (30 s) per request, with `handoff_reserve_s` (3 s) kept for the escalation
   write; the handoff gets at least one attempt even after an overrun, under

@@ -21,7 +21,7 @@ Tools:
   shipping, returns, account, billing, or product question.
 - `action`: looks up the customer's orders and account and proposes refunds. Use it for refund
   requests and anything that needs order or account records. A refund request always needs
-  `action`: only it can check eligibility and request the refund.
+  `action`: only it can request the refund, and the system then checks eligibility.
 - Read-only business tools for quick lookups. `customer_id` must be the ticket's customer.
 - `finalize`: your final answer: `reply` to the customer, `citations` (chunk_id plus a verbatim
   quote from a trusted knowledge-base hit you've seen), and `status`.

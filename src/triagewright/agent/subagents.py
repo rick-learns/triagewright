@@ -37,12 +37,13 @@ from triagewright.contracts.tools import (
 )
 
 # Read-only tools the action subagent may call directly. Writes go through ``propose_action``.
+# Not ``check_refund_eligibility``: the executor looks it up for every refund proposal, and a
+# model's own lookup only repeats it (and read alone, tempts the model to settle the refund).
 ACTION_TOOLS: tuple[ToolName, ...] = (
     ToolName.GET_CUSTOMER,
     ToolName.GET_ACCOUNT,
     ToolName.GET_ORDER,
     ToolName.LIST_ORDERS,
-    ToolName.CHECK_REFUND_ELIGIBILITY,
 )
 
 

@@ -27,6 +27,7 @@ from triagewright.agent import refunds as refunds_module
 from triagewright.agent.coordinator import first_sentence
 from triagewright.contracts.agents import (
     EscalationInput,
+    LoopConfig,
     ResolutionStatus,
 )
 from triagewright.contracts.evals import ToolFault
@@ -84,8 +85,9 @@ async def test_a_model_reply_beside_a_refund_proposal_is_replaced_before_review(
 
 
 async def test_a_reply_beside_a_refund_proposal_must_cite_the_policy() -> None:
-    # Triage missed the ask, and code's policy lookup failed: the model must cite it.
-    error = ToolError(category=ErrorCategory.INTERNAL, message="down", retryable=False)
+    # Triage missed the ask, and code's policy lookup failed (not as a service failure, which
+    # would leave search_kb broken): the model must cite it.
+    error = ToolError(category=ErrorCategory.VALIDATION, message="bad query", retryable=False)
     fault = ToolFault(tool=ToolName.SEARCH_KB, error=error)
     _, search, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)
     uncited = finalize("Your refund was issued.")
@@ -182,7 +184,7 @@ async def test_the_reviewer_sees_the_refund_draft_as_grounded_by_its_citation() 
 
 
 async def test_a_refusal_after_a_queued_proposal_keeps_the_refusal_reply() -> None:
-    error = ToolError(category=ErrorCategory.INTERNAL, message="down", retryable=False)
+    error = ToolError(category=ErrorCategory.VALIDATION, message="bad query", retryable=False)
     fault = ToolFault(tool=ToolName.SEARCH_KB, error=error)
     triaged, _, act, propose, submitted, _ = refund_script("ord_h8001", 11800)
     refusal = text("I can't help with that.", StopReason.REFUSAL)
@@ -202,8 +204,24 @@ async def test_code_searches_for_the_policy_only_after_the_turn() -> None:
     assert len(s.calls(ToolName.SEARCH_KB)) == 1
 
 
+async def test_a_failed_model_search_leaves_code_s_policy_lookup_working() -> None:
+    error = ToolError(category=ErrorCategory.TRANSIENT, message="down", retryable=True)
+    query = {"query": "refund basics"}
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10, match_arguments=query)
+    triaged, _, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)
+    s = stack(
+        [triaged, call("search_kb", {"query": "refund basics"}), act, propose, submitted, reviewed],
+        faults=[fault],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 4  # 3 failed attempts, then code's lookup
+    assert [c.chunk_id for c in response.citations] == [REFUND_POLICY]
+    assert response.status is ResolutionStatus.ESCALATED  # the failed search is a tool failure
+
+
 async def test_a_failed_policy_search_leaves_the_finalize_to_the_model() -> None:
-    error = ToolError(category=ErrorCategory.INTERNAL, message="down", retryable=False)
+    error = ToolError(category=ErrorCategory.VALIDATION, message="bad query", retryable=False)
     fault = ToolFault(tool=ToolName.SEARCH_KB, error=error)
     triaged, search, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)
     s = stack([triaged, act, propose, submitted, search, reviewed], faults=[fault])

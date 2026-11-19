@@ -15,6 +15,7 @@ from tests.agent.helpers import (
     review,
     stack,
     text,
+    tool_results,
     triage,
 )
 from triagewright.agent import prompts
@@ -135,7 +136,7 @@ async def test_a_full_reviewer_summary_still_fits_the_code_reasons() -> None:
     response = await s.resolve(sample_ticket())
     summary = str(s.escalation_args()["summary"])
     assert len(summary) == 2000
-    assert summary.endswith("Also: tool kept failing after retries (get_order).")
+    assert summary.endswith("Also: tool failed (get_order).")
     assert response.escalation is not None and response.escalation.handoff_summary == summary
 
 
@@ -156,7 +157,7 @@ async def test_redaction_cannot_push_the_code_reasons_out_of_the_summary() -> No
     await s.resolve(sample_ticket())
     summary = str(s.escalation_args()["summary"])
     assert len(summary) <= 2000
-    assert summary.endswith("Also: tool kept failing after retries (get_order).")
+    assert summary.endswith("Also: tool failed (get_order).")
 
 
 async def test_retryable_permission_errors_are_tool_failures() -> None:
@@ -169,6 +170,89 @@ async def test_retryable_permission_errors_are_tool_failures() -> None:
     assert response.status is ResolutionStatus.ESCALATED
     assert s.escalation_args()["reason_codes"] == ["tool_failure"]
     assert "confirm the order" not in response.reply
+
+
+@pytest.mark.parametrize(
+    ("category", "retryable", "raw"),
+    [(ErrorCategory.TRANSIENT, True, 3), (ErrorCategory.INTERNAL, False, 1)],
+)
+async def test_a_failed_tool_stays_failed_for_the_request(
+    category: ErrorCategory, retryable: bool, raw: int
+) -> None:
+    """A model asking again gets the same failure without another raw call. Other
+    arguments still reach the gateway."""
+    error = ToolError(category=category, message="down", retryable=retryable)
+    match = {"order_id": "ord_a1002"}
+    fault = ToolFault(tool=ToolName.GET_ORDER, error=error, times=10, match_arguments=match)
+    lookup = call("get_order", {"order_id": "ord_a1002"})
+    other = call("get_order", {"order_id": "ord_a1001"})
+    s = stack(
+        [triage(), lookup, lookup, other, finalize(), review()],
+        faults=[fault],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.GET_ORDER)) == raw + 1
+    first, again, fine = (tool_results(r)[-1] for r in s.requests("coordinator")[1:4])
+    assert again.content == first.content and again.is_error
+    assert not fine.is_error
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert (args["queue"], args["reason_codes"]) == ("tier1", ["tool_failure"])
+
+
+async def test_equivalent_arguments_share_the_failure() -> None:
+    error = ToolError(category=ErrorCategory.TIMEOUT, message="slow", retryable=True)
+    s = stack(
+        [
+            triage(),
+            call("list_orders", {"customer_id": "cus_ava01"}),
+            call("list_orders", {"customer_id": "cus_ava01", "limit": 10}),
+            finalize(),
+            review(),
+        ],
+        faults=[ToolFault(tool=ToolName.LIST_ORDERS, error=error, times=10)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.LIST_ORDERS)) == 3
+
+
+async def test_equivalent_searches_share_the_failure() -> None:
+    error = ToolError(category=ErrorCategory.TIMEOUT, message="slow", retryable=True)
+    s = stack(
+        [
+            triage(),
+            call("search_kb", {"query": "shipping times"}),
+            call("search_kb", {"query": "shipping times", "categories": []}),
+            finalize(),
+            review(),
+        ],
+        faults=[ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.SEARCH_KB)) == 3
+
+
+async def test_arguments_that_do_not_validate_still_reach_the_gateway() -> None:
+    s = stack([triage(), call("get_order", {"order": "ord_a1002"}), finalize(), review()])
+    response = await s.resolve(sample_ticket())
+    (record,) = s.calls(ToolName.GET_ORDER)
+    assert record.result.error is not None and record.result.error.category == "validation"
+    assert response.status is ResolutionStatus.RESOLVED
+
+
+async def test_a_bad_call_is_not_a_tool_failure() -> None:
+    error = ToolError(category=ErrorCategory.VALIDATION, message="bad id", retryable=False)
+    lookup = call("get_order", {"order_id": "ord_a1002"})
+    s = stack(
+        [triage(), lookup, lookup, finalize(), review()],
+        faults=[ToolFault(tool=ToolName.GET_ORDER, error=error)],
+    )
+    response = await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.GET_ORDER)) == 2
+    assert response.status is ResolutionStatus.RESOLVED
 
 
 async def test_reviewer_escalation_without_queue_or_reasons_gets_defaults() -> None:
