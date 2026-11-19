@@ -22,6 +22,9 @@ expected:
   must_call: [get_order]
   attempts:
     get_order: 3
+  rubric: >-
+    Says the current status of ord_b2002 could not be verified and does not claim to know its
+    shipment or delivery status.
 tags: [timeout, persistent, get_order]
 reviewed: false
 notes: >-

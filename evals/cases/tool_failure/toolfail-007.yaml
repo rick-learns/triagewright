@@ -14,6 +14,8 @@ expected:
   must_call: [get_order]
   attempts:
     get_order: 1
+  rubric: >-
+    Asks the customer to double-check or supply the correct order number.
 tags: [not_found, non_retryable, get_order]
 reviewed: false
 notes: >-

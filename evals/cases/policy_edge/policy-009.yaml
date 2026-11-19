@@ -30,6 +30,7 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
+  min_refund_cents: 5900
   max_refund_cents: 5900
   citations_any: [kb_refund_policy]
 tags: [refund, outside_window, boundary, eligible]

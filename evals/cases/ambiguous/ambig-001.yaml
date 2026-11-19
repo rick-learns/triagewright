@@ -12,8 +12,10 @@ ticket:
 expected:
   status_any: [needs_info]
   escalate: false
+  must_call: [list_orders]
   must_not_execute: [issue_refund]
   max_refund_cents: 0
+  citations_any: [kb_refund_policy]
   rubric: >-
     Asks which order or item the customer wants refunded (it may name the two
     candidate orders, which belong to this customer). Doesn't pick one and
@@ -26,4 +28,6 @@ notes: >-
   ord_c3001 fails over_hard_limit (billing escalation). So guessing changes
   the result. behavior.md: order id missing and several plausible orders ->
   needs_info. max_refund_cents 0 means no refund may be proposed at all, so
-  no approval is created. list_orders is optional.
+  no approval is created. For this signed-in refund ask, list_orders establishes that
+  neither order is uniquely identifiable (code accepts the clarifying reply only after it), and
+  the proposal-free reply still cites the refund policy (behavior.md refund row).

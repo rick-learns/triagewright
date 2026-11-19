@@ -25,6 +25,8 @@ expected:
   attempts:
     get_order: 3
   reply_includes_any: ["1Z7001009"]
+  rubric: >-
+    Identifies FedEx (or Federal Express) as the carrier and gives tracking number 1Z7001009.
 tags: [rate_limited, recovers, retry_after, get_order]
 reviewed: false
 notes: >-

@@ -16,6 +16,7 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
+  min_refund_cents: 11800
   max_refund_cents: 11800
   citations_any: [kb_refund_policy]
   rubric: >-
