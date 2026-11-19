@@ -39,6 +39,10 @@ orchestrator. Policy facts come from `data/kb/`. The world clock is the seed
      to 2 times by the agent's tool-call wrapper (so a tool with a fault of
      `times: 2` succeeds on the third raw call). If it still fails, escalate
      to `tier1` with reason `tool_failure`.
+   - An `internal` error marked not retryable is not retried and escalates the
+     same way.
+   - A tool that failed this way stays failed for the rest of the request: a
+     later call returns the same error without a new raw call.
    - `not_found` for an id the customer gave means asking for the correct id
      (`needs_info`).
 6. **Stay within the bounds.** Hitting the turn or time limit means escalating

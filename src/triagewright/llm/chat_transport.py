@@ -171,6 +171,9 @@ class OpenAICompatClient:
         if status == 200 and isinstance(data, dict) and "error" in data and not data.get("choices"):
             code = data["error"].get("code") if isinstance(data["error"], dict) else None
             status = code if isinstance(code, int) and code >= 400 else 502
+        # Or as a 200 whose choice finished with ``error``: the upstream failed mid-answer.
+        if status == 200 and _finished_with_error(data):
+            status = 502
         if status < 400:
             if data is None:
                 raise ModelResponseError(f"{where}: response is not JSON")
@@ -206,6 +209,14 @@ def _retry_info_seconds(err: Any) -> float | None:
             if match:
                 return float(match.group(1))
     return None
+
+
+def _finished_with_error(data: Any) -> bool:
+    """OpenRouter's ``finish_reason: "error"``, its normalized value for an upstream failure."""
+    try:
+        return bool(data["choices"][0].get("finish_reason") == "error")
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return False
 
 
 def _json_or_none(resp: httpx.Response) -> Any:

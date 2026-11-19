@@ -70,7 +70,7 @@ class Routing(Replies, RefundRules):
             queue = queue or EscalationQueue.TIER1
             reasons.append(EscalationReason.TOOL_FAILURE)
             failed = sorted({t.value for t in run.tool_failures})
-            why.append(f"tool kept failing after retries ({', '.join(failed)})")
+            why.append(f"tool failed ({', '.join(failed)})")
         # A refund ask with injection suspected anywhere, the reviewer's screen included
         # (it runs last), goes to security whatever the models did. So does an injection
         # planted in a tool result or KB page: it targets the system, not the customer's ask.

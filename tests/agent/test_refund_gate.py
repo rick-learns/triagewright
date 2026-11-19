@@ -32,11 +32,20 @@ from triagewright.contracts.guardrails import (
     ContentSource,
 )
 from triagewright.contracts.llm import ModelResponse, StopReason
+from triagewright.contracts.tools import ToolName
 from triagewright.testing import (
     sample_ticket,
 )
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_the_action_subagent_leaves_the_eligibility_lookup_to_the_executor() -> None:
+    s = stack(refund_script("ord_a1001", 5000))
+    await s.resolve(refund_ticket("cus_ava01", "ord_a1001"))
+    offered = {t.name for t in s.requests("action")[0].tools}
+    assert "get_order" in offered and "check_refund_eligibility" not in offered
+    assert len(s.calls(ToolName.CHECK_REFUND_ELIGIBILITY)) == 1  # the executor's
 
 
 async def test_a_refund_request_offers_the_coordinator_no_order_lookups() -> None:

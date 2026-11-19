@@ -199,6 +199,24 @@ async def test_non_retryable_statuses_raise_at_once(status: int, error: type[Exc
     assert str(info.value) == f"gemini {GEMINI}: HTTP {status} INVALID_ARGUMENT"
 
 
+async def test_openrouter_choice_that_finished_with_error_is_retried() -> None:
+    bodies = iter([chat({"content": ""}, finish="error"), chat({"content": "ok"})])
+    sleeps = Sleeps()
+    http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=next(bodies)))
+    )
+    client = OpenRouterClient(
+        model="google/gemma-4-31b-it:free",
+        api_key=KEY,
+        base_url="https://openrouter.test/api/v1",
+        http_client=http,
+        sleep=sleeps,
+    )
+    resp = await client.complete(request(model="google/gemma-4-31b-it:free"))
+    assert resp.content == [TextBlock(text="ok")]
+    assert sleeps.calls == [0.5]
+
+
 async def test_openrouter_error_in_a_200_body_is_classified() -> None:
     bodies = iter(
         [

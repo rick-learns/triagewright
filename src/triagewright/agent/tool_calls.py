@@ -20,6 +20,7 @@ from triagewright.contracts.tools import (
     TOOL_SPECS,
     CallContext,
     Caller,
+    ErrorCategory,
     KBHit,
     KBSearchResult,
     ListOrdersInput,
@@ -31,6 +32,15 @@ from triagewright.contracts.tools import (
 from triagewright.contracts.world import Customer, EscalationReason
 
 _HANDOFF_FLOOR_S = 1.0
+# The backend itself failing, as opposed to a bad call (validation, not_found, policy, ...).
+_SERVICE_ERRORS = frozenset(
+    {
+        ErrorCategory.RATE_LIMITED,
+        ErrorCategory.TRANSIENT,
+        ErrorCategory.TIMEOUT,
+        ErrorCategory.INTERNAL,
+    }
+)
 
 
 def _search_key(arguments: JsonObject) -> str | None:
@@ -63,8 +73,13 @@ class ToolCalls(RunState):
         """Call the gateway, retrying retryable errors up to ``tool_retries`` times.
 
         Every attempt is a raw gateway call, so ``ExpectedOutcome.attempts`` counts them all.
-        A retryable error that outlasts the retries is recorded as a tool failure.
+        A final service error (a retryable one that outlasts the retries, or one marked not
+        retryable) is a tool failure, and the tool stays broken for the rest of the request:
+        later calls return that failure without a raw call, so a model asking again can't
+        multiply the attempts.
         """
+        if (broken := self.broken.get(name)) is not None:
+            return broken
         ctx = self.context(caller)
         attempt = 0
         while True:
@@ -91,7 +106,11 @@ class ToolCalls(RunState):
                 if result.error is not None:
                     span.set_error(result.error.category.value)
             error = result.error
-            if error is None or not error.retryable:
+            if error is None:
+                return result
+            if not error.retryable:
+                if error.category in _SERVICE_ERRORS:
+                    self._break(name, result)
                 return result
             if attempt > self.config.tool_retries:
                 break
@@ -103,8 +122,12 @@ class ToolCalls(RunState):
                 break
             if delay > 0:
                 await self.sleep(delay)
-        self.tool_failures.append(name)
+        self._break(name, result)
         return result
+
+    def _break(self, name: ToolName, result: ToolResult) -> None:
+        self.tool_failures.append(name)
+        self.broken[name] = result
 
     def observe(self, result: ToolResult, arguments: JsonObject) -> str:
         """Screen a tool result, keep its facts and KB hits, and return what models see."""

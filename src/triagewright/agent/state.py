@@ -29,7 +29,7 @@ from triagewright.contracts.ports import (
 )
 from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.tickets import Ticket
-from triagewright.contracts.tools import KBHit, ToolName
+from triagewright.contracts.tools import KBHit, ToolName, ToolResult
 from triagewright.contracts.world import CustomerStatus, EscalationReason, Order
 from triagewright.pacing import PacingRefusedError
 
@@ -67,6 +67,7 @@ class RunState:
     irreversible_requested: bool = False  # any irreversible proposal, sent or not
     outcomes: list[ActionOutcome] = field(default_factory=list)
     tool_failures: list[ToolName] = field(default_factory=list)
+    broken: dict[ToolName, ToolResult] = field(default_factory=dict)  # see ``call_tool``
     turns: dict[str, int] = field(default_factory=dict)
     paced_s: float = 0.0  # rate-limit waits so far; off the request clock
 
