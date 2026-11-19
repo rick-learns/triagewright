@@ -600,10 +600,12 @@ def _approval_only(run: RequestRun, review: EscalationDecision) -> bool:
     if set(review.reasons) != {EscalationReason.APPROVAL_REQUIRED} or len(run.outcomes) != 1:
         return False
     (outcome,) = run.outcomes
-    needs = set(run.triage.needs_human_reasons) if run.triage is not None else set()
-    return outcome.status is ActionStatus.PENDING_APPROVAL and needs <= {
-        EscalationReason.APPROVAL_REQUIRED
-    }
+    triage = run.triage
+    other_need = triage is not None and (
+        bool(set(triage.needs_human_reasons) - {EscalationReason.APPROVAL_REQUIRED})
+        or (triage.needs_human and not triage.needs_human_reasons)
+    )
+    return outcome.status is ActionStatus.PENDING_APPROVAL and not other_need
 
 
 def _refund_proposed(run: RequestRun) -> bool:
