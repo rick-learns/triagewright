@@ -519,12 +519,21 @@ class Coordinator:
                 update={
                     "body": self._guardrails.redact(ticket.body).text,
                     "subject": self._guardrails.redact(ticket.subject).text,
-                    "metadata": {
-                        self._guardrails.redact(k).text: self._guardrails.redact(v).text
-                        for k, v in ticket.metadata.items()
-                    },
+                    "metadata": self._redact_metadata(ticket.metadata),
                 }
             )
+
+    def _redact_metadata(self, metadata: Mapping[str, str]) -> dict[str, str]:
+        """Redact keys and values. Keys that redact alike stay distinct, so all get screened."""
+        redacted: dict[str, str] = {}
+        for key, value in metadata.items():
+            base = name = self._guardrails.redact(key).text
+            n = 1
+            while name in redacted:
+                n += 1
+                name = f"{base}#{n}"
+            redacted[name] = self._guardrails.redact(value).text
+        return redacted
 
 
 def _refund_reason(outcome: ActionOutcome) -> RefundReason | None:

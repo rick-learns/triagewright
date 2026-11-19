@@ -327,6 +327,16 @@ async def test_no_output_when_forced_twice_falls_back() -> None:
     assert s.requests("triage")[0].tool_choice == ToolChoice(type="tool", name="submit_triage")
 
 
+async def test_a_rejected_output_after_a_forced_turn_frees_the_tools() -> None:
+    mixed = model_response(*call("get_order", ORDER).content, *finalize().content)
+    s = stack([triage(), text("Done."), mixed, finalize(), review()])
+    response = await s.resolve(sample_ticket())
+    assert response.status is ResolutionStatus.RESOLVED
+    forced, freed = s.requests("coordinator")[1:3]
+    assert forced.tool_choice == ToolChoice(type="tool", name="finalize")
+    assert freed.tool_choice is None
+
+
 async def test_invalid_finalize_is_repaired() -> None:
     bad = call("finalize", {"status": "escalated", "reply": "Escalated!"})
     s = stack([triage(), bad, finalize(), review()])

@@ -431,6 +431,7 @@ class RequestRun:
                     if use.name == output_tool and mixed:
                         # The result must not be accepted before the model sees the others.
                         content, is_error = prompts.output_alone(output_tool), True
+                        force = False  # free to use the other tools first
                     elif use.name == output_tool:
                         try:
                             value = output.model_validate(use.input)
@@ -440,7 +441,7 @@ class RequestRun:
                         else:
                             content, is_error = "Accepted.", False
                             if check is not None and (problem := check(value)) is not None:
-                                value, invalid = None, True
+                                value, invalid, force = None, True, False
                                 content, is_error = problem, True
                     elif (handler := handlers.get(use.name)) is not None:
                         content, is_error = await handler(use.input)
