@@ -249,6 +249,7 @@ settings = Settings(
     db_path=tmp / "world.sqlite",
     approvals_db_path=tmp / "approvals.sqlite",
     trace_exporter="none",
+    mcp_transport="inprocess",  # the thread-affine world store, whatever the env says
 )
 real = build_services(settings, model_factory=lambda case_id: object())  # the in-process stack
 
@@ -279,17 +280,23 @@ def test_a_signal_runs_the_full_teardown(tmp_path: Path, sig: signal.Signals) ->
     proc = subprocess.Popen(  # noqa: S603
         [sys.executable, str(script), str(log), str(tmp_path)], stderr=subprocess.PIPE, text=True
     )
-    started = threading.Event()
+    ready = threading.Event()  # started, or exited before starting
+    started: list[bool] = []
+    output: list[str] = []
 
     def watch() -> None:
         assert proc.stderr is not None
         for line in proc.stderr:
+            output.append(line)
             if "Application startup complete" in line:
-                started.set()
+                started.append(True)
+                ready.set()
+        ready.set()
 
     threading.Thread(target=watch, daemon=True).start()
     try:
-        assert started.wait(30), "server did not start"
+        assert ready.wait(30), "server did not start within 30s"
+        assert started, "server exited before starting:\n" + "".join(output)
         proc.send_signal(sig)
         proc.wait(timeout=10)
     finally:
