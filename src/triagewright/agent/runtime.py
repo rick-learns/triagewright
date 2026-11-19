@@ -62,6 +62,7 @@ from triagewright.contracts.tools import (
     ToolResult,
 )
 from triagewright.contracts.world import EscalationReason, Order
+from triagewright.pacing import CallBudget, PacingRefusedError
 
 _HANDOFF_FLOOR_S = 1.0
 
@@ -147,6 +148,7 @@ class RequestRun:
     outcomes: list[ActionOutcome] = field(default_factory=list)
     tool_failures: list[ToolName] = field(default_factory=list)
     turns: dict[str, int] = field(default_factory=dict)
+    paced_s: float = 0.0  # rate-limit waits so far; off the request clock
 
     # ---- time ------------------------------------------------------------------
 
@@ -158,7 +160,13 @@ class RequestRun:
         budget = self.config.total_timeout_s
         if not handoff:
             budget -= self.config.handoff_reserve_s
-        return budget - (self.clock() - self.started)
+        return budget - (self.clock() - self.started - self.paced_s)
+
+    def _pace(self, wait: float) -> None:
+        """A rate-limit wait: allowed up to ``max_pacing_s`` a request, and off the clock."""
+        if self.paced_s + wait > self.config.max_pacing_s:
+            raise PacingRefusedError(f"pacing would exceed {self.config.max_pacing_s:g}s")
+        self.paced_s += wait
 
     def ensure_time(self) -> float:
         left = self.remaining()
@@ -336,12 +344,21 @@ class RequestRun:
             purpose=purpose,
         )
         started_ms = self.elapsed_ms()
+        paced_before = self.paced_s
         with self.telemetry.span(
             f"model.{purpose}", SpanKind.MODEL_CALL, {"model": request.model}
         ) as span:
             try:
-                async with asyncio.timeout(min(self.config.turn_timeout_s, left)):
-                    response = await self.model.complete(request)
+                async with asyncio.timeout(min(self.config.turn_timeout_s, left)) as deadline:
+                    with CallBudget(deadline, on_wait=self._pace).installed():
+                        response = await self.model.complete(request)
+            except PacingRefusedError:
+                span.set_error("pacing")
+                raise Fallback(
+                    LoopStop.TIMEOUT,
+                    EscalationReason.LOOP_LIMIT,
+                    f"{purpose} model call would wait too long for a rate-limit slot",
+                ) from None
             except TimeoutError:
                 span.set_error("timeout")
                 raise Fallback(
@@ -352,8 +369,11 @@ class RequestRun:
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, f"{purpose} model call failed"
                 ) from exc
+            finally:
+                paced_ms = (self.paced_s - paced_before) * 1000
+                self.telemetry.record_pacing(paced_ms)
             span.set_attribute("stop_reason", response.stop_reason.value)
-        self.telemetry.record_model_call(request, response, started_ms)
+        self.telemetry.record_model_call(request, response, started_ms, paced_ms=paced_ms)
         return response
 
     async def run_loop[T: BaseModel](

@@ -24,6 +24,7 @@ from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.contracts.world import WorldState
 from triagewright.evals.runner import CaseRecord, RunConfig, input_key, load_records, run_cases
+from triagewright.pacing import CALL_BUDGET
 from triagewright.testing import (
     FakeCaseRuntime,
     FakeCaseRuntimeFactory,
@@ -210,6 +211,18 @@ async def test_timeout_fails_the_case_but_still_grades_safety() -> None:
     assert {g.grader: g.passed for g in r.grades}["status"] is False
 
 
+async def test_pacing_waits_are_not_counted_against_the_case_timeout() -> None:
+    async def paced(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        budget = CALL_BUDGET.get()
+        assert budget is not None
+        budget.paced(0.2)  # what llm.ratelimit reports before it sleeps
+        await asyncio.sleep(0.15)
+        return respond(t)
+
+    record = await run(make_case(), paced, timeout_s=0.05)
+    assert record.result.error is None
+
+
 async def test_resolver_error_fails_the_case() -> None:
     async def boom(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
         raise ValueError("agent crashed")
@@ -269,3 +282,18 @@ def test_input_key_ignores_defaults_so_new_optional_fields_keep_old_keys() -> No
     base = make_case(status_any=["resolved"])
     assert key(base) == "80981ecd7dd7ce7d17f89ffed10f31acd0fc960f89c95b028f9a73aff21e6093"
     assert key(base) != key(make_case(status_any=["resolved"], min_refund_cents=1))
+
+
+async def test_a_timed_out_cases_latency_leaves_out_pacing() -> None:
+    async def paced_then_hangs(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        budget = CALL_BUDGET.get()
+        assert budget is not None
+        budget.paced(0.15)
+        await asyncio.sleep(0.15)  # the paced wait
+        await asyncio.sleep(3600)  # then the call hangs past the case timeout
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    record = await run(make_case(), paced_then_hangs, timeout_s=0.05)
+    r = record.result
+    assert r.error == "timed out after 0.05s"
+    assert 40 <= r.latency_ms < 150  # ~50 ms of work, not ~200 ms of wall time

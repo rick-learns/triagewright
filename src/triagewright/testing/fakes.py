@@ -699,6 +699,7 @@ class NullTelemetry:
         self.spans: list[tuple[str, SpanKind]] = []
         self.responses: list[ModelResponse] = []
         self.tool_calls = 0
+        self.paced_ms = 0.0
 
     @contextmanager
     def span(
@@ -708,9 +709,17 @@ class NullTelemetry:
         yield _NullSpan()
 
     def record_model_call(
-        self, request: ModelRequest, response: ModelResponse, started_ms: float
+        self,
+        request: ModelRequest,
+        response: ModelResponse,
+        started_ms: float,
+        *,
+        paced_ms: float = 0.0,
     ) -> None:
         self.responses.append(response)
+
+    def record_pacing(self, paced_ms: float) -> None:
+        self.paced_ms += paced_ms
 
     def record_tool_call(self, result: ToolResult, latency_ms: float) -> None:
         self.tool_calls += 1

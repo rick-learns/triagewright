@@ -16,6 +16,7 @@ from triagewright.llm import (
     ReplayClient,
     build_model_clients,
 )
+from triagewright.llm.ratelimit import RateLimits
 
 pytestmark = pytest.mark.anyio
 
@@ -87,3 +88,48 @@ async def test_record_mode_wraps_live_clients(
     await clients.aclose()
     with pytest.raises(ModelConfigError, match="needs a case id"):
         build_model_clients(s)
+
+
+def test_requests_per_minute_defaults_to_the_free_tier_quota() -> None:
+    assert Settings(_env_file=None, llm_provider="gemini").requests_per_minute() == 15
+    assert Settings(_env_file=None, llm_provider="openrouter").requests_per_minute() == 20
+    assert Settings(_env_file=None).requests_per_minute() is None  # replay
+    tuned = Settings(_env_file=None, llm_provider="gemini", llm_requests_per_minute=5)
+    assert tuned.requests_per_minute() == 5
+    off = Settings(_env_file=None, llm_provider="gemini", llm_requests_per_minute=0)
+    assert off.requests_per_minute() is None
+
+
+def test_each_key_draws_on_its_own_quota() -> None:
+    # Two Gemini projects (keys) on one model have separate quotas, so separate windows.
+    def pacer(key: str) -> object:
+        s = Settings(_env_file=None, llm_provider="gemini", gemini_api_key=key)
+        return build_model_clients(s).clients["triage"]._limiter  # type: ignore[attr-defined]
+
+    assert pacer("a" * 40) is pacer("a" * 40)
+    assert pacer("a" * 40) is not pacer("b" * 40)
+    one = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="a" * 40)
+    assert "a" * 40 not in one.quota_id()
+
+
+def test_clients_on_one_model_share_a_pacer() -> None:
+    settings = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="k" * 20)
+    first = build_model_clients(settings)  # the process-wide default
+    second = build_model_clients(settings, limits=RateLimits.shared(15, quota=settings.quota_id()))
+    pacers = {
+        id(c._limiter)  # type: ignore[attr-defined]
+        for clients in (first, second)
+        for role, c in clients.clients.items()
+        if clients.models[role] == "gemini-3.5-flash-lite"
+    }
+    assert len(pacers) == 1
+
+
+def test_a_trailing_slash_is_the_same_quota() -> None:
+    def quota(url: str) -> str:
+        s = Settings(
+            _env_file=None, llm_provider="gemini", gemini_api_key="a" * 40, gemini_base_url=url
+        )
+        return s.quota_id()
+
+    assert quota("https://g.test/v1beta/openai/") == quota("https://g.test/v1beta/openai")
