@@ -56,7 +56,8 @@ class Routing(Replies, RefundRules):
             failed = sorted({t.value for t in run.tool_failures})
             why.append(f"tool kept failing after retries ({', '.join(failed)})")
         # A refund ask with injection suspected anywhere, the reviewer's screen included
-        # (it runs last), goes to security whatever the models did.
+        # (it runs last), goes to security whatever the models did. So does an injection
+        # planted in a tool result or KB page: it targets the system, not the customer's ask.
         forced_write = run.triage is not None and (
             _refund_requested(run)
             or (
@@ -64,7 +65,8 @@ class Routing(Replies, RefundRules):
                 and EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
             )
         )
-        if run.injection and (queue is not None or run.irreversible_requested or forced_write):
+        handoff = queue is not None or run.irreversible_requested or forced_write or run.planted
+        if run.injection and handoff:
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
             why.insert(0, "possible prompt injection alongside a write or handoff request")

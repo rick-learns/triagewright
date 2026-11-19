@@ -260,7 +260,7 @@ async def test_fallback_in_a_flagged_request_goes_to_security() -> None:
     assert s.escalation_args()["queue"] == "security"
 
 
-async def test_flagged_tool_output_is_wrapped_as_data() -> None:
+async def test_flagged_tool_output_is_wrapped_as_data_and_goes_to_security() -> None:
     guard = FlaggingGuardrails("1z1002003", sources=[ContentSource.TOOL_OUTPUT])
     s = stack(
         [triage(), call("get_order", {"order_id": "ord_a1002"}), finalize(), review()],
@@ -271,7 +271,9 @@ async def test_flagged_tool_output_is_wrapped_as_data() -> None:
     assert result.content.startswith("<data>")
     assert result.content.endswith(prompts.FLAGGED_NOTE)
     assert response.triage is not None and response.triage.injection_suspected
-    assert response.status is ResolutionStatus.RESOLVED  # flagged, but nothing to block
+    # Planted in a record, not the customer's ask: an attack on the system, so a human looks.
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "security"
 
 
 async def test_flag_from_the_last_screen_blocks_an_earlier_proposal() -> None:
@@ -303,3 +305,4 @@ async def test_kb_text_is_screened_and_untrusted_docs_are_not_cited() -> None:
     assert response.citations == []
     assert response.triage is not None and response.triage.injection_suspected
     assert (ContentSource.KB_DOCUMENT, f"{TIPS.title}\n{TIPS.text}") in guard.screened
+    assert s.escalation_args()["queue"] == "security"

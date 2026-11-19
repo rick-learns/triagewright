@@ -75,6 +75,9 @@ proposal-free replies are written by code: a sign-in request when the ticket has
 no customer, or "which order?" when the ticket names no order and neither a
 product it names nor the order count picks one. A refund ask with injection
 suspected anywhere in the request goes to security with no model text.
+An injection planted in a tool result or KB page (not the customer's own text)
+goes to security too, whatever the ticket asks: it is an attack on the system, so
+a human looks.
 
 Worked example: `cus_ivo09` (closed) asks to refund `ord_i9001` (delivered
 86 days ago). Both `account_inactive` and `outside_window` apply.
