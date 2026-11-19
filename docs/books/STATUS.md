@@ -70,7 +70,13 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | Q4 reviewer reasons code already handled | Q3 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 2) | [#21](https://github.com/rick-learns/triagewright/pull/21) |
 | Q5 live routing fixes: planted injections to security, locked suspended accounts to tier2, asctime Retry-After | Q4, RF1, RF4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5, extended: injection and account routing) | [#37](https://github.com/rick-learns/triagewright/pull/37) |
 | L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5; live latency not measured yet) | [#30](https://github.com/rick-learns/triagewright/pull/30) |
-| X2 full live eval, `evals/report.md`, replay recordings | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | running (Gemini free tier degraded; run on OpenRouter `:free`, labeled). Replay recordings not made yet; D3's scripted demo doesn't produce them | – |
+| Q6 live-run fixes: sticky tool failures keyed by tool and arguments, action tools, OpenRouter error finish, judge tokens | Q5 | agent core, `src/triagewright/llm/**`, `src/triagewright/evals/**` | orchestrator | merged (sol-loop 3) | [#42](https://github.com/rick-learns/triagewright/pull/42) |
+| Q7 a double charge or billing dispute isn't a refund ask | Q6 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 3) | [#43](https://github.com/rick-learns/triagewright/pull/43) |
+| Q8 injected refund or account-change requests go to security | Q7 | agent core, `src/triagewright/contracts/agents.py`, `schemas/**`, docs | orchestrator | merged (sol-loop 5, extended: security) | [#44](https://github.com/rick-learns/triagewright/pull/44) |
+| Q9 don't offer changes support can't make | Q8 | agent core | orchestrator | merged (sol-loop 3) | [#45](https://github.com/rick-learns/triagewright/pull/45) |
+| Q10 council fixes: a failed handoff isn't claimed, fallbacks keep safety routing, a reviewer's injection blocks writes | C2 | agent core, `src/triagewright/contracts/agents.py`, `src/triagewright/evals/graders.py`, `schemas/**`, docs | orchestrator | merged (sol-loop 3) | [#46](https://github.com/rick-learns/triagewright/pull/46) |
+| Q11 the eval report says what its latency covers and how tickets ended | C2 | `src/triagewright/evals/**`, `src/triagewright/contracts/evals.py`, `schemas/**`, docs | orchestrator | merged (sol-loop 2) | [#47](https://github.com/rick-learns/triagewright/pull/47) |
+| X2 full live eval, `evals/report.md`, replay recordings | Q5–Q11, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | running. Gemini's free tier is degraded, so the runs use OpenRouter `:free` (Nemotron), labeled. Development runs full3–full5 are done (full5: 49/54 on pre-#43 code at a 120 s budget). The two labeled runs on the final `main` wait for the free quota to reset at 00:00 UTC; recordings come from the 120 s run | – |
 
 ### Lanes (parallel, disjoint owned paths)
 
@@ -108,6 +114,6 @@ Third wave (launched about 14:30 UTC; all merged by 16:04 UTC).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| C2 council review of the PoC before the M3 checkpoint | X2, I1, R1, P1 | read-only | council | todo | – |
+| C2 council review of the PoC before the M3 checkpoint | X2, I1, R1, P1 | read-only | council (gpt-6.2-sol 7/10, gpt-6.2-astra 7/10, claude-opus-5-5 8/10; high) | done: three routing bugs fixed in Q10, report wording in Q11, the rest are known limitations or report items (see REVIEWS) | [#46](https://github.com/rick-learns/triagewright/pull/46), [#47](https://github.com/rick-learns/triagewright/pull/47) |
 
 Eval-case review: by owner instruction (14:20 UTC), a three-model council (GPT Sol, GPT Astra, Claude Opus) reviewed all 54 cases against `evals/REVIEWING.md`, and #39 set `reviewed: true` on all of them. It's recorded as a council review, not a human review.
