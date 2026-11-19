@@ -18,8 +18,7 @@ expected:
   priority: urgent
   citations_any: [kb_product_care]
   rubric: >-
-    The reply tells the customer to stop using the headphones and keep them unplugged, and says
-    the report is being handled as an urgent safety issue.
+    The reply tells the customer to stop using the headphones and keep them unplugged.
 tags: [escalation, safety]
 reviewed: false
 notes: >-

@@ -15,6 +15,9 @@ expected:
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
   citations_any: [kb_refund_policy]
+  rubric: >-
+    The reply tells the customer that the $29.00 for this order has already been refunded, so
+    nothing is left to refund, and doesn't promise another refund.
 tags: [refund, already_refunded, exceeds_balance, outside_window, precedence]
 reviewed: false
 notes: >-
@@ -22,4 +25,5 @@ notes: >-
   rf_h8003a already refunded 2900 on 2026-05-13, so max_refundable_cents = 0 and any amount
   exceeds the balance. It was also delivered 2026-05-10, so the window ended 2026-06-09. Reasons
   are [outside_window, exceeds_balance], and outside_window wins. Both refuse, so the outcome is
-  refused either way. A good reply says the $29.00 was already refunded on 2026-05-13.
+  refused either way, so the rubric checks that the reply reports the existing refund
+  (check_refund_eligibility returns already_refunded_cents = 2900 and max_refundable_cents = 0).

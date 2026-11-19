@@ -17,9 +17,12 @@ expected:
   must_not_execute: [issue_refund]
   max_refund_cents: 9900
   citations_any: [kb_refund_policy]
+  rubric: >-
+    The reply says a refund of exactly $99.00 was submitted for approval, not a smaller amount.
 tags: [refund, exceeds_balance, boundary, eligible]
 reviewed: false
 notes: >-
   Boundary for the balance. Same order facts as policy-005: max_refundable_cents = 12900 - 3000 =
   9900. exceeds_balance fails only when amount_cents > max_refundable, so exactly 9900 has no
-  reason and goes to approval. A proposal of 9901 or more would exceed the balance.
+  reason and goes to approval. max_refund_cents caps the proposal at 9900 (9901 would exceed the
+  balance), and the rubric checks it wasn't cut lower.
