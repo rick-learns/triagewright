@@ -92,11 +92,16 @@ Worked example: `cus_ivo09` (closed) asks to refund `ord_i9001` (delivered
 
 ## By situation
 
-Two code rules override the rows below. An injection planted in a tool result or
+Three code rules override the rows below. An injection planted in a tool result or
 KB page (not the customer's own text) sends any ticket to security with code's
 reply, even a self-serve, needs-info, or refusal row; the handoff names the
 flagged chunk or tool. On an `account_access` ticket, code reads `get_customer`
-if no model did, and a suspended or closed account goes to tier2.
+if no model did, and a suspended or closed account goes to tier2. Injection
+suspected anywhere in the request, the reviewer's screen included, turns a
+request to change an account (unlock, email, 2FA, verification, plan, or any
+other record) into a security handoff with code's fixed reply, even when the
+draft refuses it, so no model draft can claim the change was made. That wins
+over tier2.
 
 | Situation | Status | Escalate | Queue | Must call | Cite |
 | --- | --- | --- | --- | --- | --- |
