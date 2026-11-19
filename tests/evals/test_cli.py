@@ -187,6 +187,21 @@ def other_stub_factory() -> FakeCaseRuntimeFactory:
     return FakeCaseRuntimeFactory()
 
 
+def test_resume_never_reuses_another_judge(tmp_path: Path) -> None:
+    write_cases(tmp_path)
+    args = [a for a in run_args(tmp_path, "--resume") if a != "--stub"]
+    args += ["--factory", "tests.evals.test_cli:stub_factory"]
+    assert main([*args, "--judge", "tests.evals.test_cli:scripted_judges"]) == 0
+    first = keys(tmp_path / "results.jsonl")
+    assert main([*args, "--judge", "tests.evals.test_cli:other_scripted_judges"]) == 0
+    after = keys(tmp_path / "results.jsonl")
+    assert len(after) == 4 and not set(first) & set(after[2:])
+
+
+def other_scripted_judges() -> object:
+    return scripted_judges()
+
+
 def test_factory_and_judge_load_from_module_specs(tmp_path: Path) -> None:
     write_cases(tmp_path, rubric="Polite and correct.")
     args = [a for a in run_args(tmp_path) if a != "--stub"]
