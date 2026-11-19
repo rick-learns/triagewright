@@ -76,14 +76,7 @@ class Routing(Replies, RefundRules):
         # ticket that asks for an account change, and an injection planted in a tool result
         # or KB page: it targets the system, not the customer's ask.
         forced_write = run.triage is not None and (
-            _refund_requested(run)
-            or (
-                run.ticket_flagged
-                and (
-                    run.triage.account_change_requested
-                    or EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
-                )
-            )
+            _refund_requested(run) or _injected_account_change(run)
         )
         other = queue is not None or run.irreversible_requested or forced_write
         if run.injection and (other or run.planted_in):
@@ -121,10 +114,14 @@ class Routing(Replies, RefundRules):
         if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
             reply = self._refund_reply(reply, decision)
         elif decision is not None and (
-            run.planted_in or _inactive_account(run) or ToolName.GET_CUSTOMER in run.tool_failures
+            run.planted_in
+            or _inactive_account(run)
+            or ToolName.GET_CUSTOMER in run.tool_failures
+            or _injected_account_change(run)
         ):
-            # The models read the planted text, or drafted a self-serve answer the account's
-            # status rules out or that its status can't confirm, so none of their words go out.
+            # The models read the planted text, drafted a self-serve answer the account's
+            # status rules out or that its status can't confirm, or answered an injected
+            # account change they might claim was made, so none of their words go out.
             reply = prompts.FALLBACK_REPLY
         if decision is not None:
             status = ResolutionStatus.ESCALATED
@@ -220,6 +217,19 @@ async def _check_account(run: RequestRun) -> None:
 def _injection_why(run: RequestRun, alongside: str = "") -> str:
     where = f"; planted in {', '.join(dict.fromkeys(run.planted_in))}" if run.planted_in else ""
     return f"possible prompt injection{alongside}{where}"
+
+
+def _injected_account_change(run: RequestRun) -> bool:
+    """The ticket itself is flagged and asks support to change an account."""
+    triage = run.triage
+    return (
+        triage is not None
+        and run.ticket_flagged
+        and (
+            triage.account_change_requested
+            or EscalationReason.ACCOUNT_SECURITY in triage.needs_human_reasons
+        )
+    )
 
 
 def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool) -> bool:

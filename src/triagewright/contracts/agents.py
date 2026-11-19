@@ -76,7 +76,7 @@ class TriageResult(Contract):
     injection_suspected: bool = False
     # The customer asks for money back now, under any category; code then runs the refund gate.
     refund_requested: bool = False
-    # The customer asks support to change account records or settings; with injection
+    # The ticket asks support to change account records or settings; with injection
     # suspected, code sends the ticket to security.
     account_change_requested: bool = False
     missing_info: list[str] = []  # what we must ask the customer for
