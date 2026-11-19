@@ -45,15 +45,15 @@ def ticket_json(ticket: Ticket | None = None) -> dict[str, object]:
     return (ticket or sample_ticket()).model_dump(mode="json")
 
 
-def test_healthz_and_request_ids(stack: Stack) -> None:
+def test_healthz_and_request_ids(stack: Stack, caplog: pytest.LogCaptureFixture) -> None:
     c = client(stack)
-    r = c.get("/healthz")
+    with caplog.at_level(logging.INFO, logger="triagewright.api"):
+        r = c.get("/healthz", headers={"X-Request-ID": "555-0100"})
+        c.get("/cus_ava01/4111111111111111")
     assert r.status_code == 200 and r.json() == {"status": "ok"}
-    assert len(r.headers["X-Request-ID"]) == 32
-    echoed = c.get("/healthz", headers={"X-Request-ID": "helpdesk-42"})
-    assert echoed.headers["X-Request-ID"] == "helpdesk-42"
-    unsafe = c.get("/healthz", headers={"X-Request-ID": "bad id\twith spaces"})
-    assert unsafe.headers["X-Request-ID"] != "bad id\twith spaces"
+    assert len(r.headers["X-Request-ID"]) == 32  # server-generated, never the caller's
+    assert "GET /healthz 200" in caplog.text and "GET <unmatched> 404" in caplog.text
+    assert "555-0100" not in caplog.text and "4111111111111111" not in caplog.text
 
 
 def test_post_ticket_returns_the_final_response(stack: Stack) -> None:
@@ -65,10 +65,10 @@ def test_post_ticket_returns_the_final_response(stack: Stack) -> None:
 
 def test_invalid_ticket_is_a_structured_error_without_the_input(stack: Stack) -> None:
     body = {**ticket_json(), "ticket_id": "card-4111111111111111", "extra": "x"}
-    r = client(stack).post("/tickets", json=body, headers={"X-Request-ID": "r-1"})
+    r = client(stack).post("/tickets", json=body)
     assert r.status_code == 422
     error = r.json()["error"]
-    assert error["code"] == "validation_error" and error["request_id"] == "r-1"
+    assert error["code"] == "validation_error" and error["request_id"] == r.headers["X-Request-ID"]
     assert {tuple(d["loc"]) for d in error["details"]} == {
         ("body", "ticket_id"),
         ("body", "extra"),
@@ -130,9 +130,25 @@ def test_wrong_or_missing_token_is_401(
     assert TOKEN not in caplog.text
 
 
-def test_auth_is_checked_before_the_body(stack: Stack) -> None:
-    r = client(stack).post(f"/approvals/{stack.approval_id}/decision", json={"bogus": 1})
-    assert r.status_code == 401
+@pytest.mark.parametrize(
+    ("token", "headers", "expected"),
+    [
+        (None, AUTH, 503),
+        (TOKEN, {}, 401),
+        (TOKEN, AUTH, 422),
+    ],
+)
+def test_auth_is_checked_before_the_body(
+    stack: Stack, token: str | None, headers: dict[str, str], expected: int
+) -> None:
+    url = f"/approvals/{stack.approval_id}/decision"
+    c = client(stack, token=token)
+    for content in ("{not json", '{"bogus": 1}'):
+        r = c.post(url, content=content, headers={**headers, "Content-Type": "application/json"})
+        assert r.status_code == expected
+    if expected == 422:
+        assert r.json()["error"]["details"][0]["loc"] == ["body", "approved"]
+    assert status(stack) is ApprovalStatus.PENDING
 
 
 def test_approve_executes_through_the_executor(stack: Stack) -> None:

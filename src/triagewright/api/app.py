@@ -1,14 +1,14 @@
 """The FastAPI app (ADR-001 §9). A trusted internal ingress, bound to localhost by default.
 
-Every response carries an ``X-Request-ID`` header, and every error has the body
-``{"error": {"code", "message", "request_id", "details"}}``. Logs hold only the
-method, path, status, latency, and request id: never bodies, headers, or tokens.
+Every response carries a server-generated ``X-Request-ID`` header, and every
+error has the body ``{"error": {"code", "message", "request_id", "details"}}``.
+Logs hold only the method, route template, status, latency, and request id:
+never raw paths, bodies, headers, or tokens.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
@@ -18,7 +18,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from triagewright.api.services import (
@@ -35,7 +35,6 @@ from triagewright.contracts.tickets import Ticket
 log = logging.getLogger("triagewright.api")
 
 REQUEST_ID_HEADER = "X-Request-ID"
-_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _STATUS_CODES = {404: "not_found", 405: "method_not_allowed"}
 
 
@@ -54,7 +53,7 @@ class DecisionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     approved: bool
-    note: Annotated[str, Field(max_length=1000)] = ""
+    note: str = ""
 
 
 class Health(BaseModel):
@@ -102,8 +101,7 @@ def create_app(
     async def request_context(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        incoming = request.headers.get(REQUEST_ID_HEADER, "")
-        request_id = incoming if _SAFE_REQUEST_ID.fullmatch(incoming) else uuid.uuid4().hex
+        request_id = uuid.uuid4().hex
         request.state.request_id = request_id
         started = time.perf_counter()
         try:
@@ -113,10 +111,11 @@ def create_app(
             log.error("unhandled %s request_id=%s", type(exc).__name__, request_id)
             response = _error(request_id, 500, "internal", "internal server error")
         response.headers[REQUEST_ID_HEADER] = request_id
+        route = getattr(request.scope.get("route"), "path", "<unmatched>")
         log.info(
             "%s %s %d %.1fms request_id=%s",
             request.method,
-            request.url.path,
+            route,
             response.status_code,
             (time.perf_counter() - started) * 1000,
             request_id,
@@ -170,8 +169,23 @@ def create_app(
     async def list_approvals() -> list[ApprovalRequest]:
         return services.approvals.list_pending()
 
-    @app.post("/approvals/{approval_id}/decision", dependencies=[Depends(require_approver)])
-    async def post_decision(approval_id: str, body: DecisionBody) -> ActionOutcome:
+    # The body is read by hand, after auth: FastAPI parses declared bodies before dependencies.
+    @app.post(
+        "/approvals/{approval_id}/decision",
+        dependencies=[Depends(require_approver)],
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {"application/json": {"schema": DecisionBody.model_json_schema()}},
+            }
+        },
+    )
+    async def post_decision(approval_id: str, request: Request) -> ActionOutcome:
+        try:
+            body = DecisionBody.model_validate_json(await request.body())
+        except ValidationError as exc:
+            errors = [{**e, "loc": ("body", *e["loc"])} for e in exc.errors()]
+            raise RequestValidationError(errors) from None
         try:
             return await decide_approval(
                 services,

@@ -141,9 +141,11 @@ def test_decide_unknown_approval(stack: Stack) -> None:
     assert code == cli.ExitCode.NOT_FOUND
 
 
-def test_decide_requires_a_decision(stack: Stack) -> None:
-    code, _, _ = invoke(stack, "approvals", "decide", stack.approval_id)
+@pytest.mark.parametrize("flags", [[], ["--reject", "--approve"]])
+def test_decide_requires_exactly_one_decision(stack: Stack, flags: list[str]) -> None:
+    code, _, _ = invoke(stack, "approvals", "decide", stack.approval_id, *flags)
     assert code == cli.ExitCode.USAGE
+    assert stack.gateway.refunds == seed_world().refunds
 
 
 def test_unwired_cli_explains_itself() -> None:

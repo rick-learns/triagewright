@@ -6,7 +6,11 @@ input, 3 unavailable (decisions disabled or agent not wired), 4 unauthorized,
 
 ``approvals decide`` reads the presented token from the ``TW_APPROVER_TOKEN``
 environment variable (never a flag, which would show up in ``ps``) and compares
-it in constant time with the configured ``Settings.approver_token``.
+it in constant time with the expected token from ``settings_loader``. By default
+that is ``Settings``, which reads the same variable, so in-process the check
+only enforces "unset disables decisions": whoever runs the CLI already holds the
+environment, the database, and ``TW_APPROVAL_KEY``. The API's bearer check is
+the authentication boundary between a reviewer and the agent.
 """
 
 from __future__ import annotations
@@ -141,10 +145,13 @@ def create_cli(
     @approvals.command("decide")
     def decide(
         approval_id: Annotated[str, typer.Argument(help="e.g. apr_3f9c0a1b2c4d")],
-        approve: Annotated[bool, typer.Option("--approve/--reject", help="The decision.")],
+        approve: Annotated[bool, typer.Option("--approve", help="Approve the action.")] = False,
+        reject: Annotated[bool, typer.Option("--reject", help="Reject the action.")] = False,
         note: Annotated[str, typer.Option(help="Optional note for the record.")] = "",
     ) -> None:
         """Approve or reject a pending action. Needs TW_APPROVER_TOKEN in the environment."""
+        if approve == reject:
+            _fail(ExitCode.USAGE, "give exactly one of --approve or --reject")
         expected = settings_loader().approver_token
         if expected is None:
             _fail(ExitCode.UNAVAILABLE, "approval decisions are disabled (TW_APPROVER_TOKEN)")
