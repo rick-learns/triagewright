@@ -21,16 +21,23 @@ outcome it states is a guess.
   (`contracts.agents.TriageResult`). Refund-policy questions and status
   checks on earlier refunds don't count.
 - **A gate on finalize.** For a refund ask, `Coordinator._check_final` rejects
-  a `finalize` call unless an `issue_refund` proposal is queued and the reply
-  cites `kb_refund_policy` with a verified quote. The model gets one repair
+  a `finalize` call unless the reply cites `kb_refund_policy` with a verified
+  quote and the outcome is left to code (`_refund_decidable`): an
+  `issue_refund` proposal is queued, or the ticket has no customer, or
+  injection is already suspected, or the draft is `needs_info` and the order
+  is unclear. The order is unclear when the ticket names no order id and the
+  listed orders don't narrow to one; a full page of orders never narrows to
+  one, since older orders may match too. The model gets one repair
   attempt; a second failure is the safe fallback. On a refund ask, the
   coordinator's own read tools shrink to `search_kb`, so order lookups and the
   proposal go through the action subagent.
-- **The executor decides.** `GuardedActionExecutor.propose` fetches
-  eligibility itself, and `policy.REFUND_OUTCOME[eligibility.reasons[0]]` sets
-  the outcome: approval, refusal, or a queue.
+- **The executor decides.** `GuardedActionExecutor.propose` returns the
+  stored status of an approval that already exists for the same proposal;
+  otherwise it fetches eligibility itself and submits an eligible refund for
+  approval or blocks it. For a blocked refund, the coordinator applies
+  `policy.REFUND_OUTCOME[eligibility.reasons[0]]`: refusal or a queue.
 - **Code writes the outcome text.** Once a refund is proposed, the model's
-  reply is replaced by a fixed lead-in (`prompts.REFUND_OUTCOME_REPLY`) and
+  customer reply is replaced by a fixed lead-in (`prompts.REFUND_OUTCOME_REPLY`) and
   the per-outcome notes from `Coordinator._note`.
 - **Only two replies without a proposal,** both written by code
   (`Coordinator._own_refund_reply`): a sign-in request when the ticket has no
@@ -38,8 +45,8 @@ outcome it states is a guess.
   customer's complete order list doesn't narrow to one by a named product or
   by count.
 - **Injection.** A refund ask with injection suspected anywhere in the request,
-  including the reviewer's screen, goes to the security queue with no model
-  text (`prompts.FALLBACK_REPLY`).
+  including the reviewer's screen, goes to the security queue, and its
+  customer reply is the fixed `prompts.FALLBACK_REPLY`, not model text.
 - **Refusals.** If the action subagent refuses, the ticket is handed off to
   tier1 rather than told "refused".
 - The behavior is part of the contract in `docs/contracts/behavior.md`

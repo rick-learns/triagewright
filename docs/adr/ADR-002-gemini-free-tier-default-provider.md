@@ -15,16 +15,21 @@ demand".
 
 ## Decision
 
-- `Provider.GEMINI` (`src/triagewright/contracts/llm.py`) is the default live
-  provider, and recordings are made with it. `Provider.OPENROUTER` with
-  `:free` models is the fallback. `Provider.REPLAY` stays the default
-  provider overall, so nothing calls the network unless `.env` opts in.
+- `Provider.GEMINI` (`src/triagewright/contracts/llm.py`) is the preferred
+  live provider, and the one recordings are planned with. `Provider.OPENROUTER`
+  with `:free` models is the fallback. Both live adapters can record.
+  `Provider.REPLAY` stays the default provider overall, so nothing calls the
+  network unless `TW_LLM_PROVIDER` selects a live provider (in the environment
+  or `.env`). Default replay serves eval-case recordings only.
 - There is no paid fallback. `config.is_free_model(provider, model)` decides
   what is allowed: on Gemini, numbered Flash, Flash-Lite, and Gemma ids, with
   no `-latest` aliases, no Pro, and previews only from an explicit list
   (`_GEMINI_FREE_PREVIEWS`); on OpenRouter, ids ending in `:free`. `Settings`
   rejects any other id, with no opt-out, and both live adapters
-  (`triagewright.llm.openai_compat`) refuse one too.
+  (`triagewright.llm.openai_compat`) refuse one too. This is model-id
+  validation only: code can't tell whether a Gemini key's project has billing
+  linked, so the key must belong to a project on the free plan (risk R2 in
+  `docs/books/RISKS.md`).
 - Defaults per role are in `config.DEFAULT_MODELS`: `gemini-3.5-flash-lite`
   for every agent role and `gemini-3.8-flash` for the judge; on OpenRouter,
   `google/gemma-4-31b-it:free` and `nvidia/nemotron-3-ultra-550b-a55b:free`.
@@ -35,8 +40,8 @@ demand".
 
 ## Consequences
 
-- Live spend stays at $0, and a mistyped model id fails at startup rather
-  than charging.
+- Live spend stays at $0 as long as the Gemini key's project has no billing
+  linked, and a non-free model id fails at startup rather than charging.
 - Free-tier quotas are small (15 requests per minute per model for
   Flash-Lite), so live runs need pacing (ADR-003), and a full eval run can
   exhaust the daily quota on both providers.

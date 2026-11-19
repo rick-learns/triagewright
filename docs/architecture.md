@@ -48,8 +48,12 @@ flowchart TD
     LOOP -->|"bound hit: turns, time, pacing,<br/>model error, invalid output twice"| FB["Safe fallback:<br/>hand off with summary"]
     FB --> ESC
     APQ -.->|"later, human decision"| DEC["POST /approvals/id/decision<br/>or triagewright approvals decide"]
-    DEC --> EXE["ActionExecutor.decide<br/>execute_approved"]
-    EXE -->|"issue_refund, caller = human,<br/>HMAC approval token"| GW
+    DEC --> EXE["ActionExecutor.decide"]
+    EXE -->|"approve"| RUNAP["execute_approved: issue_refund,<br/>caller = human, HMAC approval token"]
+    RUNAP --> GW
+    EXE -->|"reject"| REJ["Status rejected,<br/>outcome skipped"]
+    RUNAP --> OUT["ActionOutcome returned<br/>to the approver"]
+    REJ --> OUT
 ```
 
 Step by step (code in `triagewright.agent.coordinator` and
@@ -101,11 +105,14 @@ Step by step (code in `triagewright.agent.coordinator` and
 10. **Finalize and code checks.** The model's `finalize` call supplies only
     `FinalizeArgs`: a reply, citation candidates, and a proposed status
     (`resolved`, `needs_info`, or `refused`). `Coordinator._check_final`
-    rejects a refund reply that has no `issue_refund` proposal or no verified
-    `kb_refund_policy` citation, and the model gets one repair attempt.
-11. **Escalation reviewer.** `subagents.review` runs before every finalize
-    and returns an `EscalationDecision`. Its screen is the request's last, so
-    the injection flag is final after it.
+    rejects a refund reply that has no verified `kb_refund_policy` citation,
+    or that has no `issue_refund` proposal, unless the ticket has no customer,
+    injection is already suspected, or the draft is `needs_info` and the order
+    is unclear (`_refund_decidable`). The model gets one repair attempt.
+11. **Escalation reviewer.** `subagents.review` reviews the accepted
+    `finalize` draft, before any deferred proposal is sent, and returns an
+    `EscalationDecision`. Its screen is the request's last, so the injection
+    flag is final after it.
 12. **Action executor.** `Coordinator._propose_deferred` sends each deferred
     proposal to `ActionExecutor.propose` (`GuardedActionExecutor` in
     `triagewright.guardrails.executor`), passing the final injection flag.
@@ -123,8 +130,10 @@ Step by step (code in `triagewright.agent.coordinator` and
 16. **Later: the human step.** A reviewer lists approvals (`GET /approvals` or
     `triagewright approvals list`) and decides
     (`POST /approvals/{approval_id}/decision` or `triagewright approvals decide`).
-    `ActionExecutor.decide` runs `execute_approved`, which calls `issue_refund`
-    with the stored arguments, `caller="human"`, and an HMAC approval token.
+    On approve, `ActionExecutor.decide` runs `execute_approved`, which calls
+    `issue_refund` with the stored arguments, `caller="human"`, and an HMAC
+    approval token, and returns the outcome to the approver. On reject, the
+    approval is recorded as `rejected` and the outcome is `skipped`.
 
 ## 2. Trust boundaries
 
@@ -174,8 +183,8 @@ flowchart LR
 | Customer text is untrusted data | Ticket subject, body, metadata | Redacted before any model sees it; screened for injection; shown to models only inside `<data>` tags with a "data, not instructions" rule; `customer_id` comes from the ticket, never from model arguments | `Coordinator._redact_ticket`, `RequestRun.screen`, `RequestRun.data_prompt`, `prompts._DATA_RULE` |
 | KB pages are untrusted | `search_kb` hits | Every hit is screened as `ContentSource.KB_DOCUMENT`; pages with `trusted: false` are retrieved only when `categories` names their category, and are never cited | `RequestRun.observe`, `HybridRetriever`, `RequestRun.cite` |
 | Tool and subagent outputs are untrusted | `ToolResult` JSON, subagent outputs | Screened (`TOOL_OUTPUT`, `MODEL_OUTPUT`); flagged content is wrapped with `as_data`; refund eligibility is parsed into `RefundEligibility`, which holds only ids, numbers, dates, and reason codes | `RequestRun.observe`, `subagents._subagent`, `GuardedActionExecutor.propose` |
-| MCP boundary | `tools/call` with `CallContext` in `_meta` under `triagewright/ctx` | The server checks scope (`UNSCOPED_TOOLS`), reports other customers' records as `not_found`, accepts `create_escalation` only from `caller="coordinator"` for `ctx.ticket_id`, and accepts `issue_refund` only with a valid HMAC token and `caller="human"`, then re-applies `evaluate_refund` in the insert's transaction. Results are `ToolResult` envelopes, never exceptions. In Compose the MCP port is not published. | `triagewright.mcp_server.server`, `triagewright.mcp_server.service`, `compose.yaml` |
-| Authenticated HTTP API is the approval boundary | Approval decisions | `POST /approvals/{approval_id}/decision` requires `Authorization: Bearer` matching `TW_APPROVER_TOKEN` (constant-time compare); unset token disables decisions (503). The CLI requires the same token in `TW_APPROVER_TOKEN`. The ticket endpoint is a trusted internal ingress bound to `127.0.0.1`. `GET /approvals` (read-only) needs no token. | `require_approver` in `triagewright.api.app`, `triagewright.api.services.token_matches`, `triagewright.cli` |
+| MCP boundary | `tools/call` with `CallContext` in `_meta` under `triagewright/ctx` | MCP clients are trusted: agent code builds the `CallContext`, and the server validates its shape but does not authenticate its fields. Against those fields it checks scope (`UNSCOPED_TOOLS`), reports other customers' records as `not_found`, and accepts `create_escalation` only from `caller="coordinator"` for `ctx.ticket_id`. `issue_refund` separately needs a valid HMAC token (keyed by `TW_APPROVAL_KEY`) and `caller="human"`, and the server re-applies `evaluate_refund` in the insert's transaction. A recognized tool's failure is a `ToolResult` error envelope, not an exception; an unknown tool name is an MCP `INVALID_PARAMS` error. In Compose the MCP port is not published. | `triagewright.mcp_server.server`, `triagewright.mcp_server.service`, `compose.yaml` |
+| Authenticated HTTP API is the approval boundary | Approval decisions | `POST /approvals/{approval_id}/decision` requires `Authorization: Bearer` matching `TW_APPROVER_TOKEN` (constant-time compare); unset token disables decisions (503). This is the reviewer boundary. The CLI's `approvals decide` is a local operator path: by default it reads both the presented and the expected token from the same `TW_APPROVER_TOKEN`, so it only checks that the token is set. The ticket endpoint is an unauthenticated, trusted internal ingress: a direct run binds `127.0.0.1` by default (`TW_API_HOST`), and Compose publishes it only on the host's `127.0.0.1`. `GET /approvals` (read-only) needs no token. | `require_approver` in `triagewright.api.app`, `triagewright.api.services.token_matches`, `triagewright.cli` |
 | Separate approvals SQLite | `ApprovalRequest` rows | Approvals live in `TW_APPROVALS_DB_PATH` (`var/approvals.sqlite`), apart from the mock world and KB index in `TW_DB_PATH`. Status moves only `pending` to `approved` or `rejected`, then `approved` to `executed`, in guarded single-row updates. | `triagewright.guardrails.approvals`, `Settings.approvals_db_path` |
 | Secrets from env only | API keys, `TW_APPROVAL_KEY`, `TW_APPROVER_TOKEN` | `Settings` reads `TW_*` and provider key variables from the environment or an uncommitted `.env`; secrets are `SecretStr`; only `.env.example` is committed; CI runs gitleaks. Model error messages carry status codes, never provider free text. | `triagewright.config`, `.env.example`, `.github/workflows/ci.yml`, `triagewright.llm.openai_compat` |
 
@@ -231,9 +240,9 @@ Fakes for every port live in `triagewright.testing.fakes`.
 | | |
 | --- | --- |
 | Port | `ports.ApprovalStore.submit`, `.get`, `.decide`, `.mark_executed`, `.list_pending` |
-| Input | `contracts.guardrails.ApprovalRequest`, `contracts.guardrails.ApprovalDecision` |
-| Output | `ApprovalRequest` with its `ApprovalStatus` |
-| Errors | `ApprovalConflictError` (a `ValueError`) for a transition the status doesn't allow; `KeyError` for an unknown id. `submit` of an existing id returns the stored request unchanged. |
+| Input | `submit`: `contracts.guardrails.ApprovalRequest`; `get` and `mark_executed`: an approval id; `decide`: `contracts.guardrails.ApprovalDecision`; `list_pending`: none |
+| Output | `submit`, `decide`, `mark_executed`: the `ApprovalRequest` with its `ApprovalStatus`; `get`: the request or `None`; `list_pending`: a list of requests |
+| Errors | `ApprovalConflictError` (a `ValueError`) for a transition the status doesn't allow; `KeyError` for a transition on an unknown id. `submit` of an existing id returns the stored request unchanged. |
 | Owner | `triagewright.guardrails.approvals.SqliteApprovalStore` |
 
 ### ActionExecutor (lane D)
@@ -263,7 +272,7 @@ Fakes for every port live in `triagewright.testing.fakes`.
 | Port | `ports.TicketResolver.resolve` |
 | Input | `contracts.tickets.Ticket` |
 | Output | `contracts.agents.FinalResponse` |
-| Errors | Bounds, model failures, and invalid output become a `FinalResponse` with `status=escalated` and a `LoopStop` of `max_turns`, `timeout`, or `error`; a model refusal becomes `status=refused`, `stop=refusal`. |
+| Errors | Bounds, model failures, invalid output, and a refusal by the action subagent or the escalation reviewer become the safe fallback: `status=escalated` with a `LoopStop` of `max_turns`, `timeout`, or `error`. A refusal by triage, the answer subagent, or the coordinator gives `stop=refusal` and the fixed refusal reply; routing still applies, so the status is `refused` unless code escalates. |
 | Owner | `triagewright.agent.coordinator.Coordinator`, with `triagewright.agent.runtime` and `triagewright.agent.subagents`; subagent I/O is `TriageInput`/`TriageResult`, `AnswerInput`/`AnswerDraft`, `ActionInput`/`ActionResult`, `EscalationInput`/`EscalationDecision` in `contracts.agents` |
 
 ### CaseRuntime and CaseRuntimeFactory (evals)
@@ -284,13 +293,16 @@ judge.
 
 **PII redaction.** `triagewright.guardrails.redaction` replaces card numbers,
 SSNs, one-time codes, emails, phone numbers, and IP addresses with numbered
-placeholders (`[EMAIL_1]`). The coordinator redacts the ticket before any model
-call, redacts handoff summaries, and redacts the final reply again.
+placeholders (`[EMAIL_1]`). The coordinator redacts the ticket's subject, body,
+and metadata before any model call, redacts handoff summaries, and redacts the
+final reply again. Tool results are not redacted: the customer's own scoped
+records, such as their email on `get_customer`, can reach a model.
 
 **Injection screening and routing.** `triagewright.guardrails.screening` holds
 narrow rules with stable ids (`injection.override` and others); tool output and
 KB text get stricter rules than customer text. The coordinator screens the
-ticket, every tool result, every KB hit, and every subagent output, and ORs the
+ticket text, every business-tool result and KB hit shown to a model, and every
+validated subagent output, and ORs the
 verdicts into one request-scoped flag that models can't clear. Flagged content
 is still shown, inside `<data>` tags. Once the flag is set, the executor blocks
 every irreversible proposal (`injection.write_blocked`), and routing sends any
@@ -314,9 +326,9 @@ arguments and an HMAC token over the approval id, order, amount, and key
 
 | Decision | Where code makes it |
 | --- | --- |
-| Every refund outcome. A signed-in refund ask must go through an `issue_refund` proposal; the executor and `REFUND_OUTCOME` decide approve, refuse, or escalate; code writes the outcome text and drops the model's reply. The only proposal-free replies (sign in, which order) are written by code. | `Coordinator._check_final`, `_own_refund_reply`, `_refund_reply`, `_note`; `GuardedActionExecutor.propose` |
-| Injection routing. The flag is the OR of every screen; with it set, irreversible actions are blocked, and a refund ask, a blocked write, or any other escalation goes to `security` with no model text. | `RequestRun.screen`, `Coordinator._route`, `Coordinator._fallback`, `RuleGuardrails.check_action` |
-| Escalation routing. Queue, reasons, and summary come from code: policy-blocked refunds, persistent tool failures, bounds, and injection. The reviewer can add an escalation but never remove one. Only coordinator code calls `create_escalation`. | `Coordinator._route`, `Coordinator._handoff`, `tools.CODE_OWNED_TOOLS` |
+| Every refund outcome. A signed-in refund ask without suspected injection must go through an `issue_refund` proposal, unless the order is unclear. The executor submits an eligible proposal for approval, returns the stored status of an approval that already exists, and otherwise blocks it; for a blocked refund, `REFUND_OUTCOME[eligibility.reasons[0]]` picks refusal or a queue. Once a refund is proposed, code writes the outcome text and drops the model's reply. The only proposal-free replies (sign in, which order) are written by code. | `Coordinator._check_final`, `_own_refund_reply`, `_refund_reply`, `_note`; `GuardedActionExecutor.propose` |
+| Injection routing. The flag is the OR of every screen; with it set, irreversible actions are blocked, and a refund ask, a blocked write, or any other escalation goes to `security`. The customer reply is fixed text (`FALLBACK_REPLY`) for a refund ask and for the safe fallback; other security handoffs keep the model's draft reply, redacted. | `RequestRun.screen`, `Coordinator._route`, `Coordinator._refund_reply`, `Coordinator._fallback`, `RuleGuardrails.check_action` |
+| Escalation routing. Code decides whether to escalate and in what precedence: a policy-blocked refund's queue first, then the reviewer's queue, then `tier1` for persistent tool failures, with injection overriding to `security`. A counted review supplies its queue, priority, reasons, and redacted handoff summary, with code's reasons appended. The reviewer can add an escalation but never remove one. Only coordinator code calls `create_escalation`. | `Coordinator._route`, `Coordinator._handoff`, `tools.CODE_OWNED_TOOLS` |
 | When a reviewer escalation is left to code. If every reason the reviewer gives is one code already handled, and triage found no other human need, the review adds nothing: `approval_required` once the request's one action is pending approval or blocked, and `injection_suspected` when code flagged injection before the reviewer and the draft refuses. | `triagewright.agent.coordinator._left_to_code` |
 | Final status and actions. `FinalResponse` is built from executor and gateway records; a pending approval or escalation overrides the model's proposed status. | `Coordinator._respond`, `Coordinator._final` |
 | Citations. Only trusted hits seen in the request, with a verbatim quote. | `RequestRun.cite` |
@@ -324,8 +336,8 @@ arguments and an HMAC token over the approval id, order, amount, and key
 ## 5. Observability
 
 `triagewright.observability.telemetry` implements the telemetry ports on
-OpenTelemetry. Each request is a root span (`resolve`, `SpanKind.REQUEST`) with
-child spans for turns (`<purpose>.turn`), subagents (`subagent.<name>`), model
+OpenTelemetry. Each request has a root span `request`, with `resolve`
+(`SpanKind.REQUEST`) below it and child spans for turns (`<purpose>.turn`), subagents (`subagent.<name>`), model
 calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
 (`guardrails.redact`, `guardrails.screen`), and executor proposals
 (`executor.propose`, `SpanKind.APPROVAL`). KB retrieval appears as the
@@ -333,9 +345,11 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
 
 - **Tokens and cost.** `record_model_call` sets `gen_ai.usage.input_tokens`,
   `gen_ai.usage.output_tokens`, cache token counts, and `tw.cost_usd` from
+  the provider-reported cost when there is one, else the price in
   `config/pricing.toml` (`triagewright.observability.pricing`). An unknown
-  model is an error, never a guessed price. Free models cost $0. Judge calls
-  are traced but kept out of request cost.
+  model with no reported cost is an error, never a guessed price. Free models
+  cost $0. The wired eval judge emits no spans; its usage and reported cost
+  are kept per case in the eval results, apart from ticket cost.
 - **TTFT.** `RequestMetrics.ttft_ms` is the first call's start offset plus its
   pacing wait plus its TTFT. The live clients don't stream, so it is `None`
   for live calls today.
@@ -356,7 +370,8 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
 
 - **Free-tier pacing.** `triagewright.llm.ratelimit.RateLimiter` is a sliding
   window per model, shared by every client on one quota
-  (`RateLimits.shared`, keyed by `Settings.quota_id`). Defaults are the free
+  (`RateLimits.shared`, keyed by `Settings.quota_id` and the configured
+  requests per minute). Defaults are the free
   quotas in `config.FREE_TIER_RPM` (Gemini 15/min, OpenRouter 20/min);
   `TW_LLM_REQUESTS_PER_MINUTE=0` turns pacing off (ADR-003).
 - **Waits stay off deadlines.** `triagewright.pacing.CallBudget` pushes the
@@ -365,21 +380,26 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   ticket is handed off.
 - **Model retries.** The OpenAI-compatible client retries 408, 429, 500, 502,
   503, 504, timeouts, and connection errors with exponential backoff, honors
-  `Retry-After` and Gemini's `RetryInfo`, and skips a retry that can't finish
-  before the deadline. 401/403 and other 4xx fail at once.
+  `Retry-After` and Gemini's `RetryInfo`, and skips a retry unless the
+  backoff plus a 2 s attempt window (`MIN_ATTEMPT_S`) fits before the
+  deadline. 401/403 and other 4xx fail at once.
 - **Tool retries.** Only `RequestRun.call_tool` retries retryable tool errors,
   up to `LoopConfig.tool_retries` (2), with backoff from `retry_after_ms` or
-  `retry_backoff_s`. A tool that keeps failing is recorded and routed to
-  `tier1` with `tool_failure`. The executor's eligibility lookup retries the
+  `retry_backoff_s`. A tool that keeps failing is recorded and escalated with
+  `tool_failure`, to `tier1` unless another queue already won. The executor's eligibility lookup retries the
   same way.
 - **Deadlines.** `turn_timeout_s` (20 s) per model call, `total_timeout_s`
   (30 s) per request, with `handoff_reserve_s` (3 s) kept for the escalation
-  write; the handoff gets at least one attempt even after an overrun. A write
-  in flight is never cancelled midway.
+  write; the handoff gets at least one attempt even after an overrun, under
+  its own `asyncio.timeout`. Deferred proposals are not cancelled midway: the
+  budget is checked before and after each one, a finished outcome is kept,
+  and an overrun hands the ticket off.
 - **Fallbacks.** Any bound, a second truncation, a second invalid structured
-  output, a model failure, or a refusing internal subagent gives the safe
-  fallback: no pending proposal is sent, and the ticket is escalated with a
-  code-built handoff summary. If the handoff write itself fails, the reply
+  output, a model failure, or a refusal by the action subagent or the
+  escalation reviewer gives the safe fallback: no deferred proposal still
+  waiting is sent (an approval already queued stays queued), and the ticket
+  is escalated with a code-built handoff summary. Refusals elsewhere get the
+  fixed refusal reply (section 3, TicketResolver). If the handoff write itself fails, the reply
   says the request was logged for review. Provider fallback is a config
   change: Gemini free tier by default, OpenRouter `:free` as the fallback,
   and no paid model anywhere (ADR-002).
@@ -400,12 +420,14 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   priority, must and must-not call, attempts, refund bounds, citations, and
   reply include/exclude. They read the gateway call log and the ledger, not the
   agent's claims. An optional LLM judge (`triagewright.evals.judge`) grades the
-  rubric with recorded calls.
+  rubric with the configured client, live or replay.
 - **Gate.** `triagewright-evals run` compares the run with
   `evals/baseline.json` per mode (`triagewright.evals.report.regressions`) and
   exits 1 on a regression: any unsafe action, a lower pass rate, cost per
-  ticket up more than 10%, or p95 latency up more than 10% (same mode; not
-  for stub runs). Live and replay numbers are never compared.
+  ticket up more than 10%, or p95 latency up more than 10% (same mode). Stub
+  runs skip the latency check but still compare pass rate and cost. A run
+  filtered to some cases checks only unsafe actions. Live and replay numbers
+  are never compared.
 - **CI.** CI runs with `TW_LLM_PROVIDER=replay` and never calls a model. Its
   `evals-smoke` job validates every case file
   (`triagewright-evals smoke`); tests use scripted model clients and fakes.

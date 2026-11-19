@@ -21,7 +21,7 @@ eval runner's case timeout, so a ticket could time out while doing no work.
   waiting costs nothing.
 - **One limiter per model and quota.** `RateLimits.shared` is a process-wide
   registry keyed by `Settings.quota_id()` (provider, endpoint, and a hash of
-  the key, never the key). The API, CLI, eval cases, and judge share it.
+  the key, never the key) and the configured requests per minute. The API, CLI, eval cases, and judge share it.
   Defaults come from `config.FREE_TIER_RPM`; `TW_LLM_REQUESTS_PER_MINUTE`
   overrides them, and `0` turns pacing off.
 - **Waits stay off deadlines.** The limiter reports each wait to the current
@@ -37,8 +37,9 @@ eval runner's case timeout, so a ticket could time out while doing no work.
   `RequestMetrics.latency_ms` excludes `paced_ms`, which is reported on its
   own. TTFT still includes the first call's wait.
 - **Retries respect the deadline.** The adapter uses Gemini's `RetryInfo`
-  delay when there is no `Retry-After` header, and skips a retry that can't
-  finish before the deadline.
+  delay when there is no `Retry-After` header, and skips a retry unless the
+  backoff plus a 2 s attempt window (`MIN_ATTEMPT_S`) fits before the
+  deadline.
 
 ## Consequences
 

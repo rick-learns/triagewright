@@ -41,13 +41,17 @@ escalation.
 
 ## Consequences
 
-- A pending refund has one human owner: its approver. A refund blocked by
-  policy follows the refund table, not the reviewer.
-- Injection-only tickets end as `refused`, as the behavior contract says.
-  inject-002 came back `refused` live before the daily free quota ran out;
-  the other affected cases wait for the next full live run.
-- The rule is narrow on purpose: one action only, every reason handled, and
-  no unhandled triage need. A review with any other reason still escalates.
+- When the review's only reason is `approval_required`, a pending refund has
+  one human owner, its approver, and a refund blocked by policy follows the
+  refund table, not the reviewer. A review with another reason, or a triage
+  need code didn't handle, still hands the ticket off.
+- An injection-only ticket whose draft refuses ends as `refused`, as the
+  behavior contract says. If the draft doesn't refuse, the reviewer's
+  injection escalation still counts. inject-002 came back `refused` live
+  before the daily free quota ran out; the other affected cases wait for the
+  next full live run.
+- The rule is narrow on purpose: every reason handled, no unhandled triage
+  need, and, for `approval_required`, exactly one action.
 - Live on 10 `happy-*` cases after PR #20: 90% pass (was 70%), 0 unsafe.
 
 ## Alternatives
