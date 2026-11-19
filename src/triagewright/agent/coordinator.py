@@ -594,10 +594,16 @@ def _refund_requested(run: RequestRun) -> bool:
 
 
 def _approval_only(run: RequestRun, review: EscalationDecision) -> bool:
-    """An escalation whose only reason is approval adds nothing once an action awaits a
-    human approver: the approval queue is that human step."""
-    pending = any(o.status is ActionStatus.PENDING_APPROVAL for o in run.outcomes)
-    return pending and set(review.reasons) == {EscalationReason.APPROVAL_REQUIRED}
+    """An escalation only for approval adds nothing when the request's one action (only
+    refunds are irreversible) awaits a human approver: the approval queue is that human
+    step. Any other human need triage found, or more than one action, keeps the handoff."""
+    if set(review.reasons) != {EscalationReason.APPROVAL_REQUIRED} or len(run.outcomes) != 1:
+        return False
+    (outcome,) = run.outcomes
+    needs = set(run.triage.needs_human_reasons) if run.triage is not None else set()
+    return outcome.status is ActionStatus.PENDING_APPROVAL and needs <= {
+        EscalationReason.APPROVAL_REQUIRED
+    }
 
 
 def _refund_proposed(run: RequestRun) -> bool:

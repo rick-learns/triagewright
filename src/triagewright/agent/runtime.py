@@ -366,7 +366,8 @@ class RequestRun:
                 ) from None
             except Exception as exc:
                 status = getattr(exc, "status", None)  # model errors carry the HTTP status
-                span.set_error(type(exc).__name__ + (f" (HTTP {status})" if status else ""))
+                http = f" (HTTP {status})" if isinstance(status, int) else ""
+                span.set_error(type(exc).__name__ + http)
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, f"{purpose} model call failed"
                 ) from exc

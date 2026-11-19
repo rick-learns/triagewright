@@ -6,6 +6,8 @@ import asyncio
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from tests.agent.helpers import (
     FakeClock,
@@ -27,12 +29,16 @@ from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.llm import (
     ModelRequest,
     ModelResponse,
+    Provider,
     StopReason,
     TextBlock,
     ToolChoice,
 )
+from triagewright.contracts.telemetry import ModelPrice
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.llm.errors import ModelUnavailableError
+from triagewright.observability import OTelTelemetryFactory, to_trace_event
+from triagewright.observability.pricing import PriceTable
 from triagewright.pacing import CALL_BUDGET
 from triagewright.testing import ScriptedModelClient, model_response, sample_ticket
 
@@ -162,11 +168,39 @@ async def test_a_model_errors_http_status_reaches_its_span() -> None:
                 raise ModelUnavailableError("gemini m: HTTP 503", status=503)
             return await super().complete(request)
 
-    s = stack(model=Overloaded([triage()]))
+    exporter = InMemorySpanExporter()
+    free = ModelPrice(
+        model="test-model",
+        provider=Provider.REPLAY,
+        input_per_mtok_usd=0.0,
+        output_per_mtok_usd=0.0,
+        source="test",
+    )
+    otel = OTelTelemetryFactory(
+        PriceTable([free]), processor=SimpleSpanProcessor(exporter), replay=True
+    )
+    s = stack(model=Overloaded([triage()]), telemetry_factory=otel)
+    await s.resolve(sample_ticket())
+    events = [e for span in exporter.get_finished_spans() if (e := to_trace_event(span))]
+    (event,) = [e for e in events if e.name == "model.coordinator"]
+    assert event.status == "error"
+    assert event.attributes["error"] == "ModelUnavailableError (HTTP 503)"
+
+
+async def test_only_a_numeric_status_reaches_the_span() -> None:
+    class OddError(Exception):
+        status = "the customer's text"
+
+    class Failing(ScriptedModelClient):
+        async def complete(self, request: ModelRequest) -> ModelResponse:
+            if self.requests:
+                raise OddError
+            return await super().complete(request)
+
+    s = stack(model=Failing([triage()]))
     await s.resolve(sample_ticket())
     assert s.telemetry.last is not None
-    errors = dict(s.telemetry.last.span_errors)
-    assert errors["model.coordinator"] == "ModelUnavailableError (HTTP 503)"
+    assert dict(s.telemetry.last.span_errors)["model.coordinator"] == "OddError"
 
 
 # ---- bounds ------------------------------------------------------------------------

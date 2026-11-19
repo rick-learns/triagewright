@@ -51,12 +51,14 @@ _current: ContextVar[_Node | None] = ContextVar("triagewright_current_span", def
 class OTelSpanHandle:
     def __init__(self, span: trace.Span) -> None:
         self._span = span
+        self.errored = False
 
     def set_attribute(self, key: str, value: AttrValue) -> None:
         self._span.set_attribute(key, value)
 
     def set_error(self, message: str) -> None:
         self._span.set_status(Status(StatusCode.ERROR, message))
+        self.errored = True
 
 
 class OTelRequestTelemetry:
@@ -119,10 +121,13 @@ class OTelRequestTelemetry:
             attributes={**(attributes or {}), **self._base(kind)},
         )
         token = _current.set(_Node(self, otel, kind))
+        handle = OTelSpanHandle(otel)
         try:
-            yield OTelSpanHandle(otel)
+            yield handle
         except BaseException as exc:
-            otel.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
+            if not handle.errored:  # an error the caller set says more than the unwinding one
+                # The type only: an exception's message can carry ticket text.
+                otel.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise
         finally:
             _current.reset(token)

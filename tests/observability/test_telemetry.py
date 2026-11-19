@@ -264,12 +264,21 @@ def test_span_errors_are_recorded() -> None:
     with tel.span("guard", SpanKind.GUARDRAIL) as span:
         span.set_error("blocked")
     with pytest.raises(RuntimeError), tel.span("boom", SpanKind.RETRIEVAL):
-        raise RuntimeError("index missing")
+        raise RuntimeError("index missing for the customer's question")
+
+    def fail_after_setting_an_error() -> None:
+        with tel.span("model", SpanKind.MODEL_CALL) as span:
+            span.set_error("ModelUnavailableError (HTTP 503)")
+            raise RuntimeError("model call failed")
+
+    with pytest.raises(RuntimeError):
+        fail_after_setting_an_error()
     tel.finish()
     spans = by_name(exporter)
     assert spans["guard"].status.description == "blocked"
     assert spans["boom"].status.status_code is StatusCode.ERROR
-    assert spans["boom"].status.description == "RuntimeError: index missing"
+    assert spans["boom"].status.description == "RuntimeError"  # never the message
+    assert spans["model"].status.description == "ModelUnavailableError (HTTP 503)"
 
 
 @pytest.mark.anyio

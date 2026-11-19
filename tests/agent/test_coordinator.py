@@ -311,6 +311,28 @@ async def test_an_approval_escalation_with_another_reason_still_escalates() -> N
     assert response.status is ResolutionStatus.ESCALATED
 
 
+async def test_an_approval_escalation_keeps_a_human_need_triage_found() -> None:
+    _, *rest = refund_script("ord_a1001", 5000)
+    wants_person = triage(
+        "refund_request",
+        intent="Get a refund and talk to a person",
+        needs_human=True,
+        reasons=["customer_requested_human"],
+    )
+    s = stack([wants_person, *rest[:-1], review(True, "tier1", ["approval_required"])])
+    response = await s.resolve(refund_ticket("cus_ava01", "ord_a1001"))
+    assert response.status is ResolutionStatus.ESCALATED
+
+
+async def test_an_approval_escalation_with_two_actions_still_escalates() -> None:
+    *head, submitted, cited, _ = refund_script("ord_a1001", 5000)
+    two = [*head, propose_refund("ord_a1001", 2000), submitted, cited]
+    s = stack([*two, review(True, "tier1", ["approval_required"])])
+    response = await s.resolve(refund_ticket("cus_ava01", "ord_a1001"))
+    assert [o.status for o in response.actions] == [ActionStatus.PENDING_APPROVAL] * 2
+    assert response.status is ResolutionStatus.ESCALATED
+
+
 async def test_an_approval_escalation_with_nothing_pending_still_escalates() -> None:
     s = stack(
         [
