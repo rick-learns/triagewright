@@ -29,6 +29,7 @@ from triagewright.contracts.agents import FinalResponse
 from triagewright.contracts.evals import EvalCase
 from triagewright.contracts.llm import ModelResponse
 from triagewright.data import load_as_of, load_eval_cases, load_world, merge_world
+from triagewright.guardrails import SqliteApprovalStore
 from triagewright.testing import ScriptedModelClient
 
 CASES = {case.id: case for case in load_eval_cases(tour.REPO / "evals" / "cases")}
@@ -163,7 +164,7 @@ def calls(stack: wiring.CaseStack) -> list[str]:
 
 def escalation(response: FinalResponse) -> dict[str, Any] | None:
     handoff = response.escalation
-    return handoff and {"queue": handoff.queue, "reasons": handoff.reasons}
+    return None if handoff is None else {"queue": handoff.queue, "reasons": handoff.reasons}
 
 
 def grounded(settings: Settings) -> None:
@@ -177,6 +178,7 @@ def grounded(settings: Settings) -> None:
             "tool_calls": calls(stack),
         }
     )
+    assert response.status == "resolved" and response.citations, response
     out.print("[dim]Quotes are checked verbatim against KB chunks this request retrieved.[/]")
 
 
@@ -195,6 +197,12 @@ def refund(settings: Settings, tmp: Path) -> None:
     # Like the tour, the API owns a fresh bundle over the same approvals database.
     api_services = wiring.build_services(settings, model_factory=lambda _: tour.Scripted())
     tour.approve(settings, api_services, approval_id)
+    store = SqliteApprovalStore(settings.approvals_db_path)
+    try:
+        approval = store.get(approval_id)
+    finally:
+        store.close()
+    assert approval is not None and approval.status == "executed", approval
 
 
 def injection(settings: Settings) -> None:
@@ -213,6 +221,10 @@ def injection(settings: Settings) -> None:
             "pending_approvals": len(stack.pending_approvals()),
         }
     )
+    assert response.escalation is not None and response.escalation.queue == "security", response
+    assert [a.status for a in response.actions] == ["blocked"], response
+    assert all(c.caller == "coordinator" for c in stack.tool_calls()), calls(stack)
+    assert not stack.pending_approvals()
     out.print(
         "[dim]The model proposed the $5000 refund and code blocked it: issue_refund never ran "
         "and nothing awaits approval. The calls above are code's (caller=coordinator): the "
@@ -231,6 +243,7 @@ def tool_failure(settings: Settings) -> None:
             "tool_calls": calls(stack),
         }
     )
+    assert response.escalation is not None and response.escalation.queue == "tier1", response
     out.print("[dim]get_order timed out on all 3 attempts (a call, 2 retries): code escalates.[/]")
 
 
@@ -260,7 +273,7 @@ def trace(settings: Settings) -> None:
         "is estimated (tw.estimated). Cost is priced from the model each call names: the free "
         "defaults, so $0.[/]"
     )
-    out.print("[dim]The span tree (tour.svg) is the same trace:[/]")
+    out.print("[dim]The same trace as a span tree (as in the README's tour-trace.svg):[/]")
     tour.trace(settings.trace_dir)
 
 
@@ -272,8 +285,7 @@ def main() -> int:
         del os.environ[var]
     with tempfile.TemporaryDirectory() as name:
         tmp = Path(name)
-        tour.ASSETS = tmp  # the tour's images go to the temp dir, not docs/assets
-        tour.console = lambda: Console(record=True, width=tour.WIDTH, highlight=False)
+        tour.console = lambda: out  # the tour's scenes print here instead of rendering SVGs
         tour.save = lambda *_: None
         settings = Settings(
             _env_file=None,

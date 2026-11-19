@@ -3,8 +3,9 @@
 `scripts/demo.sh` runs five short scenes on the real stack: in-process MCP tools, RAG over
 the KB, guardrails, the action executor, SQLite approvals, the CLI, the HTTP API, and JSONL
 traces. A **scripted model** stands in for the LLM. It needs no API key and no network, and
-it finishes in a few seconds. It exits non-zero if a step fails or the run takes longer than
-60 seconds, so it also works as a smoke check.
+it finishes in a few seconds. Each scene checks its outcome (the status, the queue, the blocked
+refund, the executed approval), and the script exits non-zero if one is wrong, a step fails, or
+the run takes longer than 60 seconds, so it also works as a smoke check.
 
 ```bash
 uv sync            # once, before the talk
@@ -74,8 +75,7 @@ on every attempt (the fault is injected into the case's tool server).
   the default models are free.
 - The span tree shows one request end to end: redaction, injection screens of the ticket,
   KB hits, and tool output, each subagent and model call, `search_kb` and `get_order`, and
-  `executor.propose` holding the refund. With `TW_TRACE_EXPORTER=otlp` the same spans go to
-  Jaeger.
+  `executor.propose` holding the refund.
 
 **Close (10 s).** "Every outcome on screen came from code reading records, not from what
 the model claimed. The eval suite grades the agent the same way."
@@ -106,7 +106,12 @@ uv run triagewright-evals run --case happy-007 --case inject-001 --case toolfail
   --results var/evals/demo.jsonl
 ```
 
-`var/evals/demo.md` shows each case's status, escalation, and failed checks.
+Each case's outcome is in `var/evals/demo.jsonl`, and `var/evals/demo.md` lists the checks
+that failed:
+
+```bash
+jq -c '.result | {case_id, passed, status, escalated}' var/evals/demo.jsonl
+```
 
 **Scene 2: refund and approval over the HTTP API.** The API needs a running server. Make
 an approver token in a private file once, without printing it:
@@ -138,9 +143,16 @@ curl -s -X POST "localhost:8080/approvals/$APPROVAL_ID/decision" \
   -d '{"approved": true}'
 ```
 
-Without a server, `uv run triagewright resolve`, `uv run triagewright approvals list`, and
-`uv run triagewright approvals decide "$APPROVAL_ID" --approve` do the same from the CLI.
-The CLI decision needs `TW_APPROVER_TOKEN` in the shell's environment.
+Without a server, the CLI does the same. The decision needs `TW_APPROVER_TOKEN` in the
+shell's environment:
+
+```bash
+uv run triagewright resolve --ticket-id tkt_demo0004 --customer-id cus_jun10 \
+  --body "My Pulse Smartwatch from order ord_j1001 arrived two days ago and it already will not turn on. I would like my \$199.00 back."
+uv run triagewright approvals list   # the approval_id of the pending refund
+APPROVAL_ID="apr_..."
+uv run triagewright approvals decide "$APPROVAL_ID" --approve
+```
 
 **Scene 5: the trace.** Live runs write to `var/traces/<date>.jsonl`. The root `request`
 span of each request carries its totals:
@@ -152,4 +164,5 @@ jq -c 'select(.name == "request" and .parent_span_id == null)
 
 Live, `tw.estimated` is `false`: the tokens are the provider's counts and the latency is
 measured wall time, less rate-limit waits (`tw.paced_ms`). The cost is still $0 on the free
-models.
+models. To see the spans in Jaeger instead, set `TW_TRACE_EXPORTER=otlp` with an OTLP
+receiver running, such as the Compose `tracing` profile (see the README).
