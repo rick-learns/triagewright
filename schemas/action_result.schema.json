@@ -25,6 +25,17 @@
           "title": "Attempts",
           "type": "integer"
         },
+        "eligibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RefundEligibility"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "result": {
           "anyOf": [
             {
@@ -193,6 +204,81 @@
       ],
       "title": "ProposedAction",
       "type": "object"
+    },
+    "RefundEligibility": {
+      "additionalProperties": false,
+      "description": "Output of ``contracts.policy.evaluate_refund``.",
+      "properties": {
+        "already_refunded_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Already Refunded Cents",
+          "type": "integer"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "max_refundable_cents": {
+          "description": "Amount in minor currency units (cents).",
+          "minimum": 0,
+          "title": "Max Refundable Cents",
+          "type": "integer"
+        },
+        "order_id": {
+          "pattern": "^ord_[a-z0-9]{4,32}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RefundReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "refunds_last_30d": {
+          "minimum": 0,
+          "title": "Refunds Last 30D",
+          "type": "integer"
+        },
+        "window_ends_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Window Ends At"
+        }
+      },
+      "required": [
+        "order_id",
+        "eligible",
+        "max_refundable_cents",
+        "already_refunded_cents",
+        "refunds_last_30d",
+        "window_ends_at"
+      ],
+      "title": "RefundEligibility",
+      "type": "object"
+    },
+    "RefundReason": {
+      "description": "Why a refund can't go to approval, in precedence order (first wins).\n\nSee ``contracts.policy.REFUND_OUTCOME`` for what the agent does for each.",
+      "enum": [
+        "account_inactive",
+        "not_delivered",
+        "outside_window",
+        "exceeds_balance",
+        "over_hard_limit",
+        "refund_count_limit"
+      ],
+      "title": "RefundReason",
+      "type": "string"
     },
     "ToolError": {
       "additionalProperties": false,

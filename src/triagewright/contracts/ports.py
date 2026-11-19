@@ -116,8 +116,10 @@ class ActionExecutor(Protocol):
     ``Guardrails.check_action``: ``allow`` runs the call; ``require_approval``
     submits an :class:`ApprovalRequest` with the exact arguments and
     idempotency key and returns ``pending_approval`` (or the stored status if
-    that approval already exists); ``block`` returns ``blocked``. It never
-    runs an irreversible tool.
+    that approval already exists); ``block`` returns ``blocked``. Every
+    outcome after a successful lookup carries it in ``eligibility``; lane B
+    routes a blocked refund on its first reason (``policy.REFUND_OUTCOME``),
+    not on ``verdict.rule_ids``. It never runs an irreversible tool.
 
     Lane B calls ``propose`` for irreversible actions only after the last
     ``screen`` of the request, so ``injection_suspected`` is final and no

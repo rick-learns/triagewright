@@ -503,11 +503,14 @@ class FakeActionExecutor:
             now=self.now,
         )
         verdict = self.guardrails.check_action(action, policy_ctx)
+        blocked = ActionOutcome(
+            action=action, status=ActionStatus.BLOCKED, verdict=verdict, eligibility=elig
+        )
         if verdict.decision is GuardrailDecision.BLOCK:
-            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+            return blocked
         if verdict.decision is GuardrailDecision.REQUIRE_APPROVAL:
             if action.tool not in IRREVERSIBLE_TOOLS or ctx.customer_id is None:
-                return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+                return blocked
             stored = self.approvals.submit(
                 ApprovalRequest(
                     approval_id=approval_id,
@@ -526,9 +529,10 @@ class FakeActionExecutor:
                 status=_STORED_STATUS[stored.status],
                 verdict=verdict,
                 approval_id=approval_id,
+                eligibility=elig,
             )
         if action.tool in IRREVERSIBLE_TOOLS:  # a guardrail bug must not run a refund
-            return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+            return blocked
         result = await self.gateway.call(action.tool, arguments, ctx)
         status = ActionStatus.FAILED if result.is_error else ActionStatus.EXECUTED
         return ActionOutcome(

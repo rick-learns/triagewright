@@ -26,7 +26,7 @@ from triagewright.contracts.guardrails import GuardrailVerdict
 from triagewright.contracts.rag import Citation
 from triagewright.contracts.telemetry import RequestMetrics
 from triagewright.contracts.tickets import Ticket
-from triagewright.contracts.tools import ToolName, ToolResult
+from triagewright.contracts.tools import RefundEligibility, ToolName, ToolResult
 from triagewright.contracts.world import EscalationQueue, EscalationReason, Priority
 
 
@@ -125,6 +125,10 @@ class ActionOutcome(Contract):
     verdict: GuardrailVerdict | None = None
     approval_id: ApprovalId | None = None
     attempts: Annotated[int, Field(ge=0)] = 0
+    # The executor's own eligibility lookup, for every refund that got one.
+    # A blocked refund routes on ``policy.REFUND_OUTCOME[eligibility.reasons[0]]``
+    # (reasons are in ``REFUND_PRECEDENCE`` order), never on verdict rule ids.
+    eligibility: RefundEligibility | None = None
 
 
 class ActionResult(Contract):

@@ -16,7 +16,7 @@ from triagewright.contracts.guardrails import (
     GuardrailVerdict,
     PolicyContext,
 )
-from triagewright.contracts.policy import approval_token, refund_idempotency_key
+from triagewright.contracts.policy import REFUND_OUTCOME, approval_token, refund_idempotency_key
 from triagewright.contracts.ports import (
     ActionExecutor,
     ApprovalStore,
@@ -32,7 +32,15 @@ from triagewright.contracts.ports import (
 )
 from triagewright.contracts.rag import MetadataFilter, RetrievalQuery
 from triagewright.contracts.telemetry import SpanKind
-from triagewright.contracts.tools import CallContext, Caller, ErrorCategory, ToolError, ToolName
+from triagewright.contracts.tools import (
+    CallContext,
+    Caller,
+    ErrorCategory,
+    RefundReason,
+    ToolError,
+    ToolName,
+)
+from triagewright.contracts.world import EscalationQueue
 from triagewright.testing import (
     TEST_APPROVAL_KEY,
     FakeActionExecutor,
@@ -318,6 +326,19 @@ async def test_eligibility_lookup_retries_then_reports_the_error() -> None:
     missing = await executor().propose(_refund("ord_zzzz"), CTX, injection_suspected=False)
     assert missing.status is ActionStatus.FAILED and missing.result and missing.result.error
     assert missing.result.error.category is ErrorCategory.NOT_FOUND
+
+
+async def test_blocked_refund_carries_the_winning_reason() -> None:
+    # Closed account and expired window: account_inactive wins, so tier2.
+    out = await executor().propose(
+        _refund("ord_i9001", 1200), ctx("cus_ivo09"), injection_suspected=False
+    )
+    assert out.status is ActionStatus.BLOCKED and out.eligibility
+    assert out.eligibility.reasons[:2] == [
+        RefundReason.ACCOUNT_INACTIVE,
+        RefundReason.OUTSIDE_WINDOW,
+    ]
+    assert REFUND_OUTCOME[out.eligibility.reasons[0]] is EscalationQueue.TIER2
 
 
 async def test_retry_after_a_lost_response_succeeds() -> None:
