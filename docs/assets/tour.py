@@ -272,7 +272,14 @@ def trace(trace_dir: Path) -> None:
 
 
 def evals(tmp: Path) -> None:
-    report = tmp / "report.md"
+    out_flags = [
+        "--report",
+        "var/evals/stub.md",
+        "--json",
+        "var/evals/stub.json",
+        "--results",
+        "var/evals/stub.jsonl",
+    ]
     cmd = [
         "triagewright-evals",
         "run",
@@ -283,12 +290,7 @@ def evals(tmp: Path) -> None:
         str(REPO / "evals" / "baseline.json"),
         "--case",
         "escal-00[1-3]",
-        "--report",
-        str(report),
-        "--json",
-        str(tmp / "report.json"),
-        "--results",
-        str(tmp / "results.jsonl"),
+        *out_flags,  # relative to cwd=tmp
     ]
     # Run outside the repo so a local .env can't change the stub run.
     done = subprocess.run(  # noqa: S603
@@ -300,11 +302,14 @@ def evals(tmp: Path) -> None:
         env={**os.environ, "TW_SEED_DIR": str(REPO / "data" / "seed")},
     )
     assert done.returncode == 0, done.stderr
-    lines = report.read_text(encoding="utf-8").splitlines()
+    lines = (tmp / "var" / "evals" / "stub.md").read_text(encoding="utf-8").splitlines()
     summary = lines[lines.index("## Summary") : lines.index("## By category")]
     failures = lines[lines.index("## Failures") :]
     out = console()
-    prompt(out, "triagewright-evals run --stub --case 'escal-00[1-3]'")
+    prompt(
+        out,
+        "triagewright-evals run --stub --case 'escal-00[1-3]' \\\n    " + " ".join(out_flags),
+    )
     out.print(done.stdout.split("; report")[0], style="dim")  # drop the temp paths
     out.print()
     out.print(
@@ -315,7 +320,10 @@ def evals(tmp: Path) -> None:
 
 def main() -> int:
     # Ignore any exported settings or keys: the tour runs in-process, offline, and keyless.
-    for var in [v for v in os.environ if v.startswith("TW_") or v.endswith("_API_KEY")]:
+    # Settings matches names case-insensitively.
+    for var in [
+        v for v in os.environ if v.upper().startswith("TW_") or v.upper().endswith("_API_KEY")
+    ]:
         del os.environ[var]
     with tempfile.TemporaryDirectory() as name:
         tmp = Path(name)

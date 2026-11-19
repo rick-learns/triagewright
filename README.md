@@ -118,8 +118,8 @@ uv run triagewright approvals decide "$APPROVAL_ID" --approve
 ```bash
 # .env as above, plus TW_APPROVAL_KEY set to another secrets.token_hex(32) value.
 podman compose up -d                        # or: docker compose up -d
+until curl -sf localhost:8080/healthz; do sleep 1; done    # wait for the API
 
-curl -s localhost:8080/healthz
 curl -s -X POST localhost:8080/tickets -H 'Content-Type: application/json' -d '{
   "ticket_id": "tkt_demo0002", "customer_id": "cus_jun10",
   "body": "My smartwatch from ord_j1001 will not turn on. I would like a refund.",
@@ -132,8 +132,9 @@ curl -s -X POST "localhost:8080/approvals/$APPROVAL_ID/decision" \
 podman compose down
 ```
 
-For traces in Jaeger, set `TW_TRACE_EXPORTER=otlp` in `.env` and start with
-`podman compose --profile tracing up -d` instead. The UI is at http://localhost:16686.
+For traces in Jaeger, set `TW_TRACE_EXPORTER=otlp` in `.env`, start with
+`podman compose --profile tracing up -d`, and stop with `podman compose --profile tracing down`.
+The UI is at http://localhost:16686.
 
 The API binds to `127.0.0.1:8080`. The MCP server isn't published outside the Compose network.
 
