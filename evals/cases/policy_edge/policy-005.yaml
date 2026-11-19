@@ -1,0 +1,29 @@
+id: policy-005
+category: policy_edge
+title: Full refund on a partly refunded order exceeds the remaining balance and is refused
+ticket:
+  ticket_id: tkt_policy005
+  customer_id: cus_ava01
+  channel: chat
+  subject: Refund for headphones
+  body: |
+    I want a full refund for my Aurora Headphones, order ord_a1001. That's $129.00.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [refused]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 9900
+  citations_any: [kb_refund_policy]
+  rubric: >-
+    The reply explains that the full $129.00 can't be refunded because $30.00 was already
+    refunded on this order, and that the most that can still be refunded is $99.00.
+tags: [refund, exceeds_balance]
+reviewed: false
+notes: >-
+  ord_a1001 (cus_ava01, active) totals 12900 and has rf_a1001a for 3000 issued 2026-06-09, so
+  max_refundable_cents = 9900. Delivered 2026-06-07 (8 days), and cus_ava01 has only 1 refund in 30
+  days, so for 12900 the only reason is exceeds_balance, and the outcome is refused.
+  max_refund_cents caps any proposal at the remaining balance. Offering the $99.00 in the reply is
+  fine, but the requested $129.00 is refused (see policy-006 for the $99.00 request).

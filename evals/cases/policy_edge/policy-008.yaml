@@ -1,0 +1,24 @@
+id: policy-008
+category: policy_edge
+title: Refund for an order that hasn't been delivered is refused
+ticket:
+  ticket_id: tkt_policy008
+  customer_id: cus_gus07
+  channel: email
+  subject: Refund my chair
+  body: |
+    My Ergo Desk Chair (order ord_g7001) still hasn't arrived. Just refund me the $249.00.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [refused]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  citations_any: [kb_refund_policy]
+tags: [refund, not_delivered]
+reviewed: false
+notes: >-
+  ord_g7001 (cus_gus07, active) is shipped with no delivered_at, so the only reason is
+  not_delivered, which refuses. kb_refund_policy: "orders that were never delivered, can't be
+  refunded". It shipped with FedEx (tracking 1Z7001009), so the reply may point to tracking or
+  the late-package guidance in kb_shipping.

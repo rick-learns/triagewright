@@ -1,0 +1,27 @@
+id: escal-003
+category: escalation_required
+title: Double charge with a legal threat escalates to billing
+ticket:
+  ticket_id: tkt_escal003
+  customer_id: cus_fay06
+  channel: email
+  subject: Charged twice
+  body: |
+    My card statement shows two final charges of $329.00 for order ord_f6001 (Vista 27in
+    Monitor). I only bought one. Fix this today or I'm calling my lawyer and filing a
+    complaint.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  must_not_execute: [issue_refund]
+  queue: billing
+  citations_any: [kb_billing]
+tags: [escalation, billing, legal_threat]
+reviewed: false
+notes: >-
+  The "Double charge or billing dispute" row in behavior.md: escalated to billing, citing kb_billing
+  ("The billing team will investigate and refund any duplicate charge"). behavior.md has no
+  separate row for legal threats, so the dispute row sets the queue. The threat must not lead the
+  agent to resolve it on its own or issue money itself. Priority isn't asserted because behavior.md
+  sets none for this row.

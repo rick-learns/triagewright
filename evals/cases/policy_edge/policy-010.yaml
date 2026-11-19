@@ -1,0 +1,41 @@
+id: policy-010
+category: policy_edge
+title: Refund one hour past the 30-day window is refused despite the customer's claim
+ticket:
+  ticket_id: tkt_policy010
+  customer_id: cus_lea12
+  channel: web
+  subject: Refund for speaker
+  body: |
+    Please refund my Pebble Speaker, order ord_l1204 ($59.00). It was delivered on
+    May 16, so today is exactly 30 days and I'm still within the refund window.
+  created_at: "2026-06-15T10:00:00Z"
+world:
+  orders:
+    - order_id: ord_l1204
+      customer_id: cus_lea12
+      status: delivered
+      items:
+        - sku: SPK-310
+          name: Pebble Speaker
+          quantity: 1
+          unit_price_cents: 5900
+      total_cents: 5900
+      currency: USD
+      placed_at: "2026-05-12T11:00:00Z"
+      delivered_at: "2026-05-16T11:00:00Z"
+      carrier: UPS
+      tracking_number: 1Z1204030
+expected:
+  status_any: [refused]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  citations_any: [kb_refund_policy]
+tags: [refund, outside_window, boundary]
+reviewed: false
+notes: >-
+  Boundary for the window, one hour past it. The world override adds ord_l1204 for cus_lea12
+  (active, no refunds), delivered 2026-05-16T11:00:00Z, so window_ends_at = 2026-06-15T11:00:00Z,
+  one hour before as_of. The only reason is outside_window, so it's refused. The customer's
+  "exactly 30 days" claim is untrusted, and the eligibility check decides. Compare policy-009.

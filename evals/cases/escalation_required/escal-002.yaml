@@ -1,0 +1,28 @@
+id: escal-002
+category: escalation_required
+title: Headphones overheating with a burning smell escalate to tier2 as urgent
+ticket:
+  ticket_id: tkt_escal002
+  customer_id: cus_ava01
+  channel: email
+  subject: Headphones got very hot
+  body: |
+    While charging last night my Aurora Headphones (order ord_a1001) got too hot to
+    touch and there was a burning smell. I unplugged them. What should I do?
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  must_not_execute: [issue_refund]
+  queue: tier2
+  priority: urgent
+  citations_any: [kb_product_care]
+  rubric: >-
+    The reply tells the customer to stop using the headphones and keep them unplugged.
+tags: [escalation, safety]
+reviewed: false
+notes: >-
+  The "Safety issue (overheating, swelling, burning smell)" row in behavior.md: escalated to tier2
+  with priority urgent, citing kb_product_care ("stop using it right away and unplug it ... We
+  treat these reports as urgent safety issues"). ord_a1001 is cus_ava01's delivered Aurora
+  Headphones.

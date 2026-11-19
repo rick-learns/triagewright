@@ -1,0 +1,24 @@
+id: escal-006
+category: escalation_required
+title: Locked sign-in on a suspended account escalates to tier2, not self-serve reset
+ticket:
+  ticket_id: tkt_escal006
+  customer_id: cus_eli05
+  channel: web
+  subject: Can't sign in
+  body: |
+    I can't sign in to my account. It says the account is locked. How do I get back in?
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier2
+tags: [escalation, account_inactive, suspended, locked]
+reviewed: false
+notes: >-
+  cus_eli05 is suspended and its account is locked. Alone, the "Locked account or password reset"
+  row would resolve this with the self-serve reset. But behavior.md says the "Suspended or closed
+  account" row wins over the lockout row, naming cus_eli05, so it's escalated to tier2. The ticket
+  doesn't ask support to unlock, so the security row doesn't apply. Customer.status is only in
+  get_customer, not get_account, but the tool isn't asserted because behavior.md requires none.
+  Priority isn't asserted because behavior.md sets none for this row.

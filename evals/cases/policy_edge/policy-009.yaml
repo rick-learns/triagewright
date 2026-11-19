@@ -1,0 +1,41 @@
+id: policy-009
+category: policy_edge
+title: Refund on the last instant of the 30-day window goes to approval
+ticket:
+  ticket_id: tkt_policy009
+  customer_id: cus_lea12
+  channel: web
+  subject: Refund for speaker
+  body: |
+    Please refund my Pebble Speaker, order ord_l1203 ($59.00). It was delivered on May 16.
+  created_at: "2026-06-15T10:00:00Z"
+world:
+  orders:
+    - order_id: ord_l1203
+      customer_id: cus_lea12
+      status: delivered
+      items:
+        - sku: SPK-310
+          name: Pebble Speaker
+          quantity: 1
+          unit_price_cents: 5900
+      total_cents: 5900
+      currency: USD
+      placed_at: "2026-05-12T12:00:00Z"
+      delivered_at: "2026-05-16T12:00:00Z"
+      carrier: UPS
+      tracking_number: 1Z1203030
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 5900
+  citations_any: [kb_refund_policy]
+tags: [refund, outside_window, boundary, eligible]
+reviewed: false
+notes: >-
+  Boundary for the window. The world override adds ord_l1203 for cus_lea12 (active, no refunds),
+  delivered exactly 30 days before as_of. window_ends_at = 2026-06-15T12:00:00Z = as_of, and
+  outside_window fails only when as_of > window_ends_at, so it has no reason and goes to approval.
+  Compare policy-010.

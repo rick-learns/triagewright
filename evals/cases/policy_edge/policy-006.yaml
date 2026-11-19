@@ -1,0 +1,28 @@
+id: policy-006
+category: policy_edge
+title: Refund of exactly the remaining balance goes to approval
+ticket:
+  ticket_id: tkt_policy006
+  customer_id: cus_ava01
+  channel: chat
+  subject: Rest of my refund
+  body: |
+    You already refunded $30.00 on order ord_a1001 for the scuffed case. I'd now like
+    a refund of the remaining $99.00 on that order.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 9900
+  citations_any: [kb_refund_policy]
+  rubric: >-
+    The reply says a refund of exactly $99.00 was submitted for approval, not a smaller amount.
+tags: [refund, exceeds_balance, boundary, eligible]
+reviewed: false
+notes: >-
+  Boundary for the balance. Same order facts as policy-005: max_refundable_cents = 12900 - 3000 =
+  9900. exceeds_balance fails only when amount_cents > max_refundable, so exactly 9900 has no
+  reason and goes to approval. max_refund_cents caps the proposal at 9900 (9901 would exceed the
+  balance), and the rubric checks it wasn't cut lower.
