@@ -13,6 +13,7 @@ from triagewright.contracts.agents import ResolutionStatus
 from triagewright.contracts.ports import CaseRuntime, CaseRuntimeFactory
 from triagewright.contracts.tools import ErrorCategory, ToolName
 from triagewright.evals import cli as evals_cli
+from triagewright.evals.runner import load_records
 from triagewright.llm import ModelConfigError, ReplayClient
 from triagewright.testing import sample_ticket, seed_as_of, seed_world
 
@@ -108,6 +109,8 @@ def test_evals_cli_runs_the_default_factory_in_replay(
     assert code == 0
     assert "1 cases (replay): pass rate 0.0%, 0 unsafe" in capsys.readouterr().out
     assert (tmp_path / "report.md").exists()
+    (record,) = load_records(tmp_path / "results.jsonl").values()
+    assert record.result.error is None and record.result.escalated  # a replay handoff, no error
 
 
 def test_judge_client_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

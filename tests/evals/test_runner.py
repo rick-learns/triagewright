@@ -136,6 +136,7 @@ class _VirtualClock:
     def __init__(self) -> None:
         self.now = 1000.0
         self.sleeps: list[float] = []
+        self.late = [0.03]  # the first sleep wakes 30 ms late
         self._sleep = asyncio.sleep
 
     def monotonic(self) -> float:
@@ -143,7 +144,7 @@ class _VirtualClock:
 
     async def sleep(self, delay: float) -> None:
         self.sleeps.append(delay)
-        self.now += delay
+        self.now += delay + (self.late.pop() if self.late else 0.0)
         await self._sleep(0)
 
 
@@ -164,7 +165,8 @@ async def test_throttle_spaces_case_starts(monkeypatch: pytest.MonkeyPatch) -> N
     config = RunConfig(mode="replay", concurrency=3, min_interval_s=0.05)
     await run_all(factory, selected, config)
     assert clock.sleeps == pytest.approx([0.05, 0.05])  # the first start doesn't wait
-    assert [b - a for a, b in itertools.pairwise(starts)] == pytest.approx([0.05, 0.05])
+    # The interval runs from the late start, not from when the sleep was due to end.
+    assert [b - a for a, b in itertools.pairwise(starts)] == pytest.approx([0.08, 0.05])
 
 
 async def test_results_are_appended_and_resume_skips_finished_cases(tmp_path: Path) -> None:

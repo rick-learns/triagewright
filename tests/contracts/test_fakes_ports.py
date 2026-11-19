@@ -94,6 +94,8 @@ async def test_fake_retriever_ranks_and_filters() -> None:
     assert [r.rank for r in results] == list(range(1, len(results) + 1))
     text = "warranty repair defective refund"
     unfiltered = await retriever.retrieve(RetrievalQuery(text=text))
+    scores = [r.score for r in unfiltered]
+    assert scores == sorted(scores, reverse=True) and len(set(scores)) > 1  # ranked by score
     assert any("warranty" not in r.chunk.tags for r in unfiltered)  # the filter has work to do
     filtered = await retriever.retrieve(
         RetrievalQuery(text=text, filters=MetadataFilter(tags_any=["warranty"]))

@@ -68,8 +68,8 @@ def render_markdown(report: EvalReport) -> str:
         # Results don't count model calls, so a run whose calls all failed also costs $0.
         lines += [
             "",
-            "Cost is $0: the models are free, or no model call was billed (results don't record "
-            "which), so the cost target is met trivially.",
+            "Cost is $0: the models are free, or no billable usage was recorded (the results "
+            "can't tell which), so the cost target is met trivially.",
         ]
     lines += [
         "",

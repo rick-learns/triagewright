@@ -83,12 +83,15 @@ def test_a_stalled_connect_times_out_retries_and_does_not_hang_close() -> None:
         return cast(McpToolGateway, _StalledGateway())
 
     gateway = wiring.BackgroundMcpGateway(open_gateway, connect_timeout_s=0.1, close_timeout_s=30)
-    for _ in range(2):
-        result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
-        assert result.error and result.error.category is ErrorCategory.TRANSIENT
-    assert len(opens) == 2  # the stalled attempt was abandoned, not reused
-    started = time.monotonic()
-    gateway.close()
+    try:
+        for _ in range(2):
+            call = gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx())
+            result = asyncio.run(asyncio.wait_for(call, 30))  # a stuck connect fails, not hangs
+            assert result.error and result.error.category is ErrorCategory.TRANSIENT
+        assert len(opens) == 2  # the stalled attempt was abandoned, not reused
+    finally:
+        started = time.monotonic()
+        gateway.close()
     assert time.monotonic() - started < 15  # a hang waits out the 30 s close timeout
 
 
@@ -247,9 +250,11 @@ def test_a_call_cancelled_by_close_is_a_transient_result() -> None:
 
     async def call_then_close() -> ToolResult:
         pending = asyncio.ensure_future(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
-        assert await asyncio.to_thread(session.called.wait, 30)  # in flight in the session
-        await asyncio.to_thread(gateway.close)
-        return await pending
+        try:
+            assert await asyncio.to_thread(session.called.wait, 30)  # in flight in the session
+        finally:
+            await asyncio.to_thread(gateway.close)
+        return await asyncio.wait_for(pending, 30)  # close settles it
 
     result = asyncio.run(call_then_close())
     assert result.error and result.error.category is ErrorCategory.TRANSIENT

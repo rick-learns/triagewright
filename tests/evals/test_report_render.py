@@ -136,7 +136,7 @@ def test_failures_pair_each_check_with_its_expectation() -> None:
 
 
 def test_zero_cost_does_not_claim_the_models_are_free() -> None:
-    """$0 can mean free models or no billed model call; the results don't record which."""
+    """$0 can mean free models or no billable usage; the results don't record which."""
     report = build_report(
         summary_of(rec("happy-001", cost=0.0)),
         cases=cases_for("happy-001"),
@@ -146,6 +146,6 @@ def test_zero_cost_does_not_claim_the_models_are_free() -> None:
     )
     md = render_markdown(report)
     assert (
-        "Cost is $0: the models are free, or no model call was billed (results don't record "
-        "which), so the cost target is met trivially." in md
+        "Cost is $0: the models are free, or no billable usage was recorded (the results "
+        "can't tell which), so the cost target is met trivially." in md
     )

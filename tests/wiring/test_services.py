@@ -79,8 +79,13 @@ def test_services_reach_an_out_of_process_mcp_server_lazily(
     gateway = built.executor.gateway  # type: ignore[attr-defined]
     assert isinstance(gateway, wiring.BackgroundMcpGateway)
     assert {s.name for s in gateway.list_tools()} == set(ToolName)
-    assert opened == []  # building doesn't connect
     try:
+
+        async def session() -> object:  # runs after anything building queued on the loop
+            return gateway._session
+
+        assert asyncio.run_coroutine_threadsafe(session(), gateway._loop).result(30) is None
+        assert opened == []  # building doesn't connect
         result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
         assert not result.is_error, result
         assert opened == [remote]  # the first call does
