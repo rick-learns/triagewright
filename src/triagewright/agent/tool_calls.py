@@ -46,6 +46,8 @@ _SERVICE_ERRORS = frozenset(
 def _call_key(name: ToolName, arguments: JsonObject) -> str:
     """A call's arguments with defaults filled in, so equivalent calls share a key. Arguments
     that don't validate are keyed as given."""
+    if name is ToolName.SEARCH_KB and (search := _search_key(arguments)) is not None:
+        return search
     try:
         validated = TOOL_SPECS[name].input_model.model_validate(arguments)
     except ValidationError:

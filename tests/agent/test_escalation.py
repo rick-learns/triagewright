@@ -218,6 +218,23 @@ async def test_equivalent_arguments_share_the_failure() -> None:
     assert len(s.calls(ToolName.LIST_ORDERS)) == 3
 
 
+async def test_equivalent_searches_share_the_failure() -> None:
+    error = ToolError(category=ErrorCategory.TIMEOUT, message="slow", retryable=True)
+    s = stack(
+        [
+            triage(),
+            call("search_kb", {"query": "shipping times"}),
+            call("search_kb", {"query": "shipping times", "categories": []}),
+            finalize(),
+            review(),
+        ],
+        faults=[ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    assert len(s.calls(ToolName.SEARCH_KB)) == 3
+
+
 async def test_arguments_that_do_not_validate_still_reach_the_gateway() -> None:
     s = stack([triage(), call("get_order", {"order": "ord_a1002"}), finalize(), review()])
     response = await s.resolve(sample_ticket())
