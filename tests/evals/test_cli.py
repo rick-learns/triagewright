@@ -87,7 +87,6 @@ def test_stub_run_writes_reports_and_gates_on_the_baseline(
     baseline = Baseline.model_validate_json((tmp_path / "baseline.json").read_text())
     assert baseline.modes["stub"].pass_rate == 0.0
     assert main(run_args(tmp_path, "--resume")) == 0  # same result: no regression
-
     raised = baseline.model_copy(
         update={"modes": {"stub": baseline.modes["stub"].model_copy(update={"pass_rate": 1.0})}}
     )
@@ -168,6 +167,24 @@ def scripted_judges() -> object:
         return ScriptedModelClient([])  # raises if called
 
     return make
+
+
+def keys(path: Path) -> list[str]:
+    return [json.loads(line)["key"] for line in path.read_text().splitlines()]
+
+
+def test_resume_never_reuses_another_factory(tmp_path: Path) -> None:
+    write_cases(tmp_path)
+    args = [a for a in run_args(tmp_path, "--resume") if a != "--stub"]
+    assert main([*args, "--factory", "tests.evals.test_cli:stub_factory"]) == 0
+    first = keys(tmp_path / "results.jsonl")
+    assert main([*args, "--factory", "tests.evals.test_cli:other_stub_factory"]) == 0
+    after = keys(tmp_path / "results.jsonl")
+    assert len(after) == 4 and not set(first) & set(after[2:])
+
+
+def other_stub_factory() -> FakeCaseRuntimeFactory:
+    return FakeCaseRuntimeFactory()
 
 
 def test_factory_and_judge_load_from_module_specs(tmp_path: Path) -> None:

@@ -151,7 +151,14 @@ def _run(args: argparse.Namespace) -> int:
         case_timeout_s=args.timeout,
         results_path=args.results,
         resume=args.resume,
-        stack=canonical_json({"provider": provider, "models": models}),
+        stack=canonical_json(
+            {
+                "provider": provider,
+                "models": models,
+                "factory": "stub" if args.stub else args.factory,
+                "judge": args.judge,
+            }
+        ),
     )
     records = asyncio.run(
         run_cases(
