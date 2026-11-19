@@ -21,7 +21,6 @@ from triagewright.evals.report import (
     ResultsError,
     build_report,
     judge_report,
-    latest_records,
     load_baseline,
     percentile,
     read_results,
@@ -305,8 +304,19 @@ def test_category_table_has_escalation_precision_and_recall() -> None:
         rec("happy-001", escalated=True, passed=False),
     )
     report = build_report(
-        s, cases=[], judge=judge_report([], model=None), baseline=Baseline(), filtered=False
+        s,
+        cases=cases_for("escal-001", "escal-002", "happy-001"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
     )
+    assert report.categories[0].model_dump() == {
+        "category": "escalation_required",
+        "n_cases": 2,
+        "pass_rate": 1.0,
+        "escalation_precision": 1.0,
+        "escalation_recall": 0.5,
+    }
     md = render_markdown(report)
     assert "| escalation_required | 2 | 100.0% | 100.0% | 50.0% |" in md
     assert "| happy_path | 1 | 0.0% | 0.0% | n/a |" in md
@@ -329,7 +339,7 @@ def test_failures_pair_each_check_with_its_expectation() -> None:
         ),
         rec("happy-009", passed=False, grades=[failing("status", "a | pipe")]),
     )
-    cases = cases_for(
+    cases = cases_for("happy-009") + cases_for(
         "escal-001",
         status_any=["escalated"],
         escalate=True,
@@ -350,7 +360,7 @@ def test_failures_pair_each_check_with_its_expectation() -> None:
         "judge": ("Names the billing team.", "failed (score 0.25)"),
     }
     md = render_markdown(report)
-    assert "| `happy-009` | happy_path | status | (case not found) | a \\| pipe |" in md
+    assert "| `happy-009` | happy_path | status | one of resolved | a \\| pipe |" in md
 
 
 def full_summary(
@@ -387,7 +397,11 @@ def test_targets_not_met() -> None:
     assert [t.met for t in checks] == [False, False, False, False, False]
     md = render_markdown(
         build_report(
-            s, cases=[], judge=judge_report([], model=None), baseline=Baseline(), filtered=False
+            s,
+            cases=cases_for(*(r.case_id for r in s.results)),
+            judge=judge_report([], model=None),
+            baseline=Baseline(),
+            filtered=False,
         )
     )
     assert "| Pass rate | 80.0% | >= 90% | **not met** |" in md
@@ -400,7 +414,7 @@ def test_latency_target_is_live_only_and_stub_measures_no_cost() -> None:
     assert replay[2].target == "p95 latency, replay (estimated)" and replay[2].met is None
     assert replay[3].met is True
     stub = target_checks(full_summary("stub", cost=0.5), review)
-    assert stub[2].met is None and stub[3].met is None
+    assert stub[2].met is None and (stub[3].measured, stub[3].met) == ("n/a", None)
     md = render_markdown(
         build_report(
             full_summary("replay", cost=0.0),
@@ -413,6 +427,12 @@ def test_latency_target_is_live_only_and_stub_measures_no_cost() -> None:
     assert "| p95 latency, replay (estimated) | 100 ms | < 8 s | not measured |" in md
     assert "Latency is judged on live runs only" in md
     assert "Cost is $0: the models are free" in md
+
+
+def test_latency_and_cost_are_unmeasured_when_every_case_errored() -> None:
+    s = summary_of(rec("happy-001", passed=False, error="timed out"), mode="live")
+    checks = target_checks(s, review_status([]))
+    assert [(t.measured, t.met) for t in checks[2:4]] == [("n/a", None), ("n/a", None)]
 
 
 def test_review_status_counts_reviewed_cases() -> None:
@@ -434,18 +454,20 @@ def test_read_results_skips_a_torn_final_line(tmp_path: Path) -> None:
     write_lines(path, rec("happy-001"), tail="\n\n")
     assert read_results(path) == ([rec("happy-001")], [])
 
+    whole = rec("happy-002").model_dump_json().replace("happy-002", "caf\u00e9")
+    torn = whole.encode()[: whole.encode().index(b"\xa9")]  # cut inside the UTF-8 for e-acute
+    path.write_bytes(rec("happy-001").model_dump_json().encode() + b"\n" + torn)
+    assert read_results(path) == ([rec("happy-001")], [f"{path}:2: skipped a torn final line"])
+
+    path.write_text(rec("happy-001").model_dump_json())  # complete but unterminated: kept
+    assert read_results(path) == ([rec("happy-001")], [])
+
 
 def test_read_results_rejects_a_bad_line_before_the_end(tmp_path: Path) -> None:
     path = tmp_path / "results.jsonl"
     path.write_text('{"torn\n' + rec("happy-001").model_dump_json() + "\n")
     with pytest.raises(ResultsError, match=r"results\.jsonl:1"):
         read_results(path)
-
-
-def test_latest_records_keep_the_last_line_per_case_in_the_mode() -> None:
-    old = rec("happy-001", passed=False)
-    new = rec("happy-001")
-    live = rec("happy-002", mode="live")
-    latest = latest_records([old, live, new], "replay")
-    assert latest == {"happy-001": new}
-    assert latest_records([old, live, new], "live") == {"happy-002": live}
+    path.write_text(rec("happy-001").model_dump_json() + '\n{"key": 1}\n')  # terminated: corrupt
+    with pytest.raises(ResultsError, match=r"results\.jsonl:2"):
+        read_results(path)

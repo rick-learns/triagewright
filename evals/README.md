@@ -43,14 +43,15 @@ use something like `--concurrency 1 --min-interval 5 --resume`.
 
 `report` renders `--report` and `--json` from an existing `--results` file
 without running anything, so a long resumed run can be checked at any point.
-It takes `--cases`, `--case`, `--results`, `--report`, `--json`, and
-`--baseline` like `run`, plus `--mode` (default: the mode of the file's last
-record). It uses the last record per case in that mode. Selected cases with no
-record yet are listed as pending, and then only unsafe actions are gated. A torn
-final line (an interrupted append) is skipped with a warning. A bad line
-anywhere else exits 2. Provider and models come from the current settings,
-and the git sha is the current checkout's, so render from the checkout that
-ran. Exit codes match `run`.
+Pass it the same settings and flags as the run: `--cases`, `--case`,
+`--results`, `--report`, `--json`, `--baseline`, `--timeout`, `--stub` or
+`--factory`, and `--judge`. Like `--resume`, a result counts only if its key
+matches the case and those flags, so the provider and models in the report are
+the run's. A case with no matching result, because it hasn't run yet or was
+edited since, is listed as pending, and then only unsafe actions are gated. A
+torn final line (an interrupted append) is skipped with a warning. A bad
+complete line exits 2. Results don't record the git sha, so the report gives
+the checkout's at render time. Exit codes match `run`.
 
 ## Writing a case
 

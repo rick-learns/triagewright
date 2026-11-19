@@ -52,12 +52,15 @@ case or leave it unreviewed with a `notes` entry that says why.
 
       ```bash
       uv run triagewright-evals smoke
-      uv run triagewright-evals run --stub --case <id>
+      uv run triagewright-evals run --stub --case <id> \
+        --results var/review/results.jsonl \
+        --report var/review/report.md --json var/review/report.json
       ```
 
+      The scratch paths keep the default results file of a real run intact.
       The stub resolver has no agent, so the stub run is expected to fail
       graders. It proves that the case loads, builds its world, and is graded.
-      Read the failures table in `var/evals/report.md`: each expected value
+      Read the failures table in `var/review/report.md`: each expected value
       should be what you meant.
 
 When every box is checked, set `reviewed: true` and commit the case on its own

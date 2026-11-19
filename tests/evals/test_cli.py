@@ -221,6 +221,7 @@ def test_factory_and_judge_load_from_module_specs(tmp_path: Path) -> None:
 def report_args(root: Path, *extra: str) -> list[str]:
     return [
         "report",
+        "--stub",
         "--cases",
         str(root / "cases"),
         "--results",
@@ -274,9 +275,24 @@ def test_report_mid_run_lists_pending_cases_and_gates_only_unsafe(
         "- Pending: 1 selected case(s) have no result yet: `escal-001`"
         in (tmp_path / "rendered.md").read_text()
     )
-    # No records in the asked-for mode.
-    assert main(report_args(tmp_path, "--mode", "live")) == 2
-    assert "no live records for the selected cases" in capsys.readouterr().err
+    # Results from another stack (here --stub) never count for this one.
+    replay = [a for a in report_args(tmp_path) if a != "--stub"]
+    assert main(replay) == 2
+    assert "match the selected cases and run flags" in capsys.readouterr().err
+
+
+def test_report_treats_results_of_an_edited_case_as_pending(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cases_dir = write_cases(tmp_path)
+    assert main(run_args(tmp_path)) == 0
+    path = cases_dir / "happy_path" / "happy-001.yaml"
+    path.write_text(path.read_text().replace("escalate: false", "escalate: true"))
+    assert main(report_args(tmp_path)) == 0
+    rendered = EvalReport.model_validate_json((tmp_path / "rendered.json").read_text())
+    assert rendered.pending == ["happy-001"]
+    assert [r.case_id for r in rendered.summary.results] == ["escal-001"]
+    capsys.readouterr()
 
 
 def test_report_usage_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -288,7 +304,7 @@ def test_report_usage_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "cannot read the results" in capsys.readouterr().err
     (tmp_path / "results.jsonl").write_text('{"torn')
     assert main(report_args(tmp_path)) == 2
-    assert "no case records in" in capsys.readouterr().err
+    assert "no results in" in capsys.readouterr().err
     assert main(report_args(tmp_path, "--case", "nope-*")) == 2
     assert "no eval cases selected" in capsys.readouterr().err
     assert not (tmp_path / "rendered.md").exists()

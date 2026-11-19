@@ -11,6 +11,7 @@ import fnmatch
 import importlib
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -27,7 +28,6 @@ from triagewright.evals.report import (
     ResultsError,
     build_report,
     judge_report,
-    latest_records,
     load_baseline,
     read_results,
     render_markdown,
@@ -35,9 +35,29 @@ from triagewright.evals.report import (
     summarize,
     updated_baseline,
 )
-from triagewright.evals.runner import JudgeConfig, Mode, RunConfig, run_cases
+from triagewright.evals.runner import JudgeConfig, Mode, RunConfig, input_key, run_cases
 
 DEFAULT_FACTORY = "triagewright.wiring:case_runtime_factory"
+
+
+def _add_stack_args(parser: argparse.ArgumentParser) -> None:
+    """The flags that identify a run's stack; they are part of every result's resume key."""
+    parser.add_argument("--timeout", type=float, default=60.0, help="per-case timeout in seconds")
+    stack = parser.add_mutually_exclusive_group()
+    stack.add_argument(
+        "--factory",
+        default=DEFAULT_FACTORY,
+        metavar="MODULE:ATTR",
+        help="zero-argument callable returning a CaseRuntimeFactory",
+    )
+    stack.add_argument(
+        "--stub", action="store_true", help="fake stack with the stub resolver (no agent)"
+    )
+    parser.add_argument(
+        "--judge",
+        metavar="MODULE:ATTR",
+        help="zero-argument callable returning a JudgeClientFactory; unset skips the judge",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -62,22 +82,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--concurrency", type=int, default=4)
     run.add_argument("--min-interval", type=float, default=0.0, help="seconds between case starts")
-    run.add_argument("--timeout", type=float, default=60.0, help="per-case timeout in seconds")
-    stack = run.add_mutually_exclusive_group()
-    stack.add_argument(
-        "--factory",
-        default=DEFAULT_FACTORY,
-        metavar="MODULE:ATTR",
-        help="zero-argument callable returning a CaseRuntimeFactory",
-    )
-    stack.add_argument(
-        "--stub", action="store_true", help="fake stack with the stub resolver (no agent)"
-    )
-    run.add_argument(
-        "--judge",
-        metavar="MODULE:ATTR",
-        help="zero-argument callable returning a JudgeClientFactory; unset skips the judge",
-    )
+    _add_stack_args(run)
 
     report = sub.add_parser(
         "report", help="re-render the reports from a results JSONL without running anything"
@@ -90,11 +95,7 @@ def _parser() -> argparse.ArgumentParser:
     report.add_argument("--report", type=Path, default=Path("var/evals/report.md"))
     report.add_argument("--json", type=Path, default=Path("var/evals/report.json"))
     report.add_argument("--baseline", type=Path, default=Path("evals/baseline.json"))
-    report.add_argument(
-        "--mode",
-        choices=["live", "replay", "stub"],
-        help="which run's records to use (default: the mode of the last record)",
-    )
+    _add_stack_args(report)  # pass the run's flags; only results from that run count
 
     review = sub.add_parser("review", help="list the cases not yet human-reviewed, by category")
     review.add_argument("cases_dir", nargs="?", type=Path, default=Path("evals/cases"))
@@ -138,12 +139,37 @@ def _select(cases: list[EvalCase], globs: list[str]) -> list[EvalCase]:
     return [c for c in cases if any(fnmatch.fnmatchcase(c.id, g) for g in globs)]
 
 
-def _stack(settings: Settings, mode: Mode) -> tuple[str, dict[str, str]]:
-    """Provider and models (judge excluded) of the stack under test, as the report states them."""
+@dataclass(frozen=True)
+class _Identity:
+    """What a run is, from settings and flags. ``stack`` is part of each result's key."""
+
+    mode: Mode
+    provider: str
+    models: dict[str, str]  # with the judge model when a judge is set
+    judge_model: str | None
+    stack: str
+
+
+def _identity(settings: Settings, args: argparse.Namespace) -> _Identity:
+    mode = _mode(settings, args.stub)
+    defaults = settings.models()
     if mode == "stub":
-        return "none (stub resolver, no model calls)", {}
-    models = {k: v for k, v in settings.models().items() if k != "judge"}
-    return settings.llm_provider.value, models
+        provider, models = "none (stub resolver, no model calls)", {}
+    else:
+        provider = settings.llm_provider.value
+        models = {k: v for k, v in defaults.items() if k != "judge"}
+    judge_model = defaults["judge"] if args.judge else None
+    if judge_model is not None:
+        models["judge"] = judge_model
+    stack = canonical_json(
+        {
+            "provider": provider,
+            "models": models,
+            "factory": "stub" if args.stub else args.factory,
+            "judge": args.judge,
+        }
+    )
+    return _Identity(mode, provider, models, judge_model, stack)
 
 
 def _write(report: EvalReport, md_path: Path, json_path: Path) -> None:
@@ -180,15 +206,13 @@ def _run(args: argparse.Namespace) -> int:
         print(f"{args.judge} did not return a JudgeClientFactory", file=sys.stderr)
         return 2
 
-    mode = _mode(settings, args.stub)
-    defaults = settings.models()
-    provider, models = _stack(settings, mode)
+    run = _identity(settings, args)
+    mode, provider, models = run.mode, run.provider, run.models
     judge = None
-    if judge_factory is not None:
+    if judge_factory is not None and run.judge_model is not None:
         judge = JudgeConfig(
-            cast(JudgeClientFactory, judge_factory), defaults["judge"], settings.recordings_dir
+            cast(JudgeClientFactory, judge_factory), run.judge_model, settings.recordings_dir
         )
-        models["judge"] = judge.model
     config = RunConfig(
         mode=mode,
         concurrency=args.concurrency,
@@ -196,14 +220,7 @@ def _run(args: argparse.Namespace) -> int:
         case_timeout_s=args.timeout,
         results_path=args.results,
         resume=args.resume,
-        stack=canonical_json(
-            {
-                "provider": provider,
-                "models": models,
-                "factory": "stub" if args.stub else args.factory,
-                "judge": args.judge,
-            }
-        ),
+        stack=run.stack,
     )
     records = asyncio.run(
         run_cases(
@@ -269,35 +286,43 @@ def _report(args: argparse.Namespace) -> int:
         return 2
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
-    if not saved:
-        print(f"no case records in {args.results}", file=sys.stderr)
-        return 2
-    mode: Mode = args.mode or saved[-1].mode
-    latest = latest_records(saved, mode)
-    records = [latest[c.id] for c in cases if c.id in latest]
-    pending = [c.id for c in cases if c.id not in latest]
+    # Like --resume, a record counts only if its key matches the case and these run flags, so
+    # edited cases and other stacks' results are pending, and provider and models are the run's.
+    run = _identity(settings, args)
+    by_key = {r.key: r for r in saved}
+    records, pending = [], []
+    for case in cases:
+        key = input_key(
+            case,
+            mode=run.mode,
+            timeout_s=args.timeout,
+            stack=run.stack,
+            judge_model=run.judge_model,
+        )
+        if key in by_key:
+            records.append(by_key[key])
+        else:
+            pending.append(case.id)
     if not records:
-        print(f"no {mode} records for the selected cases in {args.results}", file=sys.stderr)
+        print(
+            f"no results in {args.results} match the selected cases and run flags",
+            file=sys.stderr,
+        )
         return 2
 
-    provider, models = _stack(settings, mode)
-    # Records don't name the judge model; if any case was judged, it was the configured one.
-    judged = any(r.judge_status == "judged" for r in records)
-    judge_model = settings.models()["judge"] if judged else None
-    if judge_model is not None:
-        models["judge"] = judge_model
+    mode = run.mode
     summary = summarize(
         records,
         mode=mode,
-        provider=provider,
-        models=models,
+        provider=run.provider,
+        models=run.models,
         git_sha=_git_sha(),
         created_at=datetime.now(UTC),
     )
     report = build_report(
         summary,
         cases=cases,
-        judge=judge_report(records, model=judge_model),
+        judge=judge_report(records, model=run.judge_model),
         baseline=load_baseline(args.baseline),
         filtered=len(records) < len(all_cases),
         pending=pending,

@@ -7,7 +7,6 @@ never part of cost per ticket; the report lists them separately.
 
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
@@ -209,23 +208,19 @@ def read_results(path: Path) -> tuple[list[CaseRecord], list[str]]:
     An interrupted run can leave a torn final line; it's skipped with a warning.
     A bad line anywhere else raises :class:`ResultsError`.
     """
-    lines = [(n, line) for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)]
-    lines = [(n, line) for n, line in lines if line.strip()]
+    *lines, tail = path.read_bytes().split(b"\n")  # tail: text after the last newline
     records: list[CaseRecord] = []
     warnings: list[str] = []
-    for i, (n, line) in enumerate(lines):
+    for n, line in enumerate([*lines, tail], 1):
+        if not line.strip():
+            continue
         try:
-            records.append(CaseRecord.model_validate(json.loads(line)))
-        except (ValueError, ValidationError) as exc:
-            if i < len(lines) - 1:
+            records.append(CaseRecord.model_validate_json(line))
+        except ValidationError as exc:  # also covers bad JSON and bad UTF-8
+            if n <= len(lines):  # a complete line: the file is corrupt, not torn
                 raise ResultsError(f"{path}:{n}: not a case record: {exc}") from exc
             warnings.append(f"{path}:{n}: skipped a torn final line")
     return records, warnings
-
-
-def latest_records(records: Sequence[CaseRecord], mode: Mode) -> dict[str, CaseRecord]:
-    """The last record per case id in ``mode``; a resumed run appends, so later lines win."""
-    return {r.result.case_id: r for r in records if r.mode == mode}
 
 
 # ---- targets and review ------------------------------------------------------------
@@ -263,9 +258,11 @@ class TargetCheck(Contract):
 
 def target_checks(summary: EvalRunSummary, review: ReviewStatus) -> list[TargetCheck]:
     s = summary
-    measured = s.mode != "stub"  # stub has no agent or model: cost and latency mean nothing
+    # Cost and latency cover cases with a response; with none, they're 0 by default, not measured.
+    sampled = any(r.error is None for r in s.results)
+    has_cost = sampled and s.mode != "stub"  # stub has no agent or model
     estimated = " (estimated)" if s.mode == "replay" else ""
-    live = s.mode == "live"  # ADR-001: the p95 target is judged on live runs only
+    live = sampled and s.mode == "live"  # ADR-001: the p95 target is judged on live runs only
     return [
         TargetCheck(
             target="Pass rate",
@@ -281,15 +278,15 @@ def target_checks(summary: EvalRunSummary, review: ReviewStatus) -> list[TargetC
         ),
         TargetCheck(
             target=f"p95 latency, {s.mode}{estimated}",
-            measured=f"{s.p95_latency_ms:.0f} ms",
+            measured=f"{s.p95_latency_ms:.0f} ms" if sampled else "n/a",
             goal=f"< {TARGET_P95_MS / 1000:g} s",
             met=s.p95_latency_ms < TARGET_P95_MS if live else None,
         ),
         TargetCheck(
             target="Cost per ticket",
-            measured=f"${s.cost_per_ticket_usd:.6f}",
+            measured=f"${s.cost_per_ticket_usd:.6f}" if has_cost else "n/a",
             goal=f"< ${TARGET_COST_USD:.2f}",
-            met=s.cost_per_ticket_usd < TARGET_COST_USD if measured else None,
+            met=s.cost_per_ticket_usd < TARGET_COST_USD if has_cost else None,
         ),
         TargetCheck(
             target="Reviewed cases",
@@ -355,21 +352,20 @@ def expected_for(grader: str, exp: ExpectedOutcome) -> str:
     return ""
 
 
-def _failed_check(grade: GradeResult, exp: ExpectedOutcome | None) -> FailedCheck:
-    expected = expected_for(grade.grader, exp) if exp else "(case not found)"
+def _failed_check(grade: GradeResult, exp: ExpectedOutcome) -> FailedCheck:
     actual = grade.detail or f"failed (score {grade.score:.2f})"
-    return FailedCheck(grader=grade.grader, expected=expected, actual=actual)
+    return FailedCheck(grader=grade.grader, expected=expected_for(grade.grader, exp), actual=actual)
 
 
 def failure_details(
     results: Sequence[CaseResult], cases: Mapping[str, EvalCase]
 ) -> list[FailureDetail]:
+    """Failing checks with what the case expected; every result's case must be in ``cases``."""
     details = []
     for r in results:
         if r.passed:
             continue
-        case = cases.get(r.case_id)
-        exp = case.expected if case else None
+        exp = cases[r.case_id].expected
         checks = []
         if r.error:
             checks.append(FailedCheck(grader="error", expected="a response", actual=r.error))
@@ -381,6 +377,31 @@ def failure_details(
 # ---- report -----------------------------------------------------------------------
 
 
+class CategoryStats(Contract):
+    category: str
+    n_cases: Annotated[int, Field(ge=0)]
+    pass_rate: Annotated[float, Field(ge=0.0, le=1.0)]
+    escalation_precision: float | None
+    escalation_recall: float | None
+
+
+def category_stats(summary: EvalRunSummary) -> list[CategoryStats]:
+    stats = []
+    for category, rate in summary.by_category.items():
+        results = [r for r in summary.results if r.category.value == category]
+        precision, recall = escalation_rates(results)
+        stats.append(
+            CategoryStats(
+                category=category,
+                n_cases=len(results),
+                pass_rate=rate,
+                escalation_precision=precision,
+                escalation_recall=recall,
+            )
+        )
+    return stats
+
+
 class EvalReport(Contract):
     """The JSON report: the contract summary plus judge usage and the baseline verdict."""
 
@@ -389,6 +410,7 @@ class EvalReport(Contract):
     baseline_compared: bool  # False when the baseline has no entry for this mode
     filtered: bool  # a case filter was used, so only unsafe actions were gated
     regressions: list[str]
+    categories: list[CategoryStats]
     review: ReviewStatus
     targets: list[TargetCheck]
     failures: list[FailureDetail]
@@ -414,6 +436,7 @@ def build_report(
         baseline_compared=summary.mode in baseline.modes,
         filtered=filtered,
         regressions=regressions(summary, baseline, compare_metrics=not filtered),
+        categories=category_stats(summary),
         review=review,
         targets=target_checks(summary, review),
         failures=failure_details(summary.results, {c.id: c for c in cases}),
@@ -438,11 +461,13 @@ def render_markdown(report: EvalReport) -> str:
     s, j = report.summary, report.judge
     models = ", ".join(f"{k}={v}" for k, v in sorted(s.models.items())) or "none"
     estimated = " (estimated)" if s.mode == "replay" else ""
+    sha_note = " (the checkout at render time; results don't record it)"
+    sha_note = sha_note if report.rendered_from else ""
     lines = [
         "# Eval report",
         "",
         f"- Run: `{s.run_id}` at {s.created_at.isoformat()}",
-        f"- Git sha: `{s.git_sha}`",
+        f"- Git sha: `{s.git_sha}`{sha_note}",
         f"- Mode: {_MODE_NOTES[s.mode]}",
         f"- Provider: {s.provider}",
         f"- Models: {models}",
@@ -489,11 +514,10 @@ def render_markdown(report: EvalReport) -> str:
         "| Category | Cases | Pass rate | Escalation precision | Escalation recall |",
         "| --- | --- | --- | --- | --- |",
     ]
-    for category, rate in s.by_category.items():
-        results = [r for r in s.results if r.category.value == category]
-        precision, recall = escalation_rates(results)
+    for cat in report.categories:
         lines.append(
-            f"| {category} | {len(results)} | {_pct(rate)} | {_pct(precision)} | {_pct(recall)} |"
+            f"| {cat.category} | {cat.n_cases} | {_pct(cat.pass_rate)} "
+            f"| {_pct(cat.escalation_precision)} | {_pct(cat.escalation_recall)} |"
         )
     rv = report.review
     lines += [
