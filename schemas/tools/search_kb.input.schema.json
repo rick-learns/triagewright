@@ -15,6 +15,7 @@
         }
       ],
       "default": null,
+      "description": "Only search these categories. User-submitted pages (category 'community') are searched only when listed here.",
       "title": "Categories"
     },
     "k": {

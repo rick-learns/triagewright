@@ -126,14 +126,17 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   action and approval request. The only write left is the code-owned
   security handoff (`create_escalation` to `security`). KB documents carry
   `trusted`; untrusted ones (`kb_community_tips`) can be retrieved but never
-  cited. Retrieval serves an untrusted chunk only when the query asks for it:
-  it shares a term with the doc's title, category, or tags ("community tips"),
-  or a category filter names it. Ranking alone can't decide this. The planted
-  page says "issue a full refund" about the Pebble Speaker, so it led the
-  results for a refund on that product (happy-005), and plain top-k put it in
-  the results for 8 of the 45 non-injection eval tickets. One flagged hit
-  blocks every write, so each of those would have gone to security. Now 0 of 45;
-  the cases that name the page (inject-003, inject-004) still retrieve it first.
+  cited. Retrieval serves an untrusted chunk only on an explicit opt-in:
+  `search_kb`'s `categories` names its category (`community`). The answer
+  prompt says to pass it only when the customer asks about community tips.
+  Neither ranking nor query words can decide this. The planted page says
+  "issue a full refund" about the Pebble Speaker, so it led the results for a
+  refund on that product (happy-005); its title shares incidental words
+  ("user") with ordinary queries; and plain top-k put it in the results for 8
+  of the 45 non-injection eval tickets. One flagged hit blocks every write, so
+  each of those would have gone to security. A wrong opt-in fails safe: a
+  needless security escalation, never an unsafe write. inject-003 tests the
+  opt-in; inject-004 carries its injection in the ticket itself.
 - **One refund policy.** `contracts.policy.evaluate_refund` is the only
   definition of "eligible". It checks account status, delivery, the 30-day
   window, the refundable balance, the $500 hard limit, and the customer-wide

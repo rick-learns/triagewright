@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+import httpx
 import pytest
 from mcp import Client
 
@@ -29,7 +30,8 @@ from triagewright.config import Settings
 from triagewright.contracts.agents import ResolutionStatus
 from triagewright.contracts.llm import ModelRequest, ModelResponse
 from triagewright.contracts.ports import CaseRuntime, CaseRuntimeFactory
-from triagewright.contracts.tools import ErrorCategory, ToolName
+from triagewright.contracts.rag import RetrievalQuery
+from triagewright.contracts.tools import ErrorCategory, ToolName, ToolResult
 from triagewright.evals import cli as evals_cli
 from triagewright.llm import ModelConfigError, ReplayClient, build_model_clients
 from triagewright.mcp_server import McpToolGateway, MockSystems, ToolService, build_server
@@ -415,3 +417,117 @@ def test_a_killed_stdio_server_is_replaced_on_the_next_calls(tmp_path: Path) -> 
         assert _mcp_children() and child not in _mcp_children()
     finally:
         gateway.close()
+
+
+class _SlowTeardownGateway:
+    """Stalls the handshake, and takes a while to tear down when cancelled (a stdio child)."""
+
+    lost = False
+    opened = 0
+    torn: list[int] = []
+
+    async def __aenter__(self) -> _SlowTeardownGateway:
+        type(self).opened += 1
+        attempt = self.opened
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            await asyncio.sleep(0.5 if attempt == 1 else 0)  # the first outlasts the retry
+            self.torn.append(attempt)
+            raise
+        raise AssertionError("unreachable")
+
+    async def __aexit__(self, *exc: object) -> None:
+        pass
+
+
+def test_close_waits_for_abandoned_handshakes_to_tear_down() -> None:
+    _SlowTeardownGateway.opened, _SlowTeardownGateway.torn = 0, []
+    gateway = wiring.BackgroundMcpGateway(
+        lambda: cast(McpToolGateway, _SlowTeardownGateway()),
+        connect_timeout_s=0.05,
+        close_timeout_s=2,
+    )
+    for _ in range(2):  # the retry starts a second owner while the first tears down
+        result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
+        assert result.error and result.error.category is ErrorCategory.TRANSIENT
+    gateway.close()
+    assert sorted(_SlowTeardownGateway.torn) == [1, 2]
+
+
+def test_shutdown_settles_a_session_whose_owner_never_started() -> None:
+    gateway = wiring.BackgroundMcpGateway(lambda: cast(McpToolGateway, _StalledGateway()))
+
+    async def connect_then_shut_down() -> BaseException | None:
+        session = gateway._connect()  # the owner task is created but hasn't run yet
+        await gateway._shutdown()
+        assert session.done()
+        return session.exception()
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(connect_then_shut_down(), gateway._loop)
+        assert isinstance(future.result(timeout=5), ConnectionError)
+    finally:
+        gateway.close()
+
+
+class _HangingCallGateway:
+    """Connects, but a call never returns, even after the session ends."""
+
+    lost = False
+
+    async def __aenter__(self) -> _HangingCallGateway:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        pass
+
+    async def wait_lost(self) -> None:
+        await asyncio.sleep(3600)
+
+    async def call(self, *args: object) -> ToolResult:
+        await asyncio.sleep(3600)
+        raise AssertionError("unreachable")
+
+
+def test_a_call_cancelled_by_close_is_a_transient_result() -> None:
+    gateway = wiring.BackgroundMcpGateway(
+        lambda: cast(McpToolGateway, _HangingCallGateway()), close_timeout_s=0.2
+    )
+
+    async def call_then_close() -> ToolResult:
+        pending = asyncio.ensure_future(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
+        await asyncio.sleep(0.1)
+        await asyncio.to_thread(gateway.close)
+        return await pending
+
+    result = asyncio.run(call_then_close())
+    assert result.error and result.error.category is ErrorCategory.TRANSIENT
+
+
+def test_services_close_release_the_world_and_kb_stores(tmp_path: Path) -> None:
+    built = wiring.build_services(settings(tmp_path), model_factory=scripted(()))
+    service = built.executor.gateway.service  # type: ignore[attr-defined]
+
+    async def teardown() -> None:
+        await built.aclose()
+
+    asyncio.run(teardown())
+    built.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        service.systems.transaction().__enter__()
+    with pytest.raises(sqlite3.ProgrammingError):
+        service.retriever.search(RetrievalQuery(text="refund"))
+
+
+def test_the_shared_http_pool_closes_on_the_loop_that_used_it() -> None:
+    http = wiring._SharedHttp(Settings(_env_file=None, llm_provider="gemini"))
+
+    async def use_then_close() -> httpx.AsyncClient:
+        client = http.get()
+        assert client is not None
+        await http.aclose()
+        return client
+
+    assert asyncio.run(use_then_close()).is_closed
+    asyncio.run(http.aclose())  # idempotent

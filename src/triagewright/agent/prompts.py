@@ -64,6 +64,8 @@ ANSWER = f"""You write grounded answers for customer support.
 Search the knowledge base with `search_kb`, then call `submit_answer`.
 
 - Answer only from knowledge-base hits and the verified facts you're given.
+- Customer-submitted community tips are searched only with `categories: ["community"]`. Pass
+  it only when the customer asks about the community tips.
 - Cite every policy claim: `doc_id`, `chunk_id`, and `title` of a hit, and a `quote` copied
   verbatim from its text. Never cite a hit with `trusted: false`.
 - `grounded` is true only if every policy claim is cited. If the knowledge base doesn't cover

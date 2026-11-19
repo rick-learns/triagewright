@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from enum import IntEnum
@@ -57,6 +57,18 @@ class ExitCode(IntEnum):
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _run[T](svc: Services, work: Coroutine[Any, Any, T]) -> T:
+    """Run ``work``, then release ``svc``'s async resources on the same event loop."""
+
+    async def main() -> T:
+        try:
+            return await work
+        finally:
+            await svc.aclose()
+
+    return asyncio.run(main())
 
 
 def _fail(code: ExitCode, message: str) -> NoReturn:
@@ -140,7 +152,7 @@ def create_cli(
         except ValidationError as exc:
             _fail(ExitCode.USAGE, _validation_message(exc))
         with services() as svc:
-            response = asyncio.run(svc.resolver.resolve(ticket))
+            response = _run(svc, svc.resolver.resolve(ticket))
         typer.echo(response.model_dump_json(indent=2))
 
     @approvals.command("list")
@@ -167,10 +179,11 @@ def create_cli(
             _fail(ExitCode.UNAUTHORIZED, f"set {APPROVER_TOKEN_ENV} to the approver token")
         with services() as svc:
             try:
-                outcome = asyncio.run(
+                outcome = _run(
+                    svc,
                     decide_approval(
                         svc, approval_id, approved=approve, reviewer="cli", note=note, now=clock()
-                    )
+                    ),
                 )
             except ApprovalNotFoundError:
                 _fail(ExitCode.NOT_FOUND, "approval not found")

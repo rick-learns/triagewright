@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import contextlib
 import logging
 import secrets
 import threading
@@ -62,7 +61,12 @@ from triagewright.evals.judge import JudgeClientFactory
 from triagewright.guardrails import GuardedActionExecutor, RuleGuardrails, SqliteApprovalStore
 from triagewright.llm import ModelClients, ModelConfigError, build_model_clients, recording_path
 from triagewright.llm.factory import JUDGE_ROLE
-from triagewright.mcp_server import InProcessToolGateway, McpToolGateway, build_service
+from triagewright.mcp_server import (
+    InProcessToolGateway,
+    McpToolGateway,
+    ToolService,
+    build_service,
+)
 from triagewright.observability import OTelTelemetryFactory
 from triagewright.rag import HybridRetriever, KBIndex, make_embedder
 
@@ -100,6 +104,11 @@ class _SharedHttp:
             self._client = httpx.AsyncClient(timeout=timeout)
         return self._client
 
+    async def aclose(self) -> None:
+        if self._client is not None:
+            client, self._client = self._client, None
+            await client.aclose()
+
 
 def _retrieve(future: asyncio.Future[McpToolGateway]) -> None:
     if not future.cancelled():
@@ -132,8 +141,8 @@ def _coordinator(
     )
 
 
-def _model_factory(settings: Settings) -> ModelFactory:
-    http = _SharedHttp(settings)
+def _model_factory(settings: Settings, http: _SharedHttp | None = None) -> ModelFactory:
+    http = http or _SharedHttp(settings)
 
     def build(case_id: str | None) -> ModelClient:
         clients = build_model_clients(settings, case_id=case_id, http_client=http.get())
@@ -167,9 +176,12 @@ def build_services(
             "to gemini or openrouter (free models) to resolve tickets"
         )
     key = _approval_key(settings)
+    http = _SharedHttp(settings)
+    service: ToolService | None = None
     gateway: ToolGateway
     if settings.mcp_transport == "inprocess":
-        gateway = InProcessToolGateway(build_service(settings, approval_key=key), log_calls=False)
+        service = build_service(settings, approval_key=key)
+        gateway = InProcessToolGateway(service, log_calls=False)
     else:
         gateway = BackgroundMcpGateway(
             lambda: McpToolGateway.from_settings(settings, log_calls=False)
@@ -190,7 +202,7 @@ def build_services(
         telemetry = tracing = OTelTelemetryFactory.from_settings(settings)
     resolver = _coordinator(
         settings,
-        model=(model_factory or _model_factory(settings))(None),
+        model=(model_factory or _model_factory(settings, http))(None),
         gateway=gateway,
         guardrails=guardrails,
         executor=executor,
@@ -200,11 +212,19 @@ def build_services(
     def close() -> None:
         if isinstance(gateway, BackgroundMcpGateway):
             gateway.close()
+        if service is not None:
+            service.close()
         approvals.close()
         if tracing is not None:
             tracing.shutdown()  # flush spans
 
-    return Services(resolver=resolver, executor=executor, approvals=approvals, close=close)
+    return Services(
+        resolver=resolver,
+        executor=executor,
+        approvals=approvals,
+        aclose=http.aclose,
+        close=close,
+    )
 
 
 class BackgroundMcpGateway:
@@ -233,7 +253,8 @@ class BackgroundMcpGateway:
         # Loop-thread state:
         self._loop = asyncio.new_event_loop()
         self._session: asyncio.Future[McpToolGateway] | None = None
-        self._owner: asyncio.Task[None] | None = None
+        self._owner: asyncio.Task[None] | None = None  # owns _session
+        self._owners: set[asyncio.Task[None]] = set()  # incl. abandoned ones still tearing down
         self._closing = asyncio.Event()
         self._thread = threading.Thread(target=self._loop.run_forever, name="mcp-gateway")
         self._thread.daemon = True
@@ -251,7 +272,13 @@ class BackgroundMcpGateway:
             )
             self._pending.add(future)
         future.add_done_callback(self._settled)
-        return await asyncio.wrap_future(future)  # cancelling the caller cancels the call
+        try:
+            return await asyncio.wrap_future(future)  # cancelling the caller cancels the call
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                raise  # the caller was cancelled
+            return ToolResult.fail(name, ErrorCategory.TRANSIENT, "MCP gateway closed")
 
     def close(self) -> None:
         """Stop taking calls, end the session, settle in-flight calls, stop the thread.
@@ -301,19 +328,29 @@ class BackgroundMcpGateway:
         if session is None or (session.done() and (session.exception() or session.result().lost)):
             session = self._session = self._loop.create_future()
             session.add_done_callback(_retrieve)  # a failure nobody awaited isn't logged as lost
-            self._owner = self._loop.create_task(self._own(session))
+            self._owner = owner = self._loop.create_task(self._own(session))
+            self._owners.add(owner)
+            owner.add_done_callback(self._owners.discard)
         return session
 
     def _abandon(self, session: asyncio.Future[McpToolGateway]) -> None:
-        """A stalled connect: cancel it so the next call starts over."""
+        """A stalled connect: fail it, then cancel it so the next call starts over."""
         if self._session is session and not session.done():
             self._session = None
-            if self._owner is not None:
-                self._owner.cancel()
+            self._cancel_owner(session, "MCP connect abandoned")
+
+    def _cancel_owner(self, session: asyncio.Future[McpToolGateway], why: str) -> None:
+        # Settle first: an owner cancelled before it starts never reaches its finally.
+        if not session.done():
+            session.set_exception(ConnectionError(why))
+        if self._owner is not None:
+            self._owner.cancel()
 
     async def _own(self, ready: asyncio.Future[McpToolGateway]) -> None:
         try:
             async with self._open() as gateway:
+                if ready.done():  # abandoned while connecting: close it at once
+                    return
                 ready.set_result(gateway)
                 async with anyio.create_task_group() as tg:
 
@@ -334,13 +371,10 @@ class BackgroundMcpGateway:
 
     async def _shutdown(self) -> None:
         self._closing.set()
-        owner = self._owner
-        if owner is None:
-            return
         if self._session is not None and not self._session.done():
-            owner.cancel()  # a stalled handshake never sees _closing
-        with contextlib.suppress(asyncio.CancelledError):
-            await owner
+            self._cancel_owner(self._session, "MCP gateway closed")  # never sees _closing
+        # Every owner, including abandoned ones, exits its session (and reaps a stdio child).
+        await asyncio.gather(*self._owners, return_exceptions=True)
 
 
 # ---- evals -------------------------------------------------------------------------

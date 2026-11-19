@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hmac
 import importlib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -29,12 +29,19 @@ def _no_cleanup() -> None:
     pass
 
 
+async def _no_async_cleanup() -> None:
+    pass
+
+
 @dataclass(frozen=True)
 class Services:
     resolver: TicketResolver
     executor: ActionExecutor
     approvals: ApprovalStore
-    close: Callable[[], None] = _no_cleanup  # releases connections and flushes traces
+    # Teardown: await ``aclose`` on the event loop that served requests (it owns the HTTP pool),
+    # then call ``close`` (connections, stores, trace flush).
+    aclose: Callable[[], Awaitable[None]] = _no_async_cleanup
+    close: Callable[[], None] = _no_cleanup
 
 
 class WiringUnavailableError(RuntimeError):

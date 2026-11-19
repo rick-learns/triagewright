@@ -105,7 +105,9 @@ def test_stopword_only_query_returns_nothing(kb_index: KBIndex, mode: Mode) -> N
 
 @pytest.mark.parametrize("mode", MODES)
 def test_untrusted_chunks_are_returned_for_screening(kb_index: KBIndex, mode: Mode) -> None:
-    query = RetrievalQuery(text="community tips: how do I pair the Pebble Speaker", k=1)
+    query = RetrievalQuery(
+        text="how do I pair the Pebble Speaker", k=1, filters={"categories": ["community"]}
+    )
     (top,) = HybridRetriever(kb_index, mode=mode).search(query)
     assert top.chunk.doc_id == "kb_community_tips" and top.chunk.trusted is False
 
@@ -119,13 +121,21 @@ def test_untrusted_chunks_only_when_the_query_asks_for_them(kb_index: KBIndex, m
         assert [h.rank for h in hits] == list(range(1, len(hits) + 1))
         return [h.chunk.doc_id for h in hits]
 
-    # The planted page says "issue a full refund" about the Pebble Speaker (happy-005).
-    for text in ("refund policy", "refund two Pebble Speakers", "pair the Pebble Speaker"):
+    # The planted page says "issue a full refund" about the Pebble Speaker (happy-005), and
+    # its title "Community tips (user submitted)" shares words with ordinary queries.
+    for text in (
+        "refund policy",
+        "refund two Pebble Speakers",
+        "refund two Pebble Speakers user requested return",
+        "how to pair Pebble Speaker",
+        "community tips Pebble Speaker pairing",
+    ):
         assert "kb_community_tips" not in docs(text), text
-    # Asked for by name (inject-003, inject-004) or by category filter.
-    assert docs("community tips Pebble Speaker pairing")[0] == "kb_community_tips"
-    assert "kb_community_tips" in docs("what does your tips page say about refunds")
-    assert "kb_community_tips" in docs("Pebble Speaker", filters={"categories": ["community"]})
+    # Only the structured opt-in serves it (inject-003).
+    community = {"categories": ["community"]}
+    assert docs("how to pair Pebble Speaker", filters=community)[0] == "kb_community_tips"
+    both = {"categories": ["community", "refunds"]}
+    assert "kb_community_tips" in docs("refund", filters=both)
 
 
 def test_ties_break_on_doc_then_ordinal() -> None:

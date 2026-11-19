@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any
 
@@ -204,8 +205,21 @@ def test_main_serves_the_app_on_the_configured_host_and_port(
     settings = Settings(_env_file=None, api_host="127.0.0.1", api_port=9123)
     served: dict[str, object] = {}
     monkeypatch.setattr(api, "get_settings", lambda: settings)
-    monkeypatch.setattr(api, "load_services", lambda s: stack.services)
-    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: served.update(app=app, **kw))
+    closed: list[str] = []
+
+    async def serve(server: uvicorn.Server) -> None:
+        served.update(host=server.config.host, port=server.config.port)
+        served.update(access_log=server.config.access_log)
+
+    async def aclose() -> None:
+        closed.append("aclose")
+
+    services = dataclasses.replace(
+        stack.services, aclose=aclose, close=lambda: closed.append("close")
+    )
+    monkeypatch.setattr(api, "load_services", lambda s: services)
+    monkeypatch.setattr(uvicorn.Server, "serve", serve)
     api.main()
     assert served["host"] == "127.0.0.1" and served["port"] == 9123
     assert served["access_log"] is False
+    assert closed == ["aclose", "close"]
