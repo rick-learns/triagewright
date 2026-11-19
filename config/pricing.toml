@@ -1,0 +1,3 @@
+# Model prices in USD per million tokens. Owned by lane E (observability).
+# Every entry needs a `source` (URL + date checked). Unknown models are an error.
+# Lane E fills this in; it is intentionally empty in Wave 0.

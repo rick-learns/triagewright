@@ -1,0 +1,29 @@
+# Local stack. `docker compose up` starts the MCP server and the API.
+# `docker compose --profile tracing up` also starts Jaeger (UI on :16686).
+services:
+  mcp:
+    build: .
+    command: ["triagewright-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8765"]
+    env_file: [{ path: .env, required: false }]
+    ports: ["127.0.0.1:8765:8765"]
+    volumes: ["tw-var:/app/var"]
+
+  api:
+    build: .
+    command: ["triagewright-api"]
+    env_file: [{ path: .env, required: false }]
+    environment:
+      TW_MCP_TRANSPORT: http
+      TW_MCP_URL: http://mcp:8765/mcp
+      TW_OTLP_ENDPOINT: http://jaeger:4318
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: ["tw-var:/app/var"]
+    depends_on: [mcp]
+
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    profiles: [tracing]
+    ports: ["127.0.0.1:16686:16686", "127.0.0.1:4318:4318"]
+
+volumes:
+  tw-var:
