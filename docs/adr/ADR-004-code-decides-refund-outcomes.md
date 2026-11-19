@@ -32,7 +32,9 @@ outcome it states is a guess.
   coordinator's own read tools shrink to `search_kb`, so order lookups and the
   proposal go through the action subagent.
 - **The executor decides.** `GuardedActionExecutor.propose` maps an
-  approval that already exists for the same proposal to its stored status;
+  approval that already exists for the same proposal from its stored status
+  (`pending` and `approved` to `pending_approval`, `rejected` to `blocked`,
+  `executed` to `skipped`);
   otherwise it fetches eligibility itself, returns `failed` if the lookup
   fails, and submits an eligible refund for approval or blocks it. For a
   refund blocked with eligibility reasons, the coordinator applies

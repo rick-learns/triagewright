@@ -44,7 +44,9 @@ escalation.
 - When the review's only reason is `approval_required`, the request has one
   action, and triage found no unhandled human need, a pending refund has one
   human owner, its approver, and a refund blocked by policy follows the refund
-  table, not the reviewer. Otherwise the review still hands the ticket off.
+  table, not the reviewer. An escalating review still counts when it gives no
+  reasons or a reason code didn't handle, or triage found an unhandled human
+  need.
 - An injection-only ticket ends as `refused`, as the behavior contract says,
   when code flagged injection before the review, the draft refuses, every
   review reason is handled, and triage found no unhandled need. Otherwise the
