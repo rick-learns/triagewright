@@ -53,8 +53,9 @@ _ON_A_THING = (
 _CHECK = (
     r"(?:(?:approval|verification|eligibility|policy|security|fraud)\W+"
     r"(?:checks?|requirements?|process|steps?|rules)"
-    r"|(?:approval|verification)(?![ -](?:emails?|messages?|links?|codes?|texts?|letters?"
-    r"|notifications?)\b))"
+    # Inline emphasis may wrap the noun ("approval **email**"); a clause break may not.
+    r"|(?:approval|verification)(?![*_`]*[ -][*_`]*(?:emails?|messages?|links?|codes?|texts?"
+    r"|letters?|notifications?)\b))"
 )
 _TARGET = (
     r"(?:instructions?|rules|polic(?:y|ies)|guidelines|directives|prompts?|guardrails"
@@ -176,7 +177,8 @@ _RULES: tuple[_Rule, ...] = (
             rf"(?:{_TARGET}|(?:refund\W+)?limits?|{_CHECK})"
             r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without\W+(?:\w+\W+){0,2}?"
             r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?"
-            r"|asking(?! \w))"  # bare "without asking", not "without asking the customer to ..."
+            # A bare "without asking", not "without asking the customer to ...", even wrapped.
+            r"|asking(?!\s+\w))"
             r"|regardless\W+of|to\W+(?:any|every|all)))\b",
         ),
     ),

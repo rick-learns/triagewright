@@ -67,40 +67,54 @@ _DIGIT_RUN = re.compile(r"(?<![\w-])\d+(?:[ \u00a0\u2009\u202f-]\d+)*(?![A-Za-z_
 _GROUP = re.compile(r"\d+")
 
 
-def _cards(text: str) -> Iterator[_Match]:
-    """Luhn-valid 13-19 digit windows of whole groups, taken left to right.
+def _card_windows(groups: list[str], lo: int, hi: int, min_first: int) -> list[tuple[int, int]]:
+    """``(start, end)`` group ranges of Luhn-valid 13-19 digit cards in ``groups[lo:hi]``.
 
-    A card starts at the first group of 4+ digits that can start one; of the windows from
-    there, the one that leaves the most digits coverable after it wins (ties:
-    the longer card). So "4111 1111 1111 1111 1228 123" keeps the expiry and
-    CVV, and two cards in a row are both redacted, whatever their group lengths.
+    A card starts at the first group of ``min_first``+ digits that can start one; of the
+    windows from there, the one that leaves the most digits coverable after it wins (ties:
+    the longer card).
+    """
+    # covered[i]: digits this scan covers in groups[i:hi]; card_end[i]: exclusive end of
+    # the card it takes at groups[i], or 0 if no card starts there.
+    covered, card_end = [0] * (hi + 1), [0] * (hi + 1)
+    for i in reversed(range(lo, hi)):
+        best, digits = -1, ""
+        for j in range(i, hi if len(groups[i]) >= min_first else i):
+            digits += groups[j]
+            if len(digits) > 19:
+                break
+            total = len(digits) + covered[j + 1]
+            if len(digits) >= 13 and total >= best and luhn_valid(digits):
+                best, card_end[i] = total, j + 1
+        covered[i] = best if card_end[i] else covered[i + 1]
+    windows, i = [], lo
+    while i < hi:
+        if card_end[i]:
+            windows.append((i, card_end[i]))
+            i = card_end[i]
+        else:
+            i += 1
+    return windows
+
+
+def _cards(text: str) -> Iterator[_Match]:
+    """Luhn-valid 13-19 digit windows of whole groups in each digit run.
+
+    Cards that start with a 4+ digit group come first, so a short label stays out
+    ("card 6 4111 ..."). Then any start in what's left, so an odd grouping
+    ("411-1111-1111-11111") is still redacted. "4111 1111 1111 1111 1228 123" keeps the
+    expiry and CVV, and two cards in a row are both redacted, whatever their group lengths.
     """
     for run in _DIGIT_RUN.finditer(text):
-        groups = list(_GROUP.finditer(text, run.start(), run.end()))
-        n = len(groups)
-        # covered[i]: digits this scan covers in groups[i:]; card_end[i]: exclusive end of
-        # the card it takes at groups[i], or 0 if no card starts there.
-        covered, card_end = [0] * (n + 1), [0] * (n + 1)
-        for i in reversed(range(n)):
-            best, digits = -1, ""
-            # A grouped card starts with 4+ digits, so a short label ("card 6 4111 ...") isn't
-            # taken into it.
-            for j in range(i, n if len(groups[i].group()) >= 4 else i):
-                digits += groups[j].group()
-                if len(digits) > 19:
-                    break
-                total = len(digits) + covered[j + 1]
-                if len(digits) >= 13 and total >= best and luhn_valid(digits):
-                    best, card_end[i] = total, j + 1
-            covered[i] = best if card_end[i] else covered[i + 1]
-        i = 0
-        while i < n:
-            if not card_end[i]:
-                i += 1
-                continue
-            digits = "".join(g.group() for g in groups[i : card_end[i]])
-            yield _Match(_CARD, groups[i].start(), groups[card_end[i] - 1].end(), digits)
-            i = card_end[i]
+        spans = list(_GROUP.finditer(text, run.start(), run.end()))
+        groups = [g.group() for g in spans]
+        windows = _card_windows(groups, 0, len(groups), 4)
+        starts = [start for start, _ in windows] + [len(groups)]
+        gaps = zip([0, *(end for _, end in windows)], starts, strict=True)
+        windows += [w for lo, hi in gaps for w in _card_windows(groups, lo, hi, 1)]
+        for start, end in sorted(windows):
+            digits = "".join(groups[start:end])
+            yield _Match(_CARD, spans[start].start(), spans[end - 1].end(), digits)
 
 
 _SSN_RE = re.compile(r"(?<![\w-])(\d{3})([- ])(\d{2})\2(\d{4})(?![\w-])")

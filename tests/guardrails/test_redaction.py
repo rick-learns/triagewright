@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 import pytest
 
 from triagewright.contracts.common import canonical_json
@@ -29,6 +31,7 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ),
     ("card 4111 1111 1111 1111 1228 123", "card [CARD_NUMBER_1] 1228 123", [PIIType.CARD_NUMBER]),
     ("card 6 4111 1111 1111 1111", "card 6 [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
+    ("card 411-1111-1111-11111", "card [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
     ("ssn 123-45-6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("ssn 123 45 6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("my SSN is 123456789", "my SSN is [SSN_1]", [PIIType.SSN]),
@@ -114,6 +117,25 @@ def test_numbering_continues_after_existing_placeholders() -> None:
 def test_a_card_is_never_also_a_phone() -> None:
     result = G.redact("4111 1111 1111 1111")
     assert [s.pii_type for s in result.spans] == [PIIType.CARD_NUMBER]
+
+
+def _luhn_number(rng: random.Random, length: int) -> str:
+    body = "".join(rng.choice("0123456789") for _ in range(length - 1))
+    return next(body + d for d in "0123456789" if luhn_valid(body + d))
+
+
+def test_no_luhn_valid_number_survives_verbatim() -> None:
+    rng = random.Random(7)
+    for _ in range(2000):
+        digits = _luhn_number(rng, rng.randint(13, 19))
+        groups, rest = [], digits
+        while rest:
+            size = rng.randint(1, 6)
+            groups.append(rest[:size])
+            rest = rest[size:]
+        number = "".join(g + rng.choice([" ", "-", "\u00a0"]) for g in groups)[:-1]
+        text = G.redact(f"pay with {number} today").text
+        assert number not in text, (number, text)
 
 
 def test_luhn() -> None:
