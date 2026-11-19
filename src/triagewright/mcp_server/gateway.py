@@ -139,6 +139,8 @@ class InProcessToolGateway(_RecordingGateway):
         return await self.service.call(name, arguments, ctx)
 
 
+# Stream-level failures: the session is over, unlike a single failed HTTP request.
+_TERMINAL_ERRORS = (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)
 _TRANSPORT_ERRORS = (
     OSError,
     httpx.TransportError,
@@ -234,7 +236,14 @@ class McpToolGateway(_RecordingGateway):
         done: list[ToolResult] = []
 
         async def call() -> None:
-            done.append(await self._call_tool(name, arguments, ctx))
+            # A session can end between choosing this gateway and reaching the SDK.
+            if not self._lost.is_set() and not self._stop.is_set():
+                try:
+                    done.append(await self._call_tool(name, arguments, ctx))
+                except Exception:
+                    if not (self._lost.is_set() or self._stop.is_set()):
+                        raise
+                    logger.info("MCP call ended with the session")
             tg.cancel_scope.cancel()
 
         async def watch() -> None:
@@ -258,11 +267,14 @@ class McpToolGateway(_RecordingGateway):
             if exc.code == mcp_types.REQUEST_TIMEOUT:
                 return ToolResult.fail(name, ErrorCategory.TIMEOUT, "MCP request timed out")
             if exc.code == mcp_types.CONNECTION_CLOSED:
+                self._lost.set()  # e.g. the stdio child exited: the session can't recover
                 return ToolResult.fail(name, ErrorCategory.TRANSIENT, "MCP connection closed")
             return ToolResult.fail(name, ErrorCategory.INTERNAL, f"MCP error {exc.code}")
         except TimeoutError:
             return ToolResult.fail(name, ErrorCategory.TIMEOUT, "MCP request timed out")
         except _TRANSPORT_ERRORS as exc:
+            if isinstance(exc, _TERMINAL_ERRORS):
+                self._lost.set()
             return ToolResult.fail(
                 name, ErrorCategory.TRANSIENT, f"MCP transport error: {type(exc).__name__}"
             )
@@ -296,6 +308,7 @@ def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
         "TW_DB_PATH": str(db),
         "TW_SEED_DIR": str(settings.seed_dir.resolve()),
         "TW_KB_DIR": str(settings.kb_dir.resolve()),
+        "TW_EMBEDDER": settings.embedder,
         "TW_REFUND_HARD_LIMIT_CENTS": str(settings.refund_hard_limit_cents),
         "TW_REFUND_WINDOW_DAYS": str(settings.refund_window_days),
         "TW_MAX_REFUNDS_PER_CUSTOMER_30D": str(settings.max_refunds_per_customer_30d),

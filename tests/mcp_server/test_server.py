@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
+import anyio
 import mcp_types
 import pytest
 from mcp import Client, MCPError, StdioServerParameters
@@ -144,6 +145,39 @@ async def test_transport_failures_map_to_categories(
     assert len(gw.calls) == 1  # logged, and never retried by the gateway
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [MCPError(mcp_types.CONNECTION_CLOSED, "gone"), anyio.ClosedResourceError()],
+)
+async def test_a_terminal_disconnect_marks_the_session_lost(exc: BaseException) -> None:
+    raising = _RaisingClient(exc)
+    gw = McpToolGateway(cast(Client, raising))
+    assert not gw.lost
+    first = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+    assert first.error and first.error.category is ErrorCategory.TRANSIENT and gw.lost
+    raising.exc = AssertionError("the SDK must not be called on a lost session")
+    again = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+    assert again.error and again.error.category is ErrorCategory.TRANSIENT
+    await gw.wait_lost()  # already set: returns at once
+
+
+async def test_a_one_off_transport_error_keeps_the_session() -> None:
+    gw = McpToolGateway(cast(Client, _RaisingClient(ConnectionResetError())))
+    await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+    assert not gw.lost  # an HTTP request can fail without ending the session
+
+
+async def test_an_sdk_error_after_the_session_ends_is_a_transient_result() -> None:
+    class ClosingClient:
+        async def call_tool(self, *args: Any, **kwargs: Any) -> mcp_types.CallToolResult:
+            gw._stop.set()  # the owner closes the gateway while this call is in the SDK
+            raise RuntimeError("session closed")
+
+    gw = McpToolGateway(cast(Client, ClosingClient()))
+    result = await gw.call(ToolName.GET_ORDER, {"order_id": "ord_a1001"}, ctx())
+    assert result.error and result.error.category is ErrorCategory.TRANSIENT
+
+
 def test_parse_result_rejects_malformed_or_inconsistent_results() -> None:
     good = ToolResult.fail(ToolName.GET_ORDER, ErrorCategory.NOT_FOUND, "ord_zzzz")
     wire = to_call_tool_result(good)
@@ -193,10 +227,15 @@ def test_stdio_child_gets_only_resolved_settings(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("TW_LLM_PROVIDER", "gemini")
     monkeypatch.setenv("TW_MODEL_TRIAGE", "example/example:free")
     settings = Settings(
-        _env_file=None, llm_provider="replay", approval_key="s" * 40, db_path=Path(":memory:")
+        _env_file=None,
+        llm_provider="replay",
+        approval_key="s" * 40,
+        db_path=Path(":memory:"),
+        embedder="fastembed",
     )
     params = stdio_server_parameters(settings)
     assert params.env and params.env["TW_DB_PATH"] == ":memory:"
+    assert params.env["TW_EMBEDDER"] == "fastembed"  # the child builds the same KB index
     assert not {"TW_LLM_PROVIDER", "TW_MODEL_TRIAGE"} & params.env.keys()
     assert params.args[-1] == "--no-env-file"
 

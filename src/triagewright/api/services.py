@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hmac
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -24,11 +25,16 @@ from triagewright.contracts.ports import ActionExecutor, ApprovalStore, TicketRe
 WIRING_MODULE = "triagewright.wiring"
 
 
+def _no_cleanup() -> None:
+    pass
+
+
 @dataclass(frozen=True)
 class Services:
     resolver: TicketResolver
     executor: ActionExecutor
     approvals: ApprovalStore
+    close: Callable[[], None] = _no_cleanup  # releases connections and flushes traces
 
 
 class WiringUnavailableError(RuntimeError):

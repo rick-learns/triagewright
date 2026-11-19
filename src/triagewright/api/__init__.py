@@ -21,5 +21,8 @@ def main() -> None:
         raise SystemExit(f"triagewright-api: {exc}") from None
     logging.basicConfig(level=logging.INFO)
     app = create_app(services, approver_token=settings.approver_token)
-    # uvicorn's access log records client addresses; the app logs its own request lines.
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port, access_log=False)
+    try:
+        # uvicorn's access log records client addresses; the app logs its own request lines.
+        uvicorn.run(app, host=settings.api_host, port=settings.api_port, access_log=False)
+    finally:
+        services.close()

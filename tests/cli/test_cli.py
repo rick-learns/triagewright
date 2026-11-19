@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -162,3 +163,19 @@ def test_main_runs_the_typer_app(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli.main()
     assert exit_info.value.code == 0
+
+
+def test_every_command_closes_its_services(stack: Stack) -> None:
+    closed: list[int] = []
+    services = dataclasses.replace(stack.services, close=lambda: closed.append(1))
+    app = cli.create_cli(
+        services_loader=lambda settings: services,
+        settings_loader=lambda: Settings(_env_file=None, approver_token=SecretStr(TOKEN)),
+        clock=seed_as_of,
+    )
+    env = {cli.APPROVER_TOKEN_ENV: TOKEN}
+    assert runner.invoke(app, ["approvals", "list"], env=env).exit_code == 0
+    assert runner.invoke(
+        app, ["approvals", "decide", "apr_missing", "--approve"], env=env
+    ).exit_code
+    assert closed == [1, 1]  # also when the command fails

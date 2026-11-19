@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import signal
+import sqlite3
+import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from mcp import Client
@@ -300,3 +306,112 @@ def test_live_clients_share_one_http_pool(tmp_path: Path, monkeypatch: pytest.Mo
     two = build(case_id="happy-002", recordings=tmp_path / "recordings" / "happy-002.judge.jsonl")
     assert one.model == two.model == live.models()["judge"]  # type: ignore[attr-defined]
     assert one._http is two._http  # type: ignore[attr-defined]
+
+
+class _StalledGateway:
+    """Never finishes the MCP handshake."""
+
+    lost = False
+
+    async def __aenter__(self) -> _StalledGateway:
+        await asyncio.sleep(3600)
+        raise AssertionError("unreachable")
+
+    async def __aexit__(self, *exc: object) -> None:
+        pass
+
+
+def test_a_stalled_connect_times_out_retries_and_does_not_hang_close() -> None:
+    opens: list[int] = []
+
+    def open_gateway() -> McpToolGateway:
+        opens.append(1)
+        return cast(McpToolGateway, _StalledGateway())
+
+    gateway = wiring.BackgroundMcpGateway(open_gateway, connect_timeout_s=0.1, close_timeout_s=1)
+    for _ in range(2):
+        result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
+        assert result.error and result.error.category is ErrorCategory.TRANSIENT
+    assert len(opens) == 2  # the stalled attempt was abandoned, not reused
+    started = time.monotonic()
+    gateway.close()
+    assert time.monotonic() - started < 1
+
+
+class _BlockingService(ToolService):
+    def __init__(self) -> None:
+        super().__init__(
+            MockSystems.in_memory(seed_world()), as_of=seed_as_of(), approval_key=TEST_APPROVAL_KEY
+        )
+        self.entered = threading.Event()
+
+    async def call(self, *args: Any, **kwargs: Any) -> Any:
+        self.entered.set()
+        await asyncio.sleep(3600)
+
+
+def test_close_settles_an_in_flight_call_and_refuses_new_ones() -> None:
+    service = _BlockingService()
+    gateway = wiring.BackgroundMcpGateway(
+        lambda: McpToolGateway(Client(build_server(service), mode="legacy")), close_timeout_s=2
+    )
+    results: list[Any] = []
+
+    def caller() -> None:
+        results.append(asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx())))
+
+    thread = threading.Thread(target=caller)
+    thread.start()
+    assert service.entered.wait(5)
+    gateway.close()
+    thread.join(5)
+    (in_flight,) = results
+    assert in_flight.error and in_flight.error.category is ErrorCategory.TRANSIENT
+    after = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
+    assert after.error and after.error.message == "MCP gateway closed"
+
+
+def test_services_close_their_gateway_and_store(tmp_path: Path) -> None:
+    remote = settings(tmp_path, mcp_transport="http", approval_key="k" * 32)
+    built = wiring.build_services(remote, model_factory=scripted(()))
+    built.close()
+    gateway = built.executor.gateway  # type: ignore[attr-defined]
+    closed = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
+    assert closed.error and closed.error.message == "MCP gateway closed"
+    with pytest.raises(sqlite3.ProgrammingError):
+        built.approvals.list_pending()
+
+
+def _mcp_children() -> list[int]:
+    me = str(os.getpid())
+    found = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+            cmdline = (stat.parent / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if fields[1] == me and b"triagewright.mcp_server" in cmdline:
+            found.append(int(stat.parent.name))
+    return found
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not Path("/proc").is_dir(), reason="needs /proc to find the child")
+def test_a_killed_stdio_server_is_replaced_on_the_next_calls(tmp_path: Path) -> None:
+    stdio = settings(tmp_path, mcp_transport="stdio", approval_key="k" * 32)
+    gateway = wiring.BackgroundMcpGateway(lambda: McpToolGateway.from_settings(stdio))
+
+    def get() -> Any:
+        return asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
+
+    try:
+        assert not get().is_error
+        (child,) = _mcp_children()
+        os.kill(child, signal.SIGKILL)
+        results = [get() for _ in range(3)]
+        assert not results[-1].is_error, results  # at most two transient failures
+        assert all(r.error.retryable for r in results if r.error)
+        assert _mcp_children() and child not in _mcp_children()
+    finally:
+        gateway.close()

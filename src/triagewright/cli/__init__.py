@@ -18,7 +18,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from enum import IntEnum
 from pathlib import Path
@@ -92,11 +93,16 @@ def create_cli(
     approvals = typer.Typer(no_args_is_help=True, help="Human approvals for irreversible actions.")
     app.add_typer(approvals, name="approvals")
 
-    def services() -> Services:
+    @contextmanager
+    def services() -> Iterator[Services]:
         try:
-            return services_loader(settings_loader())
+            svc = services_loader(settings_loader())
         except WiringUnavailableError as exc:
             _fail(ExitCode.UNAVAILABLE, str(exc))
+        try:
+            yield svc
+        finally:
+            svc.close()
 
     @app.command()
     def resolve(
@@ -133,13 +139,15 @@ def create_cli(
             ticket = Ticket.model_validate(data)
         except ValidationError as exc:
             _fail(ExitCode.USAGE, _validation_message(exc))
-        response = asyncio.run(services().resolver.resolve(ticket))
+        with services() as svc:
+            response = asyncio.run(svc.resolver.resolve(ticket))
         typer.echo(response.model_dump_json(indent=2))
 
     @approvals.command("list")
     def list_approvals() -> None:
         """Print pending approvals as JSON."""
-        pending = services().approvals.list_pending()
+        with services() as svc:
+            pending = svc.approvals.list_pending()
         typer.echo(json.dumps([a.model_dump(mode="json") for a in pending], indent=2))
 
     @approvals.command("decide")
@@ -157,17 +165,17 @@ def create_cli(
             _fail(ExitCode.UNAVAILABLE, "approval decisions are disabled (TW_APPROVER_TOKEN)")
         if not token_matches(os.environ.get(APPROVER_TOKEN_ENV), expected):
             _fail(ExitCode.UNAUTHORIZED, f"set {APPROVER_TOKEN_ENV} to the approver token")
-        svc = services()
-        try:
-            outcome = asyncio.run(
-                decide_approval(
-                    svc, approval_id, approved=approve, reviewer="cli", note=note, now=clock()
+        with services() as svc:
+            try:
+                outcome = asyncio.run(
+                    decide_approval(
+                        svc, approval_id, approved=approve, reviewer="cli", note=note, now=clock()
+                    )
                 )
-            )
-        except ApprovalNotFoundError:
-            _fail(ExitCode.NOT_FOUND, "approval not found")
-        except DecisionConflictError as exc:
-            _fail(ExitCode.CONFLICT, str(exc))
+            except ApprovalNotFoundError:
+                _fail(ExitCode.NOT_FOUND, "approval not found")
+            except DecisionConflictError as exc:
+                _fail(ExitCode.CONFLICT, str(exc))
         typer.echo(outcome.model_dump_json(indent=2))
         if outcome.status in {ActionStatus.FAILED, ActionStatus.BLOCKED}:
             raise typer.Exit(int(ExitCode.FAILED))
