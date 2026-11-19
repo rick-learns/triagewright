@@ -27,6 +27,7 @@ from triagewright.agent import refunds as refunds_module
 from triagewright.agent.coordinator import first_sentence
 from triagewright.contracts.agents import (
     EscalationInput,
+    LoopConfig,
     ResolutionStatus,
 )
 from triagewright.contracts.evals import ToolFault
@@ -201,6 +202,22 @@ async def test_code_searches_for_the_policy_only_after_the_turn() -> None:
     response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
     assert response.status is ResolutionStatus.PENDING_APPROVAL
     assert len(s.calls(ToolName.SEARCH_KB)) == 1
+
+
+async def test_a_failed_model_search_leaves_code_s_policy_lookup_working() -> None:
+    error = ToolError(category=ErrorCategory.TRANSIENT, message="down", retryable=True)
+    query = {"query": "refund basics"}
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10, match_arguments=query)
+    triaged, _, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)
+    s = stack(
+        [triaged, call("search_kb", {"query": "refund basics"}), act, propose, submitted, reviewed],
+        faults=[fault],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 4  # 3 failed attempts, then code's lookup
+    assert [c.chunk_id for c in response.citations] == [REFUND_POLICY]
+    assert response.status is ResolutionStatus.ESCALATED  # the failed search is a tool failure
 
 
 async def test_a_failed_policy_search_leaves_the_finalize_to_the_model() -> None:

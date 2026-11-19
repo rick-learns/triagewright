@@ -385,8 +385,8 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   ticket is handed off.
 - **Model retries.** The OpenAI-compatible client retries 408, 429, 500, 502,
   503, 504, timeouts, and connection errors with exponential backoff (an
-  OpenRouter 200 whose body is an error, or whose choice finished with
-  `error`, counts as a 502), honors
+  OpenRouter 200 with an error body takes the body's HTTP code, else 502; a
+  choice that finished with `error` counts as a 502), honors
   `Retry-After` and Gemini's `RetryInfo`, and skips a retry unless the
   backoff plus a 2 s attempt window (`MIN_ATTEMPT_S`) fits before the
   deadline. 401/403 and other 4xx fail at once.
@@ -394,9 +394,9 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   up to `LoopConfig.tool_retries` (2), with backoff from `retry_after_ms` or
   `retry_backoff_s`. A retryable error that outlasts the retries, or an
   `internal` one marked not retryable, is recorded and escalated with
-  `tool_failure`, to `tier1` unless another queue already won. That tool then
-  stays failed for the request: a model calling it again gets the same error
-  with no new raw call. The executor's eligibility lookup retries the same way.
+  `tool_failure`, to `tier1` unless another queue already won. That call then
+  stays failed for the request: the same tool with the same arguments gets the
+  same error with no new raw call. The executor's eligibility lookup retries the same way.
 - **Deadlines.** `turn_timeout_s` (20 s) per model call, `total_timeout_s`
   (30 s) per request, with `handoff_reserve_s` (3 s) kept for the escalation
   write; the handoff gets at least one attempt even after an overrun, under

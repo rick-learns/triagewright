@@ -67,7 +67,8 @@ class RunState:
     irreversible_requested: bool = False  # any irreversible proposal, sent or not
     outcomes: list[ActionOutcome] = field(default_factory=list)
     tool_failures: list[ToolName] = field(default_factory=list)
-    broken: dict[ToolName, ToolResult] = field(default_factory=dict)  # see ``call_tool``
+    # Failed calls by tool and canonical arguments; see ``call_tool``.
+    broken: dict[tuple[ToolName, str], ToolResult] = field(default_factory=dict)
     turns: dict[str, int] = field(default_factory=dict)
     paced_s: float = 0.0  # rate-limit waits so far; off the request clock
 

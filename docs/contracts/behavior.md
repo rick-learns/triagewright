@@ -41,8 +41,10 @@ orchestrator. Policy facts come from `data/kb/`. The world clock is the seed
      to `tier1` with reason `tool_failure`.
    - An `internal` error marked not retryable is not retried and escalates the
      same way.
-   - A tool that failed this way stays failed for the rest of the request: a
-     later call returns the same error without a new raw call.
+   - A call that failed this way stays failed for the rest of the request:
+     the agent calling the same tool with the same arguments again gets the
+     same error without a new raw call. The refund executor retries its own
+     eligibility lookup for each proposal.
    - `not_found` for an id the customer gave means asking for the correct id
      (`needs_info`).
 6. **Stay within the bounds.** Hitting the turn or time limit means escalating

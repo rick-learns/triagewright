@@ -179,18 +179,23 @@ async def test_retryable_permission_errors_are_tool_failures() -> None:
 async def test_a_failed_tool_stays_failed_for_the_request(
     category: ErrorCategory, retryable: bool, raw: int
 ) -> None:
-    """A model asking again gets the same failure without another raw call."""
+    """A model asking again gets the same failure without another raw call. Other
+    arguments still reach the gateway."""
     error = ToolError(category=category, message="down", retryable=retryable)
+    match = {"order_id": "ord_a1002"}
+    fault = ToolFault(tool=ToolName.GET_ORDER, error=error, times=10, match_arguments=match)
     lookup = call("get_order", {"order_id": "ord_a1002"})
+    other = call("get_order", {"order_id": "ord_a1001"})
     s = stack(
-        [triage(), lookup, lookup, finalize(), review()],
-        faults=[ToolFault(tool=ToolName.GET_ORDER, error=error, times=10)],
+        [triage(), lookup, lookup, other, finalize(), review()],
+        faults=[fault],
         config=LoopConfig(retry_backoff_s=0),
     )
     response = await s.resolve(sample_ticket())
-    assert len(s.calls(ToolName.GET_ORDER)) == raw
-    first, again = (tool_results(r)[-1] for r in s.requests("coordinator")[1:3])
+    assert len(s.calls(ToolName.GET_ORDER)) == raw + 1
+    first, again, fine = (tool_results(r)[-1] for r in s.requests("coordinator")[1:4])
     assert again.content == first.content and again.is_error
+    assert not fine.is_error
     assert response.status is ResolutionStatus.ESCALATED
     args = s.escalation_args()
     assert (args["queue"], args["reason_codes"]) == ("tier1", ["tool_failure"])

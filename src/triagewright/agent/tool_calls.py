@@ -74,12 +74,13 @@ class ToolCalls(RunState):
 
         Every attempt is a raw gateway call, so ``ExpectedOutcome.attempts`` counts them all.
         A final service error (a retryable one that outlasts the retries, or one marked not
-        retryable) is a tool failure, and the tool stays broken for the rest of the request:
-        later calls return that failure without a raw call, so a model asking again can't
-        multiply the attempts.
+        retryable) is a tool failure, and that call stays failed for the rest of the request:
+        the same tool with the same arguments returns the failure without a raw call, so a
+        model asking again can't multiply the attempts.
         """
-        if (broken := self.broken.get(name)) is not None:
-            return broken
+        key = (name, canonical_json(arguments))
+        if (failed := self.broken.get(key)) is not None:
+            return failed
         ctx = self.context(caller)
         attempt = 0
         while True:
@@ -110,7 +111,7 @@ class ToolCalls(RunState):
                 return result
             if not error.retryable:
                 if error.category in _SERVICE_ERRORS:
-                    self._break(name, result)
+                    self._break(key, result)
                 return result
             if attempt > self.config.tool_retries:
                 break
@@ -122,12 +123,12 @@ class ToolCalls(RunState):
                 break
             if delay > 0:
                 await self.sleep(delay)
-        self._break(name, result)
+        self._break(key, result)
         return result
 
-    def _break(self, name: ToolName, result: ToolResult) -> None:
-        self.tool_failures.append(name)
-        self.broken[name] = result
+    def _break(self, key: tuple[ToolName, str], result: ToolResult) -> None:
+        self.tool_failures.append(key[0])
+        self.broken[key] = result
 
     def observe(self, result: ToolResult, arguments: JsonObject) -> str:
         """Screen a tool result, keep its facts and KB hits, and return what models see."""
