@@ -53,8 +53,9 @@ _ON_A_THING = (
 _CHECK = (
     r"(?:(?:approval|verification|eligibility|policy|security|fraud)\W+"
     r"(?:checks?|requirements?|process|steps?|rules)"
-    # Inline emphasis may wrap the noun ("approval **email**"); a clause break may not.
-    r"|(?:approval|verification)(?![*_`]*[ -][*_`]*(?:emails?|messages?|links?|codes?|texts?"
+    # Inline emphasis may wrap the noun across a space ("approval **email**"), but a dash
+    # only joins a bare compound: "bypass approval-**Email** us" starts a new imperative.
+    r"|(?:approval|verification)(?!(?:[*_`]* [*_`]*|-)(?:emails?|messages?|links?|codes?|texts?"
     r"|letters?|notifications?)\b))"
 )
 _TARGET = (
@@ -177,8 +178,9 @@ _RULES: tuple[_Rule, ...] = (
             rf"(?:{_TARGET}|(?:refund\W+)?limits?|{_CHECK})"
             r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without\W+(?:\w+\W+){0,2}?"
             r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?"
-            # A bare "without asking", not "without asking the customer to ...", even wrapped.
-            r"|asking(?!\s+\w))"
+            # A bare "without asking", not "without asking the customer to ...", even soft-
+            # wrapped; a paragraph break ends the sentence.
+            r"|asking(?![^\S\n]*\n?[^\S\n]*\w))"
             r"|regardless\W+of|to\W+(?:any|every|all)))\b",
         ),
     ),
