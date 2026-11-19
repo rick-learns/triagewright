@@ -6,11 +6,11 @@ subagents keep their own parents). ``record_model_call`` and
 ``record_tool_call`` put their attributes on the enclosing span when it is an
 unrecorded span of the matching kind, and otherwise emit their own child span.
 
-Metrics follow ``contracts.telemetry``. In replay, ``latency_ms`` and each
-call's ``started_ms`` are on an estimated timeline: measured wall time with
-the measured model time swapped for each call's recorded latency.
-Eval-judge calls (purpose ``"judge"``) are traced but never counted in the
-request's metrics; they are kept in ``judge_calls`` for the eval report.
+Metrics follow ``contracts.telemetry``. In replay, ``latency_ms`` is
+estimated: measured wall time with the measured model time swapped for each
+call's recorded latency. Eval-judge calls (purpose ``"judge"``) are traced but
+never counted in the request's metrics; they are kept in ``judge_calls`` for
+the eval report.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 
 from opentelemetry import trace
+from opentelemetry.context import Context
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.trace import Status, StatusCode
@@ -87,6 +88,7 @@ class OTelRequestTelemetry:
         self._metrics: RequestMetrics | None = None
         root = tracer.start_span(
             "request",
+            context=Context(),  # always a root, whatever span is ambient
             start_time=self._t0_ns,
             attributes={**self._base(SpanKind.REQUEST), "tw.ticket_id": ticket_id},
         )
@@ -152,17 +154,17 @@ class OTelRequestTelemetry:
         if span is not parent.span:
             span.end(end_time=self._ns(end_ms))
 
-    def _estimated_ms(self, t_ms: float) -> float:
-        """Offset ``t_ms`` on the replay timeline: model wall time before it -> recorded latency."""
+    def _replay_latency_ms(self, end_ms: float) -> float:
+        """Wall time minus the measured model time, plus each call's recorded latency."""
         measured = 0.0
         reach = 0.0
         for start, end, _ in sorted(self._model_times):
-            start, end = max(start, reach), min(end, t_ms)
+            start = max(start, reach)
             if end > start:
                 measured += end - start
                 reach = end
-        recorded = sum(rec for _, end, rec in self._model_times if end <= t_ms)
-        return max(t_ms - measured + recorded, 0.0)
+        recorded = sum(rec for _, _, rec in self._model_times)
+        return max(end_ms - measured + recorded, 0.0)
 
     def record_model_call(
         self, request: ModelRequest, response: ModelResponse, started_ms: float
@@ -177,7 +179,7 @@ class OTelRequestTelemetry:
         usage = response.usage
         record = ModelCallRecord(
             purpose=request.purpose,
-            started_ms=self._estimated_ms(start_ms) if self._replay else started_ms,
+            started_ms=started_ms,
             provider=response.provider,
             model=response.model,
             input_tokens=usage.input_tokens,
@@ -189,8 +191,9 @@ class OTelRequestTelemetry:
             latency_ms=response.latency_ms,
             stop_reason=response.stop_reason,
         )
-        self._model_times.append((start_ms, end_ms, response.latency_ms))
         judge = request.purpose == JUDGE_PURPOSE
+        # A judge call's measured time still leaves the wall time; its recording never joins it.
+        self._model_times.append((start_ms, end_ms, 0.0 if judge else response.latency_ms))
         (self.judge_calls if judge else self._calls).append(record)
         attrs: dict[str, AttrValue] = {
             "tw.purpose": request.purpose,
@@ -248,7 +251,7 @@ class OTelRequestTelemetry:
             output_tokens=sum(c.output_tokens for c in calls),
             cost_usd=sum(c.cost_usd for c in calls),
             ttft_ms=ttft,
-            latency_ms=self._estimated_ms(end_ms) if self._replay else end_ms,
+            latency_ms=self._replay_latency_ms(end_ms) if self._replay else end_ms,
             estimated=self._replay,
         )
         totals: dict[str, AttrValue] = {

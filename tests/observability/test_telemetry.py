@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
 from opentelemetry.trace import StatusCode
 
 from tests.observability.support import PAID, FakeClock, prices, request, response
@@ -97,8 +98,7 @@ def test_replay_swaps_measured_model_time_for_recorded_latency() -> None:
     # wall 37 ms, minus 2 ms measured model time, plus 400 + 600 recorded.
     assert m.latency_ms == pytest.approx(1035)
     assert m.ttft_ms == pytest.approx(90)
-    # The second call starts after the first call's *recorded* latency.
-    assert m.model_calls[1].started_ms == pytest.approx(31 - 1 + 400)
+    assert [c.started_ms for c in m.model_calls] == [10, 31]  # as the caller measured them
     assert [c.latency_ms for c in m.model_calls] == [400, 600]
 
 
@@ -111,6 +111,17 @@ def test_replay_counts_overlapping_model_time_once() -> None:
     tel.record_model_call(request("b"), response(latency_ms=200), started_ms=0)
     m = tel.finish()
     assert m.latency_ms == pytest.approx(10 - 10 + 300)
+
+
+def test_replay_estimate_ignores_judge_recordings() -> None:
+    clock = FakeClock()
+    tel = telemetry(clock, replay=True)
+    clock.advance(4)
+    tel.record_model_call(request("answer"), response(latency_ms=100), started_ms=2)
+    clock.advance(2)
+    tel.record_model_call(request(JUDGE_PURPOSE), response(latency_ms=900), started_ms=4)
+    # wall 6 ms, minus 4 ms measured model time (answer and judge), plus 100 recorded.
+    assert tel.finish().latency_ms == pytest.approx(102)
 
 
 def test_ttft_is_none_when_the_first_call_did_not_stream() -> None:
@@ -251,6 +262,16 @@ async def test_parallel_subagents_keep_their_own_parents() -> None:
     for name in ("triage", "answer"):
         ctx, parent = spans[name].context, spans[f"model:{name}"].parent
         assert ctx is not None and parent is not None and parent.span_id == ctx.span_id
+
+
+def test_request_span_is_a_root_under_an_ambient_span() -> None:
+    exporter = InMemorySpanExporter()
+    ambient = TracerProvider(sampler=ALWAYS_OFF).get_tracer("app")
+    with ambient.start_as_current_span("unsampled"):
+        tel = telemetry(FakeClock(), exporter=exporter)
+    tel.finish()
+    (root,) = exporter.get_finished_spans()
+    assert root.name == "request" and root.parent is None
 
 
 def test_spans_of_another_request_do_not_become_parents() -> None:

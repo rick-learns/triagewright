@@ -94,7 +94,9 @@ def test_otlp_exports_over_http_to_the_traces_path(
     processor.shutdown()  # type: ignore[no-untyped-call]
 
 
-def test_jsonl_skips_foreign_spans_and_reports_write_failures(tmp_path: Path) -> None:
+def test_jsonl_skips_foreign_spans_and_reports_write_failures(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     memory = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(memory))
@@ -111,4 +113,5 @@ def test_jsonl_skips_foreign_spans_and_reports_write_failures(tmp_path: Path) ->
     blocked = tmp_path / "file"
     blocked.write_text("")
     assert JsonlSpanExporter(blocked / "sub").export([ours]) is SpanExportResult.FAILURE
+    assert "could not write traces" in caplog.text
     provider.shutdown()

@@ -7,6 +7,7 @@ Compose ``tracing`` profile). There is no console exporter.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -24,6 +25,8 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import StatusCode
 
 from triagewright.contracts.telemetry import AttrValue, SpanKind, TraceEvent
+
+_log = logging.getLogger(__name__)
 
 # Span attributes that carry TraceEvent fields rather than free-form attributes.
 KIND_ATTR = "tw.kind"
@@ -71,7 +74,8 @@ class JsonlSpanExporter(SpanExporter):
                 for path, lines in by_file.items():
                     with path.open("a", encoding="utf-8") as f:
                         f.writelines(lines)
-            except OSError:
+            except OSError as exc:
+                _log.warning("could not write traces to %s: %s", self.trace_dir, exc)
                 return SpanExportResult.FAILURE
         return SpanExportResult.SUCCESS
 
