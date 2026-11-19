@@ -10,6 +10,7 @@ deferred irreversible proposals, the executor outcomes, and the time budget.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -55,6 +56,7 @@ from triagewright.contracts.tools import (
     Caller,
     KBHit,
     KBSearchResult,
+    OrderList,
     ToolName,
     ToolResult,
 )
@@ -135,7 +137,7 @@ class RequestRun:
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""
-    action_lookups: set[ToolName] = field(default_factory=set)  # record tools `action` called
+    listed_orders: int | None = None  # orders the last list_orders found
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
     deferred: list[ProposedAction] = field(default_factory=list)
@@ -270,9 +272,10 @@ class RequestRun:
         spec = TOOL_SPECS[name]
 
         async def handler(arguments: JsonObject) -> tuple[str, bool]:
-            if caller == "action":
-                self.action_lookups.add(name)
             result = await self.call_tool(name, arguments, caller)
+            if name is ToolName.LIST_ORDERS and result.data is not None:
+                with contextlib.suppress(ValidationError):
+                    self.listed_orders = len(OrderList.model_validate(result.data).orders)
             return self.observe(result, arguments), result.is_error
 
         definition = ToolDefinition(

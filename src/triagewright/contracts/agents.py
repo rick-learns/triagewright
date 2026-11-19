@@ -74,6 +74,8 @@ class TriageResult(Contract):
     needs_human: bool
     needs_human_reasons: list[EscalationReason] = []
     injection_suspected: bool = False
+    # The customer asks for money back now, under any category; code then runs the refund gate.
+    refund_requested: bool = False
     missing_info: list[str] = []  # what we must ask the customer for
     confidence: Confidence
 

@@ -61,6 +61,7 @@ def triage(
     needs_human: bool = False,
     reasons: Sequence[str] = (),
     injection: bool = False,
+    refund_requested: bool = False,
 ) -> ModelResponse:
     return submit(
         "triage",
@@ -71,6 +72,7 @@ def triage(
             "needs_human": needs_human,
             "needs_human_reasons": list(reasons),
             "injection_suspected": injection,
+            "refund_requested": refund_requested,
             "confidence": 0.9,
         },
     )

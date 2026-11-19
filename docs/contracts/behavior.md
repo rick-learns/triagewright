@@ -61,6 +61,15 @@ apply, the first in this order wins, and it alone sets the outcome:
 No reason means eligible: the refund goes to approval (`pending_approval`).
 Returned orders follow the same rule as delivered ones.
 
+Code, not the model, owns every refund outcome. A refund ask is triage's
+`refund_request` category or its `refund_requested` flag (a money-back ask under
+another category; refund-policy questions and status checks on earlier refunds
+are not asks). For a signed-in customer, the reply must follow an `issue_refund`
+proposal, so the table above decides. The only proposal-free replies are written
+by code: a sign-in request when the ticket has no customer, or "which order?"
+when the ticket names no order and the customer doesn't have exactly one. A
+flagged ticket with a refund ask goes to security.
+
 Worked example: `cus_ivo09` (closed) asks to refund `ord_i9001` (delivered
 86 days ago). Both `account_inactive` and `outside_window` apply.
 `account_inactive` wins, so the ticket is escalated to tier2, not refused.

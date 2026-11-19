@@ -8,6 +8,8 @@ untrusted content before the coordinator records it.
 
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic import Field, ValidationError
 
 from triagewright.agent import prompts
@@ -147,6 +149,31 @@ def _propose_tool(run: RequestRun) -> LocalTool:
     definition = ToolDefinition(
         name="propose_action",
         description=prompts.PROPOSE_DESCRIPTION,
-        input_schema=ProposedAction.model_json_schema(),
+        input_schema=_PROPOSE_SCHEMA,
     )
     return LocalTool(definition=definition, handler=handler)
+
+
+def _propose_schema() -> JsonObject:
+    """``ProposedAction`` with ``arguments`` narrowed to what each proposable tool takes.
+
+    The model's own schema types ``arguments`` as recursive JSON, which Gemini rejects
+    with HTTP 400 ("ref loops are only supported if they include optional ..."). The
+    handler still validates against ``ProposedAction`` and ``proposal_model``.
+    """
+    tools = sorted(t.value for t in IRREVERSIBLE_TOOLS)
+    shapes = [proposal_model(ToolName(t)).model_json_schema() for t in tools]
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "tool": {"type": "string", "enum": tools},
+            "arguments": shapes[0] if len(shapes) == 1 else {"anyOf": shapes},
+            "rationale": ProposedAction.model_json_schema()["properties"]["rationale"],
+        },
+        "required": ["tool", "arguments", "rationale"],
+    }
+    return cast(JsonObject, schema)
+
+
+_PROPOSE_SCHEMA = _propose_schema()
