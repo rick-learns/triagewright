@@ -92,10 +92,13 @@ async def test_fake_retriever_ranks_and_filters() -> None:
     results = await retriever.retrieve(RetrievalQuery(text="account locked password reset", k=3))
     assert results and results[0].chunk.doc_id == "kb_account_lockout"
     assert [r.rank for r in results] == list(range(1, len(results) + 1))
+    text = "warranty repair defective refund"
+    unfiltered = await retriever.retrieve(RetrievalQuery(text=text))
+    assert any("warranty" not in r.chunk.tags for r in unfiltered)  # the filter has work to do
     filtered = await retriever.retrieve(
-        RetrievalQuery(text="refund", filters=MetadataFilter(tags_any=["warranty"]))
+        RetrievalQuery(text=text, filters=MetadataFilter(tags_any=["warranty"]))
     )
-    assert all("warranty" in r.chunk.tags for r in filtered)
+    assert filtered and all("warranty" in r.chunk.tags for r in filtered)
 
 
 def test_passthrough_guardrails_gate_irreversible_tools() -> None:

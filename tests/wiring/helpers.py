@@ -5,10 +5,21 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from mcp import Client
+
 from triagewright import wiring
 from triagewright.config import Settings
 from triagewright.contracts.llm import ModelRequest, ModelResponse
-from triagewright.testing import ScriptedModelClient, sample_ticket
+from triagewright.mcp_server import McpToolGateway, MockSystems, ToolService, build_server
+from triagewright.testing import (
+    TEST_APPROVAL_KEY,
+    FakeRetriever,
+    ScriptedModelClient,
+    sample_ticket,
+    seed_as_of,
+    seed_kb,
+    seed_world,
+)
 
 REFUND_TICKET = sample_ticket("Please refund $50.00 for order ord_a1001, it arrived broken.")
 
@@ -21,6 +32,17 @@ def settings(tmp_path: Path, **overrides: object) -> Settings:
         trace_exporter="none",
         **overrides,  # type: ignore[arg-type]
     )
+
+
+def memory_gateway() -> McpToolGateway:
+    """A real MCP client session over an in-memory server and world."""
+    service = ToolService(
+        MockSystems.in_memory(seed_world()),
+        as_of=seed_as_of(),
+        approval_key=TEST_APPROVAL_KEY,
+        retriever=FakeRetriever(seed_kb()),
+    )
+    return McpToolGateway(Client(build_server(service), mode="legacy"))
 
 
 class Scripted:

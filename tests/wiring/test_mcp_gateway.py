@@ -14,23 +14,13 @@ import pytest
 from mcp import Client
 
 from tests.mcp_server.conftest import ctx
-from tests.wiring.helpers import settings
+from tests.wiring.helpers import memory_gateway, settings
 from triagewright import wiring
 from triagewright.contracts.tools import ErrorCategory, ToolName, ToolResult
 from triagewright.mcp_server import McpToolGateway, MockSystems, ToolService, build_server
-from triagewright.testing import TEST_APPROVAL_KEY, FakeRetriever, seed_as_of, seed_kb, seed_world
+from triagewright.testing import TEST_APPROVAL_KEY, seed_as_of, seed_world
 
 pytestmark = pytest.mark.anyio
-
-
-def memory_gateway() -> McpToolGateway:
-    service = ToolService(
-        MockSystems.in_memory(seed_world()),
-        as_of=seed_as_of(),
-        approval_key=TEST_APPROVAL_KEY,
-        retriever=FakeRetriever(seed_kb()),
-    )
-    return McpToolGateway(Client(build_server(service), mode="legacy"))
 
 
 def test_background_gateway_serves_calls_from_separate_event_loops() -> None:
@@ -92,14 +82,14 @@ def test_a_stalled_connect_times_out_retries_and_does_not_hang_close() -> None:
         opens.append(1)
         return cast(McpToolGateway, _StalledGateway())
 
-    gateway = wiring.BackgroundMcpGateway(open_gateway, connect_timeout_s=0.1, close_timeout_s=1)
+    gateway = wiring.BackgroundMcpGateway(open_gateway, connect_timeout_s=0.1, close_timeout_s=30)
     for _ in range(2):
         result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
         assert result.error and result.error.category is ErrorCategory.TRANSIENT
     assert len(opens) == 2  # the stalled attempt was abandoned, not reused
     started = time.monotonic()
     gateway.close()
-    assert time.monotonic() - started < 1
+    assert time.monotonic() - started < 15  # a hang waits out the 30 s close timeout
 
 
 class _BlockingService(ToolService):
@@ -153,7 +143,11 @@ def _mcp_children() -> list[int]:
 @pytest.mark.skipif(not Path("/proc").is_dir(), reason="needs /proc to find the child")
 def test_a_killed_stdio_server_is_replaced_on_the_next_calls(tmp_path: Path) -> None:
     stdio = settings(tmp_path, mcp_transport="stdio", approval_key="k" * 32)
-    gateway = wiring.BackgroundMcpGateway(lambda: McpToolGateway.from_settings(stdio))
+    gateway = wiring.BackgroundMcpGateway(
+        lambda: McpToolGateway.from_settings(stdio),
+        connect_timeout_s=60,  # a loaded machine can take over 10 s to start the server
+        close_timeout_s=30,
+    )
 
     def get() -> Any:
         return asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
@@ -227,6 +221,9 @@ class _HangingCallGateway:
 
     lost = False
 
+    def __init__(self) -> None:
+        self.called = threading.Event()
+
     async def __aenter__(self) -> _HangingCallGateway:
         return self
 
@@ -237,18 +234,20 @@ class _HangingCallGateway:
         await asyncio.sleep(3600)
 
     async def call(self, *args: object) -> ToolResult:
+        self.called.set()
         await asyncio.sleep(3600)
         raise AssertionError("unreachable")
 
 
 def test_a_call_cancelled_by_close_is_a_transient_result() -> None:
+    session = _HangingCallGateway()
     gateway = wiring.BackgroundMcpGateway(
-        lambda: cast(McpToolGateway, _HangingCallGateway()), close_timeout_s=0.2
+        lambda: cast(McpToolGateway, session), close_timeout_s=0.2
     )
 
     async def call_then_close() -> ToolResult:
         pending = asyncio.ensure_future(gateway.call(ToolName.GET_ORDER, {"order_id": "o"}, ctx()))
-        await asyncio.sleep(0.1)
+        assert await asyncio.to_thread(session.called.wait, 30)  # in flight in the session
         await asyncio.to_thread(gateway.close)
         return await pending
 

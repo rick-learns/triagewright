@@ -38,7 +38,7 @@ def _refund_scenario(
     if outcome is RefundOutcome.EXCEEDS_BALANCE:
         amount += rng.randint(5, 30) * 100
     elif outcome is RefundOutcome.ELIGIBLE and rng.random() < 0.3:
-        amount = max(100, amount // 2)
+        amount //= 2  # the cheapest regular item is 900 cents, so this never drops below 100
     return cid, order, amount
 
 

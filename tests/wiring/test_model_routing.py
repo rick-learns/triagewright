@@ -69,12 +69,12 @@ def test_every_client_a_process_builds_shares_one_pacer(tmp_path: Path) -> None:
     factory = wiring._model_factory(live, http)
     a = cast(wiring.RoleRouter, factory("case-a"))
     b = cast(wiring.RoleRouter, factory("case-b"))
-    pacers = {
-        id(cast(GeminiClient, r.clients.for_role(role))._limiter)
+    pacers = [
+        cast(GeminiClient, r.clients.for_role(role))._limiter
         for r in (a, b)
         for role in ("triage", "action")
-    }
-    assert len(pacers) == 1
+    ]
+    assert pacers[0] is not None and all(p is pacers[0] for p in pacers)
 
 
 def test_the_eval_judge_shares_the_cases_pacer(
