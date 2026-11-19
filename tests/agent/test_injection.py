@@ -273,7 +273,10 @@ async def test_flagged_tool_output_is_wrapped_as_data_and_goes_to_security() -> 
     assert response.triage is not None and response.triage.injection_suspected
     # Planted in a record, not the customer's ask: an attack on the system, so a human looks.
     assert response.status is ResolutionStatus.ESCALATED
-    assert s.escalation_args()["queue"] == "security"
+    args = s.escalation_args()
+    assert args["queue"] == "security"
+    assert "planted in get_order" in str(args["summary"])
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)  # no model words go out
 
 
 async def test_flag_from_the_last_screen_blocks_an_earlier_proposal() -> None:
@@ -305,4 +308,7 @@ async def test_kb_text_is_screened_and_untrusted_docs_are_not_cited() -> None:
     assert response.citations == []
     assert response.triage is not None and response.triage.injection_suspected
     assert (ContentSource.KB_DOCUMENT, f"{TIPS.title}\n{TIPS.text}") in guard.screened
-    assert s.escalation_args()["queue"] == "security"
+    args = s.escalation_args()
+    assert args["queue"] == "security"
+    assert f"possible prompt injection; planted in {TIPS.chunk_id}" in str(args["summary"])
+    assert "pair it" not in response.reply

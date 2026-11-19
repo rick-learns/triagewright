@@ -13,11 +13,22 @@ from triagewright.contracts.agents import (
     FinalResponse,
     LoopStop,
     ResolutionStatus,
+    TicketCategory,
 )
 from triagewright.contracts.policy import REFUND_OUTCOME
 from triagewright.contracts.rag import Citation
-from triagewright.contracts.tools import CreateEscalationInput, RefundReason, ToolName
-from triagewright.contracts.world import EscalationQueue, EscalationReason, Priority
+from triagewright.contracts.tools import (
+    CreateEscalationInput,
+    GetCustomerInput,
+    RefundReason,
+    ToolName,
+)
+from triagewright.contracts.world import (
+    CustomerStatus,
+    EscalationQueue,
+    EscalationReason,
+    Priority,
+)
 
 
 class Routing(Replies, RefundRules):
@@ -41,6 +52,11 @@ class Routing(Replies, RefundRules):
                     EscalationReason.ACCOUNT_INACTIVE if inactive else EscalationReason.POLICY_LIMIT
                 )
                 why.append(f"refund blocked by policy ({winning})")
+        if _inactive_account(run):
+            # The suspended or closed row wins over self-serve lockout and the security row.
+            queue = queue or EscalationQueue.TIER2
+            reasons.append(EscalationReason.ACCOUNT_INACTIVE)
+            why.append(f"account is {run.customer_status}")
         reviewed = (
             review is not None
             and review.escalate
@@ -65,11 +81,16 @@ class Routing(Replies, RefundRules):
                 and EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
             )
         )
-        handoff = queue is not None or run.irreversible_requested or forced_write or run.planted
-        if run.injection and handoff:
+        other = queue is not None or run.irreversible_requested or forced_write
+        if run.injection and (other or run.planted_in):
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
-            why.insert(0, "possible prompt injection alongside a write or handoff request")
+            text = "possible prompt injection"
+            if other:
+                text += " alongside a write or handoff request"
+            if run.planted_in:
+                text += f"; planted in {', '.join(dict.fromkeys(run.planted_in))}"
+            why.insert(0, text)
         if queue is None:
             return None
         given = review.handoff_summary if review is not None and reviewed else ""
@@ -99,6 +120,9 @@ class Routing(Replies, RefundRules):
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
         if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
             reply = self._refund_reply(reply, decision)
+        elif run.planted_in and decision is not None:
+            # The models read the planted text, so none of their words go out.
+            reply = prompts.FALLBACK_REPLY
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
@@ -162,6 +186,24 @@ class Routing(Replies, RefundRules):
         except Fallback:
             return prompts.LOGGED_FOR_REVIEW
         return prompts.LOGGED_FOR_REVIEW if result.is_error else prompts.handed_off(decision.queue)
+
+
+def _inactive_account(run: RequestRun) -> bool:
+    account = run.triage is not None and run.triage.category is TicketCategory.ACCOUNT_ACCESS
+    inactive = (CustomerStatus.SUSPENDED, CustomerStatus.CLOSED)
+    return account and run.customer_status in inactive
+
+
+async def _check_account(run: RequestRun) -> None:
+    """Read the customer's status for an account-access ticket if no model did: only
+    ``get_customer`` shows a suspension, and it decides the queue."""
+    assert run.triage is not None
+    customer = run.ticket.customer_id
+    if run.triage.category is not TicketCategory.ACCOUNT_ACCESS or customer is None:
+        return
+    if run.customer_status is None:
+        args = GetCustomerInput(customer_id=customer).model_dump(mode="json")
+        run.observe(await run.call_tool(ToolName.GET_CUSTOMER, args, "coordinator"), args)
 
 
 def _left_to_code(run: RequestRun, review: EscalationDecision, *, refusing: bool) -> bool:

@@ -51,7 +51,7 @@ from triagewright.agent.refunds import _settled as _settled
 from triagewright.agent.refunds import first_sentence as first_sentence
 from triagewright.agent.replies import _SUMMARY_MAX as _SUMMARY_MAX
 from triagewright.agent.replies import _money as _money
-from triagewright.agent.routing import Routing
+from triagewright.agent.routing import Routing, _check_account
 from triagewright.agent.routing import _left_to_code as _left_to_code
 from triagewright.agent.runtime import (
     Clock,
@@ -178,6 +178,7 @@ class Coordinator(Routing):
             run.ticket_flagged = run.ticket_flagged or run.triage.injection_suspected
             run.injection = run.injection or run.ticket_flagged
             final = self._own_refund_reply(run, await self._coordinate(run))
+            await _check_account(run)  # before the review, so the reviewer sees the status
             citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
             run.flagged_before_review = run.injection
             try:

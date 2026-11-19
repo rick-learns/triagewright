@@ -30,7 +30,7 @@ from triagewright.contracts.ports import (
 from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import KBHit, ToolName
-from triagewright.contracts.world import EscalationReason, Order
+from triagewright.contracts.world import CustomerStatus, EscalationReason, Order
 from triagewright.pacing import PacingRefusedError
 
 
@@ -52,7 +52,8 @@ class RunState:
     started: float
     injection: bool = False
     ticket_flagged: bool = False  # the ticket itself carries a suspected injection
-    planted: bool = False  # a tool result or KB page carries one (an attack, not the ask)
+    planted_in: list[str] = field(default_factory=list)  # flagged KB chunks and tool results
+    customer_status: CustomerStatus | None = None  # from the last get_customer
     flagged_before_review: bool = False  # code's own suspicion, before the reviewer's screen
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
@@ -104,8 +105,6 @@ class RunState:
             flagged = verdict.injection_suspected or verdict.decision is GuardrailDecision.BLOCK
             span.set_attribute("injection_suspected", flagged)
         self.injection = self.injection or flagged
-        if source in (ContentSource.TOOL_OUTPUT, ContentSource.KB_DOCUMENT):
-            self.planted = self.planted or flagged
         return flagged
 
     def models_triage(self) -> TriageResult:

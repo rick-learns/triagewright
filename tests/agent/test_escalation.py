@@ -172,3 +172,41 @@ async def test_reviewer_escalation_without_queue_or_reasons_gets_defaults() -> N
     args = s.escalation_args()
     assert (args["queue"], args["reason_codes"]) == ("tier1", ["low_confidence"])
     assert str(args["summary"]).startswith("Customer goal:")
+
+
+# ---- inactive accounts -----------------------------------------------------------
+
+
+async def test_a_locked_sign_in_on_a_suspended_account_goes_to_tier2() -> None:
+    """Only get_customer shows the suspension, so code reads it when no model did."""
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            call("get_account", {"customer_id": "cus_eli05"}),
+            finalize("Use the password reset link to unlock your account."),
+            review(escalate=True, queue="security", reasons=["account_security"]),
+        ]
+    )
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert [c.caller for c in s.calls(ToolName.GET_CUSTOMER)] == ["coordinator"]
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert args["queue"] == "tier2"
+    assert "account_inactive" in str(args["reason_codes"])
+    assert "account is suspended" in str(args["summary"])
+
+
+async def test_a_lockout_on_an_active_account_stays_self_serve() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            call("get_customer", {"customer_id": "cus_ava01"}),
+            finalize("Use the password reset link to unlock your account."),
+            review(),
+        ]
+    )
+    response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
+    assert len(s.calls(ToolName.GET_CUSTOMER)) == 1  # the model's read is reused
+    assert response.status is ResolutionStatus.RESOLVED
+    assert s.calls(ToolName.CREATE_ESCALATION) == []
