@@ -33,6 +33,7 @@ from triagewright.evals.judge import (
     judge_failure,
     judge_recordings,
 )
+from triagewright.pacing import CallBudget
 
 Mode = Literal["live", "replay", "stub"]
 
@@ -147,14 +148,18 @@ async def run_case(
     response: FinalResponse | None = None
     error: str | None = None
     started = time.perf_counter()
+    paced: list[float] = []
     try:
-        async with asyncio.timeout(timeout_s):
-            response = await runtime.resolver.resolve(case.ticket)
+        # Rate-limit waits don't count against the case timeout (see triagewright.pacing).
+        async with asyncio.timeout(timeout_s) as deadline:
+            with CallBudget(deadline, on_wait=paced.append).installed():
+                response = await runtime.resolver.resolve(case.ticket)
     except TimeoutError:
         error = f"timed out after {timeout_s:g}s"
     except Exception as exc:
         error = f"resolve failed: {exc!r}"
-    wall_ms = (time.perf_counter() - started) * 1000
+    # With no request metrics (a timeout), latency is wall time, less pacing as elsewhere.
+    wall_ms = max(time.perf_counter() - started - sum(paced), 0.0) * 1000
     if response is not None and response.mode != mode:
         error = f"mode mismatch: response is {response.mode}, run is {mode}"
     elif response is not None and mode != "stub":
@@ -183,10 +188,11 @@ async def run_case(
             try:
                 recordings = judge_recordings(judge.recordings_dir, case.id)
                 client = judge.factory(case_id=case.id, recordings=recordings)
-                async with asyncio.timeout(timeout_s):  # bounds the model call
-                    grade, judge_reply = await grade_rubric(
-                        client, case, response, model=judge.model
-                    )
+                async with asyncio.timeout(timeout_s) as deadline:  # bounds the model call
+                    with CallBudget(deadline).installed():
+                        grade, judge_reply = await grade_rubric(
+                            client, case, response, model=judge.model
+                        )
             except TimeoutError:
                 grade = judge_failure(f"judge timed out after {timeout_s:g}s")
             except Exception as exc:  # e.g. the factory can't open the recordings

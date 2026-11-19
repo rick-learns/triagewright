@@ -182,6 +182,9 @@ class LoopConfig(Contract):
     max_tokens: Annotated[int, Field(ge=1)] = 1024
     tool_retries: Annotated[int, Field(ge=0, le=5)] = 2  # retries of retryable tool errors
     retry_backoff_s: Annotated[float, Field(ge=0)] = 0.5  # base; evals use 0
+    # Total wait for model rate-limit slots per request. Pacing doesn't count against the
+    # timeouts above; a request that would wait longer hands off instead.
+    max_pacing_s: Annotated[float, Field(ge=0)] = 120.0
 
 
 class FinalResponse(Contract):

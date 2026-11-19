@@ -22,6 +22,7 @@ from triagewright.contracts.llm import Provider
 from triagewright.contracts.ports import ModelClient
 from triagewright.llm.errors import ModelConfigError
 from triagewright.llm.openai_compat import GeminiClient, OpenAICompatClient, OpenRouterClient
+from triagewright.llm.ratelimit import RateLimits
 from triagewright.llm.replay import RecordingClient, RecordingFile, ReplayClient, recording_path
 
 JUDGE_ROLE = "judge"
@@ -48,8 +49,12 @@ def build_model_clients(
     *,
     case_id: str | None = None,
     http_client: httpx.AsyncClient | None = None,
+    limits: RateLimits | None = None,
 ) -> ModelClients:
-    """Clients for every role. A passed ``http_client`` is the caller's to close."""
+    """Clients for every role. A passed ``http_client`` is the caller's to close.
+
+    ``limits`` defaults to the process-wide ``RateLimits.shared`` for the settings' quota.
+    """
     provider = settings.llm_provider
     models = settings.models()
     files: dict[bool, RecordingFile] = {}
@@ -76,7 +81,8 @@ def build_model_clients(
     http = http_client or httpx.AsyncClient(
         timeout=httpx.Timeout(settings.turn_timeout_s, connect=10.0)
     )
-    live = {role: _live_client(settings, model, http) for role, model in models.items()}
+    limits = limits or RateLimits.shared(settings.requests_per_minute(), quota=settings.quota_id())
+    live = {role: _live_client(settings, model, http, limits) for role, model in models.items()}
     clients: dict[str, ModelClient] = dict(live)
     if settings.record:
         clients = {
@@ -86,7 +92,9 @@ def build_model_clients(
     return ModelClients(clients=clients, models=models, _http=http if owned else None)
 
 
-def _live_client(settings: Settings, model: str, http: httpx.AsyncClient) -> OpenAICompatClient:
+def _live_client(
+    settings: Settings, model: str, http: httpx.AsyncClient, limits: RateLimits
+) -> OpenAICompatClient:
     cls: type[OpenAICompatClient]
     if settings.llm_provider is Provider.GEMINI:
         key, base_url, cls = settings.gemini_api_key, settings.gemini_base_url, GeminiClient
@@ -96,4 +104,10 @@ def _live_client(settings: Settings, model: str, http: httpx.AsyncClient) -> Ope
         cls, name = OpenRouterClient, "OPENROUTER_API_KEY"
     if key is None:
         raise ModelConfigError(f"{settings.llm_provider} needs {name}")
-    return cls(model=model, api_key=key.get_secret_value(), base_url=base_url, http_client=http)
+    return cls(
+        model=model,
+        api_key=key.get_secret_value(),
+        base_url=base_url,
+        http_client=http,
+        limiter=limits.for_model(model),
+    )

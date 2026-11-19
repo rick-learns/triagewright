@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -36,6 +37,8 @@ from triagewright.llm.openai_compat import (
     to_chat_request,
     tool_use_id,
 )
+from triagewright.llm.ratelimit import RateLimiter
+from triagewright.pacing import CallBudget
 
 pytestmark = pytest.mark.anyio
 
@@ -381,6 +384,76 @@ async def test_retry_budget_is_bounded_and_honors_retry_after() -> None:
         await gemini(handler, sleeps).complete(request())
     assert calls == 3 and sleeps.calls == [3.0, 3.0]
     assert info.value.retryable and info.value.status == 429 and info.value.retry_after_s == 3.0
+
+
+OK = {"role": "assistant", "content": "ok"}
+
+
+def gemini_quota_429(delay: str) -> httpx.Response:
+    # The shape Gemini's OpenAI-compatible endpoint returns: a list, details in the body.
+    details = [
+        {
+            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            "violations": [{"quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}],
+        },
+        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": delay},
+    ]
+    err = {"code": 429, "status": "RESOURCE_EXHAUSTED", "details": details}
+    return httpx.Response(429, json=[{"error": err}])
+
+
+async def test_gemini_retry_info_in_the_body_sets_the_delay() -> None:
+    sleeps = Sleeps()
+    responses = iter([gemini_quota_429("13s"), httpx.Response(200, json=chat(OK))])
+    response = await gemini(lambda req: next(responses), sleeps).complete(request())
+    assert response.stop_reason and sleeps.calls == [13.0]
+    with pytest.raises(ModelUnavailableError) as info:
+        await gemini(lambda req: gemini_quota_429("45.5s"), Sleeps()).complete(request())
+    assert info.value.retry_after_s == 45.5  # beyond the 30s cap: fail fast
+    sleeps = Sleeps()
+    odd = iter([gemini_quota_429("soon"), httpx.Response(200, json=chat(OK))])
+    await gemini(lambda req: next(odd), sleeps).complete(request())
+    assert sleeps.calls == [0.5]  # unparsable: the computed backoff
+
+
+async def test_a_limiter_paces_every_attempt() -> None:
+    clock = [0.0]
+
+    class AdvancingSleeps(Sleeps):
+        async def __call__(self, seconds: float) -> None:
+            await super().__call__(seconds)
+            clock[0] += seconds
+
+    sleeps = AdvancingSleeps()
+    limiter = RateLimiter(1, window_s=60, clock=lambda: clock[0], sleep=sleeps)
+    responses = iter([httpx.Response(503), httpx.Response(200, json=chat(OK))])
+    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: next(responses)))
+    client = GeminiClient(
+        model=GEMINI,
+        api_key=KEY,
+        base_url="https://gemini.test/v1beta/openai/",
+        http_client=http,
+        sleep=sleeps,
+        limiter=limiter,
+    )
+    response = await client.complete(request())
+    assert sleeps.calls == [0.5, 59.5]  # the backoff, then the retry waits for a slot
+    assert response.stop_reason is StopReason.END_TURN
+
+
+async def test_a_retry_that_cannot_fit_the_deadline_fails_at_once() -> None:
+    async def complete(timeout_s: float) -> list[float]:
+        sleeps = Sleeps()
+        responses = iter([gemini_quota_429("13s"), httpx.Response(200, json=chat(OK))])
+        client = gemini(lambda req: next(responses), sleeps)
+        async with asyncio.timeout(timeout_s) as deadline:
+            with CallBudget(deadline).installed():
+                await client.complete(request())
+        return sleeps.calls
+
+    with pytest.raises(ModelUnavailableError, match="HTTP 429"):
+        await complete(10)  # 13 s + another attempt don't fit in 10 s
+    assert await complete(20) == [13.0]
 
 
 async def test_retry_after_beyond_the_cap_fails_fast() -> None:

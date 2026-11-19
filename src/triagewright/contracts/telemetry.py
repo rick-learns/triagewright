@@ -2,7 +2,9 @@
 
 Definitions used everywhere (evals, API, report):
 
-- ``latency_ms`` (live): wall time from request start to ``FinalResponse`` ready.
+- ``latency_ms`` (live): wall time from request start to ``FinalResponse`` ready,
+  less ``paced_ms``, the time spent waiting for client-side rate-limit slots
+  (free-tier quotas). Pacing is queueing, so it is reported on its own.
 - ``latency_ms`` (replay): non-model wall time plus the *recorded* latency of
   each model call. ``estimated`` is then true. Live and replay numbers are
   never compared with each other: baselines and gates are per mode, and the
@@ -78,6 +80,7 @@ class ModelCallRecord(Contract):
     ttft_ms: Annotated[float, Field(ge=0)] | None = None
     latency_ms: Annotated[float, Field(ge=0)]
     stop_reason: StopReason
+    paced_ms: Annotated[float, Field(ge=0)] = 0.0
 
 
 class RequestMetrics(Contract):
@@ -90,4 +93,5 @@ class RequestMetrics(Contract):
     cost_usd: Annotated[float, Field(ge=0)] = 0.0
     ttft_ms: Annotated[float, Field(ge=0)] | None = None
     latency_ms: Annotated[float, Field(ge=0)] = 0.0
+    paced_ms: Annotated[float, Field(ge=0)] = 0.0  # rate-limit waits, excluded from latency_ms
     estimated: bool = False  # true in replay: latency and cost come from recordings

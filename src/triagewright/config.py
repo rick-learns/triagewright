@@ -9,10 +9,11 @@ Blank secrets count as unset.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -50,6 +51,10 @@ DEFAULT_MODELS[Provider.REPLAY] = DEFAULT_MODELS[Provider.GEMINI]
 _GEMINI_FREE = re.compile(
     r"(?!.*-latest$)(?:gemini-\d+(?:\.\d+)?-flash(?:-lite)?|gemma-\d+[a-z0-9.-]*)"
 )
+# Free-tier request quotas per model per minute: Gemini reports 15 for Flash-Lite in its 429
+# QuotaFailure (GenerateRequestsPerMinutePerProjectPerModel-FreeTier); OpenRouter's :free
+# models allow 20.
+FREE_TIER_RPM: dict[Provider, int] = {Provider.GEMINI: 15, Provider.OPENROUTER: 20}
 _GEMINI_FREE_PREVIEWS = frozenset({"gemini-3-flash-preview"})
 
 
@@ -88,6 +93,8 @@ class Settings(BaseSettings):
     model_action: str | None = None
     model_escalation: str | None = None
     model_judge: str | None = None
+    # Client-side pacing per model; unset uses the provider's free-tier quota, 0 turns it off.
+    llm_requests_per_minute: Annotated[int, Field(ge=0)] | None = None
 
     # ---- agent loop ----
     max_turns: int = 8
@@ -97,6 +104,7 @@ class Settings(BaseSettings):
     max_tokens: int = 1024
     tool_retries: int = 2
     retry_backoff_s: float = 0.5
+    max_pacing_s: float = 120.0
 
     # ---- policy ----
     refund_hard_limit_cents: int = 50_000
@@ -166,6 +174,7 @@ class Settings(BaseSettings):
             max_tokens=self.max_tokens,
             tool_retries=self.tool_retries,
             retry_backoff_s=self.retry_backoff_s,
+            max_pacing_s=self.max_pacing_s,
         )
 
     def policy_config(self) -> PolicyConfig:
@@ -174,6 +183,27 @@ class Settings(BaseSettings):
             refund_window_days=self.refund_window_days,
             max_refunds_per_customer_30d=self.max_refunds_per_customer_30d,
         )
+
+    def requests_per_minute(self) -> int | None:
+        """Requests per minute to pace each model to, or ``None`` for no pacing."""
+        if self.llm_requests_per_minute is not None:
+            return self.llm_requests_per_minute or None
+        return FREE_TIER_RPM.get(self.llm_provider)
+
+    def quota_id(self) -> str:
+        """Which provider quota live calls draw on: the provider, endpoint, and a hash of
+        the key (a key belongs to one project). Never logged; the key itself never leaves."""
+        if self.llm_provider is Provider.GEMINI:
+            key, url = self.gemini_api_key, self.gemini_base_url
+        elif self.llm_provider is Provider.OPENROUTER:
+            key, url = self.openrouter_api_key, self.openrouter_base_url
+        else:
+            return self.llm_provider.value
+        secret = key.get_secret_value() if key is not None else ""
+        digest = hashlib.sha256(secret.encode()).hexdigest()[:16]
+        # Normalized as the client builds its URL. Keys from one Gemini project share its
+        # quota but get separate windows here; set TW_LLM_REQUESTS_PER_MINUTE to split it.
+        return f"{self.llm_provider.value}:{url.rstrip('/')}:{digest}"
 
     def models(self) -> dict[str, str]:
         """Model id per purpose: the ``TW_MODEL_*`` override, else the provider default."""

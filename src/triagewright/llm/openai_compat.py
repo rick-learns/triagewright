@@ -78,6 +78,8 @@ from triagewright.llm.errors import (
     ModelResponseError,
     ModelUnavailableError,
 )
+from triagewright.llm.ratelimit import RateLimiter
+from triagewright.pacing import CALL_BUDGET
 
 log = logging.getLogger(__name__)
 
@@ -307,8 +309,9 @@ class OpenAICompatClient:
         http_client: httpx.AsyncClient,
         max_retries: int = 2,
         backoff_s: float = 0.5,
-        max_delay_s: float = 10.0,
+        max_delay_s: float = 30.0,
         sleep: Sleep = asyncio.sleep,
+        limiter: RateLimiter | None = None,
     ) -> None:
         if not is_free_model(self.provider, model):
             raise ModelConfigError(f"{model!r} is not a free {self.provider} model")
@@ -322,6 +325,7 @@ class OpenAICompatClient:
         self._backoff_s = backoff_s
         self._max_delay_s = max_delay_s
         self._sleep = sleep
+        self._limiter = limiter
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(model={self.model!r})"
@@ -331,13 +335,19 @@ class OpenAICompatClient:
             raise ModelConfigError(f"client for {self.model!r} got a request for {request.model!r}")
         body = self._wire_body(request)
         started = time.perf_counter()
+        paced_s = 0.0
         attempt = 0
         while True:
+            if self._limiter is not None:
+                waited = await self._limiter.acquire()
+                paced_s += waited
+                if waited > 0:
+                    log.info("%s %s paced %.2fs", self.provider, self.model, waited)
             try:
                 data = await self._post(body)
             except ModelUnavailableError as exc:
                 delay = self._delay(attempt, exc.retry_after_s)
-                if attempt >= self._max_retries or delay is None:
+                if attempt >= self._max_retries or delay is None or not _fits(delay):
                     raise
                 attempt += 1
                 log.warning(
@@ -351,7 +361,7 @@ class OpenAICompatClient:
                 )
                 await self._sleep(delay)
                 continue
-            latency_ms = (time.perf_counter() - started) * 1000
+            latency_ms = max(time.perf_counter() - started - paced_s, 0.0) * 1000
             response = from_chat_response(
                 data, request=request, provider=self.provider, latency_ms=latency_ms
             )
@@ -397,6 +407,36 @@ class OpenAICompatClient:
         raise _status_error(where, status, data, resp.headers.get("retry-after"))
 
 
+# The least time worth leaving a retry after its backoff.
+MIN_ATTEMPT_S = 2.0
+
+
+def _fits(delay: float) -> bool:
+    """Whether a retry after ``delay`` still leaves an attempt's time before the deadline."""
+    budget = CALL_BUDGET.get()
+    deadline = budget.deadline() if budget is not None else None
+    if deadline is None:
+        return True
+    return asyncio.get_running_loop().time() + delay + MIN_ATTEMPT_S <= deadline
+
+
+_DURATION = re.compile(r"(\d+(?:\.\d+)?)s")
+
+
+def _retry_info_seconds(err: Any) -> float | None:
+    """Gemini's ``google.rpc.RetryInfo`` delay ("13s") from an error body, if any.
+
+    Its 429s carry the delay in the body, not in a ``Retry-After`` header.
+    """
+    details = err.get("details") if isinstance(err, dict) else None
+    for detail in details if isinstance(details, list) else []:
+        if isinstance(detail, dict) and str(detail.get("@type", "")).endswith("rpc.RetryInfo"):
+            match = _DURATION.fullmatch(str(detail.get("retryDelay", "")))
+            if match:
+                return float(match.group(1))
+    return None
+
+
 def _json_or_none(resp: httpx.Response) -> Any:
     try:
         return resp.json()
@@ -412,9 +452,10 @@ def _status_error(where: str, status: int, data: Any, retry_after: str | None) -
     detail = f" {code}" if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else ""
     message = f"{where}: HTTP {status}{detail}"
     if status in RETRYABLE_STATUS:
-        return ModelUnavailableError(
-            message, status=status, retry_after_s=retry_after_seconds(retry_after)
-        )
+        wait = retry_after_seconds(retry_after)
+        if wait is None:
+            wait = _retry_info_seconds(err)
+        return ModelUnavailableError(message, status=status, retry_after_s=wait)
     if status in (401, 403):
         return ModelAuthError(message, status=status)
     if 400 <= status < 500:
