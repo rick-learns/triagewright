@@ -1,26 +1,55 @@
-# Local stack. `podman compose up` (or `docker compose up`) starts the MCP server and the API.
-# `podman compose --profile tracing up` also starts Jaeger (UI on :16686).
+# Local stack: the MCP server and the API, from one image.
+#   cp .env.example .env    # then set TW_LLM_PROVIDER + its API key, and TW_APPROVAL_KEY
+#   podman compose up -d --build    # or: docker compose up -d --build
+# The API is on http://127.0.0.1:${TW_API_PORT:-8080}. The API refuses TW_LLM_PROVIDER=replay
+# (replay only serves eval-case recordings), so set gemini or openrouter.
+# `podman compose --profile tracing up` also starts Jaeger (UI on :16686); set
+# TW_TRACE_EXPORTER=otlp to send it spans.
+x-app: &app
+  image: localhost/triagewright:local
+  env_file: [{ path: .env, required: false }]
+  volumes: ["tw-var:/app/var"]  # SQLite: mock world + KB index (mcp), approvals (api); traces
+
+x-approval-key: &approval-key
+  TW_APPROVAL_KEY: ${TW_APPROVAL_KEY:?set TW_APPROVAL_KEY in .env (see .env.example)}
+
 services:
   mcp:
-    build: .
+    <<: *app
     command: ["triagewright-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8765"]
-    env_file: [{ path: .env, required: false }]
     environment:
-      TW_MCP_TRANSPORT: http  # so settings require TW_APPROVAL_KEY here too
+      <<: *approval-key
+      TW_MCP_TRANSPORT: http
     # Not published: only the api container reaches MCP, on the compose network.
-    volumes: ["tw-var:/app/var"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8765), 2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   api:
-    build: .
+    <<: *app
+    build: .  # the one build; mcp runs the same image
     command: ["triagewright-api"]
-    env_file: [{ path: .env, required: false }]
     environment:
+      <<: *approval-key
       TW_API_HOST: 0.0.0.0  # inside the container; the host port stays on 127.0.0.1
+      TW_API_PORT: "8080"
       TW_MCP_TRANSPORT: http
       TW_MCP_URL: http://mcp:8765/mcp
       TW_OTLP_ENDPOINT: http://jaeger:4318
-    ports: ["127.0.0.1:8080:8080"]
-    volumes: ["tw-var:/app/var"]
+      # Podman forwards the host's proxy variables; keep the stack's own traffic off the proxy,
+      # on top of the host's NO_PROXY.
+      NO_PROXY: ${NO_PROXY:-localhost},mcp,jaeger,127.0.0.1
+      no_proxy: ${NO_PROXY:-localhost},mcp,jaeger,127.0.0.1
+    ports: ["127.0.0.1:${TW_API_PORT:-8080}:8080"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on: [mcp]
 
   jaeger:

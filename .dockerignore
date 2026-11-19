@@ -1,11 +1,10 @@
-.git
-.venv
-.env
-var
+# Allowlist: the build sees only what the image needs, so .env, var/, .git, and caches never enter it.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!data/
+!config/
 **/__pycache__
-.mypy_cache
-.pytest_cache
-.ruff_cache
-tests
-evals
-docs
+**/*.pyc
