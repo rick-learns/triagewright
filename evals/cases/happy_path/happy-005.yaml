@@ -1,0 +1,33 @@
+id: happy-005
+category: happy_path
+title: Eligible full refund on a recent delivered order goes to approval
+ticket:
+  ticket_id: tkt_happy005
+  customer_id: cus_hal08
+  channel: email
+  subject: Refund for the speakers
+  body: >-
+    Hi, I bought two Pebble Speakers (order ord_h8001) and they arrived on
+    Friday, but they're too big for my shelf. I'd like a refund for the
+    full $118.00, please.
+  created_at: "2026-06-15T11:20:00Z"
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 11800
+  citations_any: [kb_refund_policy]
+  rubric: >-
+    Tells the customer the refund request for $118.00 is waiting for review by
+    a team member before it's issued. Doesn't say the money has already been
+    sent.
+tags: [refund, approval, citation]
+notes: >-
+  evaluate_refund(ord_h8001, 11800) at as_of is eligible with no reasons:
+  cus_hal08 is active; the order was delivered 2026-06-12, so the window ends
+  2026-07-12; 11800 equals the total with nothing refunded yet; and
+  refunds_last_30d is 0 (rf_h8003a on 2026-05-13 is 33 days old). Eligible
+  means issue_refund is proposed and stored as an approval, so the outcome
+  is pending_approval. That isn't an escalation, and issue_refund never
+  executes in-request.

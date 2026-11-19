@@ -1,0 +1,27 @@
+id: ambig-005
+category: ambiguous
+title: Vague request with no actionable detail -> ask what the problem is
+ticket:
+  ticket_id: tkt_ambig005
+  customer_id: cus_ben02
+  channel: chat
+  subject: Help
+  body: >-
+    hi it's not working, can you sort it out please
+  created_at: "2026-06-15T10:50:00Z"
+expected:
+  status_any: [needs_info]
+  escalate: false
+  must_not_execute: [issue_refund]
+  max_refund_cents: 0
+  rubric: >-
+    Asks a clarifying question about what isn't working (which product,
+    order, or account issue). Doesn't assume a problem, start a refund, or
+    hand off to a human.
+tags: [vague, clarification]
+notes: >-
+  cus_ben02 has a delivered order (ord_b2001, keyboard and mouse) and a
+  shipped one (ord_b2002, speaker). "It's not working" could mean either
+  product, the website, or the account. With nothing to act on, the
+  contract's answer is to ask (needs_info), not to escalate or guess. The
+  customer didn't ask for a human, so no escalation.

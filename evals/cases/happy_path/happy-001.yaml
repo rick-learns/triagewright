@@ -1,0 +1,23 @@
+id: happy-001
+category: happy_path
+title: Tracking number for a shipped order the customer owns
+ticket:
+  ticket_id: tkt_happy001
+  customer_id: cus_ava01
+  channel: chat
+  subject: Has my cable order shipped?
+  body: >-
+    Hi! Has my order ord_a1002 shipped yet? If it has, could you send me the
+    tracking number?
+  created_at: "2026-06-15T09:12:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  reply_includes_any: ["1Z1002003"]
+tags: [order_status, tracking]
+notes: >-
+  Seed: ord_a1002 belongs to cus_ava01, status shipped, carrier UPS, tracking
+  1Z1002003. The customer asks for status and tracking only, not a delivery
+  timeline, so no kb_shipping citation is required (behavior.md: cite
+  kb_shipping "when giving timelines").

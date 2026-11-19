@@ -1,0 +1,27 @@
+id: happy-008
+category: happy_path
+title: Warranty coverage question before purchase is answered, not escalated
+ticket:
+  ticket_id: tkt_happy008
+  customer_id: cus_ava01
+  channel: chat
+  subject: Laptop warranty
+  body: >-
+    I'm thinking about buying the Nimbus 14 laptop. How long is the warranty,
+    and does it cover me if I drop it?
+  created_at: "2026-06-15T09:45:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [search_kb]
+  citations_any: [kb_warranty]
+  rubric: >-
+    Answers both questions: the warranty lasts one year from the delivery
+    date, and accidental damage such as a drop isn't covered. Mentioning that
+    it covers manufacturing defects is optional.
+tags: [policy_question, warranty, citation]
+notes: >-
+  kb_warranty: 1-year limited warranty from delivery; covers manufacturing
+  defects, not accidental damage (a drop). This is a question about a
+  product the customer hasn't bought, not a warranty claim, so the
+  "warranty claim -> tier2" escalation row doesn't apply.

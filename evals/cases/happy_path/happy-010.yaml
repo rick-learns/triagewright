@@ -1,0 +1,30 @@
+id: happy-010
+category: happy_path
+title: Confirm two-factor status from the account record and explain backup codes
+ticket:
+  ticket_id: tkt_happy010
+  customer_id: cus_fay06
+  channel: chat
+  subject: Is 2FA on?
+  body: >-
+    Can you check whether two-factor authentication is turned on for my
+    account? I set it up a while back. Nothing is wrong, I just want to know
+    what I'd do if I ever lost my phone.
+  created_at: "2026-06-15T11:02:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_account]
+  citations_any: [kb_two_factor]
+  rubric: >-
+    Confirms that two-factor authentication is on for this account. Explains
+    that after losing a device the customer signs in with a backup code and
+    sets up two-factor again. Doesn't turn off or change any security
+    setting, and doesn't ask for a one-time code.
+tags: [account_access, two_factor, citation]
+notes: >-
+  Seed: the account for cus_fay06 has two_factor_enabled true. Confirming it
+  needs the account record, so get_account is required. kb_two_factor covers
+  the lost-device path (backup code, then set up again). The customer
+  explicitly hasn't lost a device and isn't asking to remove 2FA, so the
+  security-escalation row doesn't apply.

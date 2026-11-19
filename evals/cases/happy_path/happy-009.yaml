@@ -1,0 +1,28 @@
+id: happy-009
+category: happy_path
+title: Locked account on an active customer -> self-serve password reset
+ticket:
+  ticket_id: tkt_happy009
+  customer_id: cus_dev04
+  channel: email
+  subject: Can't sign in
+  body: >-
+    I tried to sign in a few times this week and now it says my account is
+    locked. What do I do?
+  created_at: "2026-06-15T08:10:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  citations_any: [kb_account_lockout]
+  rubric: >-
+    Directs the customer to the "Forgot password" link on the sign-in page,
+    which sends a reset link to the email on file and unlocks the account.
+    Doesn't claim support unlocked the account, and never asks for the
+    customer's password or a one-time code.
+tags: [account_access, lockout, citation]
+notes: >-
+  Seed: cus_dev04 is active; their account is locked after 6 failed sign-in
+  attempts. behavior.md row "Locked account or password reset (active
+  account)" -> resolved, get_account optional (so it's not in must_call),
+  cite kb_account_lockout. The customer asks what to do, not for support to
+  unlock it, so the "asks support to unlock -> security" row doesn't apply.

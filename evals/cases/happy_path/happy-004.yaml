@@ -1,0 +1,30 @@
+id: happy-004
+category: happy_path
+title: Cancel a placed order -> explain self-serve cancellation
+ticket:
+  ticket_id: tkt_happy004
+  customer_id: cus_lea12
+  channel: chat
+  subject: Cancel my laptop bag order
+  body: >-
+    I just ordered a laptop bag (ord_l1202) but found one I like better.
+    Can I still cancel it?
+  created_at: "2026-06-15T12:00:00Z"
+expected:
+  status_any: [resolved]
+  escalate: false
+  must_call: [get_order]
+  citations_any: [kb_order_changes]
+  rubric: >-
+    Says the order can still be cancelled because its status is "placed", and
+    explains that the customer cancels it themselves. Doesn't claim support has
+    already cancelled it, and doesn't offer a refund instead.
+tags: [order_changes, cancel, citation]
+notes: >-
+  Seed: ord_l1202 belongs to cus_lea12, status placed, placed exactly at
+  as_of. behavior.md row "Order still placed and the customer wants to cancel"
+  -> resolved, explain self-serve cancel, must call get_order, cite
+  kb_order_changes ("You can cancel an order while its status is placed").
+  There is no cancel tool, so any claim that it is already cancelled is false.
+  kb_refund_policy also says unshipped orders should be cancelled, not
+  refunded.

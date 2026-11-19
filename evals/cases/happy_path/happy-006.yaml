@@ -1,0 +1,34 @@
+id: happy-006
+category: happy_path
+title: Defective item two days after delivery -> refund pending approval, not warranty
+ticket:
+  ticket_id: tkt_happy006
+  customer_id: cus_jun10
+  channel: web
+  subject: Smartwatch stopped working
+  body: >-
+    My Pulse Smartwatch from order ord_j1001 arrived two days ago and it
+    already won't turn on, even after charging overnight. I'd like my
+    $199.00 back.
+  created_at: "2026-06-15T07:55:00Z"
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 19900
+  citations_any: [kb_refund_policy]
+  rubric: >-
+    Tells the customer a refund of $199.00 has been requested and is waiting
+    for a team member's review. Doesn't say the money has already been sent.
+tags: [refund, defective, approval, citation]
+notes: >-
+  Seed: ord_j1001 belongs to cus_jun10 (active), delivered 2026-06-13, total
+  19900, with no prior refunds for the customer. evaluate_refund(19900) is
+  eligible (window ends 2026-07-13), so the outcome is pending_approval.
+  kb_damaged_items: items that stop working within 30 days of delivery
+  qualify for a refund; after 30 days a defect follows the warranty claim
+  path instead. So this isn't the "warranty claim (> 30 days)" escalation row. It has no
+  safety signal (no heat, swelling, or burning smell). kb_damaged_items may
+  also be cited, but behavior.md requires kb_refund_policy for any refund
+  request.
