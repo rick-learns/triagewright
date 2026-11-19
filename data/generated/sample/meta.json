@@ -1,0 +1,20 @@
+{
+  "as_of": "2026-06-15T12:00:00Z",
+  "customers": 20,
+  "generator": "triagewright.datagen",
+  "mix": {
+    "account_access": 1,
+    "billing": 1,
+    "complaint": 1,
+    "order_status": 1,
+    "other": 1,
+    "policy_question": 1,
+    "product_question": 1,
+    "refund_request": 3,
+    "return": 1,
+    "shipping": 1
+  },
+  "note": "Synthetic data. Invented names, .invalid emails, 555-01xx phones.",
+  "seed": 7,
+  "tickets": 30
+}

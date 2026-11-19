@@ -1,0 +1,800 @@
+[
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00001",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Feather Mouse",
+        "quantity": 1,
+        "sku": "SYN-MSE-03",
+        "unit_price_cents": 3900
+      }
+    ],
+    "order_id": "ord_gen000001",
+    "placed_at": "2026-06-10T09:00:00Z",
+    "status": "cancelled",
+    "total_cents": 3900,
+    "tracking_number": null
+  },
+  {
+    "carrier": "UPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00001",
+    "delivered_at": "2026-04-03T12:00:00Z",
+    "items": [
+      {
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "sku": "SYN-SPK-05",
+        "unit_price_cents": 7900
+      }
+    ],
+    "order_id": "ord_gen000002",
+    "placed_at": "2026-03-31T12:00:00Z",
+    "status": "returned",
+    "total_cents": 7900,
+    "tracking_number": "SYNTRK00000002"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00002",
+    "delivered_at": "2026-04-28T12:00:00Z",
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000003",
+    "placed_at": "2026-04-24T12:00:00Z",
+    "status": "returned",
+    "total_cents": 27900,
+    "tracking_number": "SYNTRK00000003"
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00002",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Glowbud Desk Lamp",
+        "quantity": 1,
+        "sku": "SYN-LMP-04",
+        "unit_price_cents": 5400
+      }
+    ],
+    "order_id": "ord_gen000004",
+    "placed_at": "2026-06-13T18:00:00Z",
+    "status": "shipped",
+    "total_cents": 5400,
+    "tracking_number": "SYNTRK00000004"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00003",
+    "delivered_at": "2026-03-29T12:00:00Z",
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000005",
+    "placed_at": "2026-03-24T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 11900,
+    "tracking_number": "SYNTRK00000005"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00003",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pocket Charger",
+        "quantity": 1,
+        "sku": "SYN-CHG-02",
+        "unit_price_cents": 2400
+      }
+    ],
+    "order_id": "ord_gen000006",
+    "placed_at": "2026-06-11T21:00:00Z",
+    "status": "placed",
+    "total_cents": 2400,
+    "tracking_number": null
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00004",
+    "delivered_at": "2026-03-11T12:00:00Z",
+    "items": [
+      {
+        "name": "Feather Mouse",
+        "quantity": 1,
+        "sku": "SYN-MSE-03",
+        "unit_price_cents": 3900
+      }
+    ],
+    "order_id": "ord_gen000007",
+    "placed_at": "2026-03-08T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 3900,
+    "tracking_number": "SYNTRK00000007"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00005",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pocket Charger",
+        "quantity": 1,
+        "sku": "SYN-CHG-02",
+        "unit_price_cents": 2400
+      }
+    ],
+    "order_id": "ord_gen000008",
+    "placed_at": "2026-06-13T08:00:00Z",
+    "status": "shipped",
+    "total_cents": 2400,
+    "tracking_number": "SYNTRK00000008"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00006",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Hush Headphones",
+        "quantity": 1,
+        "sku": "SYN-HDP-07",
+        "unit_price_cents": 17900
+      }
+    ],
+    "order_id": "ord_gen000009",
+    "placed_at": "2026-06-11T09:00:00Z",
+    "status": "cancelled",
+    "total_cents": 17900,
+    "tracking_number": null
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00006",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Hush Headphones",
+        "quantity": 1,
+        "sku": "SYN-HDP-07",
+        "unit_price_cents": 17900
+      }
+    ],
+    "order_id": "ord_gen000010",
+    "placed_at": "2026-06-14T06:00:00Z",
+    "status": "cancelled",
+    "total_cents": 17900,
+    "tracking_number": null
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00007",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "sku": "SYN-SPK-05",
+        "unit_price_cents": 7900
+      }
+    ],
+    "order_id": "ord_gen000011",
+    "placed_at": "2026-06-11T17:00:00Z",
+    "status": "shipped",
+    "total_cents": 7900,
+    "tracking_number": "SYNTRK00000011"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00007",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pocket Charger",
+        "quantity": 1,
+        "sku": "SYN-CHG-02",
+        "unit_price_cents": 2400
+      }
+    ],
+    "order_id": "ord_gen000012",
+    "placed_at": "2026-06-13T21:00:00Z",
+    "status": "cancelled",
+    "total_cents": 2400,
+    "tracking_number": null
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00008",
+    "delivered_at": "2026-03-23T12:00:00Z",
+    "items": [
+      {
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "sku": "SYN-SPK-05",
+        "unit_price_cents": 7900
+      }
+    ],
+    "order_id": "ord_gen000013",
+    "placed_at": "2026-03-21T12:00:00Z",
+    "status": "returned",
+    "total_cents": 7900,
+    "tracking_number": "SYNTRK00000013"
+  },
+  {
+    "carrier": "UPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00009",
+    "delivered_at": "2026-04-29T12:00:00Z",
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000014",
+    "placed_at": "2026-04-27T12:00:00Z",
+    "status": "returned",
+    "total_cents": 27900,
+    "tracking_number": "SYNTRK00000014"
+  },
+  {
+    "carrier": "UPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00010",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000015",
+    "placed_at": "2026-06-09T17:00:00Z",
+    "status": "shipped",
+    "total_cents": 27900,
+    "tracking_number": "SYNTRK00000015"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00010",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000016",
+    "placed_at": "2026-06-13T15:00:00Z",
+    "status": "cancelled",
+    "total_cents": 11900,
+    "tracking_number": null
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00011",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Braided Cable 1m",
+        "quantity": 1,
+        "sku": "SYN-CBL-01",
+        "unit_price_cents": 900
+      }
+    ],
+    "order_id": "ord_gen000017",
+    "placed_at": "2026-06-12T18:00:00Z",
+    "status": "shipped",
+    "total_cents": 900,
+    "tracking_number": "SYNTRK00000017"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00012",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Glowbud Desk Lamp",
+        "quantity": 1,
+        "sku": "SYN-LMP-04",
+        "unit_price_cents": 5400
+      }
+    ],
+    "order_id": "ord_gen000018",
+    "placed_at": "2026-06-13T12:00:00Z",
+    "status": "cancelled",
+    "total_cents": 5400,
+    "tracking_number": null
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00012",
+    "delivered_at": "2026-05-28T12:00:00Z",
+    "items": [
+      {
+        "name": "Glowbud Desk Lamp",
+        "quantity": 1,
+        "sku": "SYN-LMP-04",
+        "unit_price_cents": 5400
+      }
+    ],
+    "order_id": "ord_gen000019",
+    "placed_at": "2026-05-24T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 5400,
+    "tracking_number": "SYNTRK00000019"
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00012",
+    "delivered_at": "2026-05-23T12:00:00Z",
+    "items": [
+      {
+        "name": "Feather Mouse",
+        "quantity": 1,
+        "sku": "SYN-MSE-03",
+        "unit_price_cents": 3900
+      }
+    ],
+    "order_id": "ord_gen000020",
+    "placed_at": "2026-05-21T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 3900,
+    "tracking_number": "SYNTRK00000020"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00013",
+    "delivered_at": "2026-05-03T12:00:00Z",
+    "items": [
+      {
+        "name": "Braided Cable 1m",
+        "quantity": 1,
+        "sku": "SYN-CBL-01",
+        "unit_price_cents": 900
+      }
+    ],
+    "order_id": "ord_gen000021",
+    "placed_at": "2026-04-27T12:00:00Z",
+    "status": "returned",
+    "total_cents": 900,
+    "tracking_number": "SYNTRK00000021"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00014",
+    "delivered_at": "2026-04-09T12:00:00Z",
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000022",
+    "placed_at": "2026-04-03T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 27900,
+    "tracking_number": "SYNTRK00000022"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00015",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pocket Charger",
+        "quantity": 1,
+        "sku": "SYN-CHG-02",
+        "unit_price_cents": 2400
+      }
+    ],
+    "order_id": "ord_gen000023",
+    "placed_at": "2026-06-12T15:00:00Z",
+    "status": "cancelled",
+    "total_cents": 2400,
+    "tracking_number": null
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00016",
+    "delivered_at": "2026-05-01T12:00:00Z",
+    "items": [
+      {
+        "name": "Hush Headphones",
+        "quantity": 1,
+        "sku": "SYN-HDP-07",
+        "unit_price_cents": 17900
+      }
+    ],
+    "order_id": "ord_gen000024",
+    "placed_at": "2026-04-26T12:00:00Z",
+    "status": "returned",
+    "total_cents": 17900,
+    "tracking_number": "SYNTRK00000024"
+  },
+  {
+    "carrier": "UPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00016",
+    "delivered_at": "2026-06-02T12:00:00Z",
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000025",
+    "placed_at": "2026-05-29T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 11900,
+    "tracking_number": "SYNTRK00000025"
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00017",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "sku": "SYN-SPK-05",
+        "unit_price_cents": 7900
+      }
+    ],
+    "order_id": "ord_gen000026",
+    "placed_at": "2026-06-12T23:00:00Z",
+    "status": "shipped",
+    "total_cents": 7900,
+    "tracking_number": "SYNTRK00000026"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00018",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Glowbud Desk Lamp",
+        "quantity": 1,
+        "sku": "SYN-LMP-04",
+        "unit_price_cents": 5400
+      }
+    ],
+    "order_id": "ord_gen000027",
+    "placed_at": "2026-06-14T04:00:00Z",
+    "status": "placed",
+    "total_cents": 5400,
+    "tracking_number": null
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00018",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000028",
+    "placed_at": "2026-06-14T02:00:00Z",
+    "status": "placed",
+    "total_cents": 27900,
+    "tracking_number": null
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00019",
+    "delivered_at": "2026-05-07T12:00:00Z",
+    "items": [
+      {
+        "name": "Glowbud Desk Lamp",
+        "quantity": 1,
+        "sku": "SYN-LMP-04",
+        "unit_price_cents": 5400
+      }
+    ],
+    "order_id": "ord_gen000029",
+    "placed_at": "2026-05-02T12:00:00Z",
+    "status": "returned",
+    "total_cents": 5400,
+    "tracking_number": "SYNTRK00000029"
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00019",
+    "delivered_at": "2026-03-03T12:00:00Z",
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000030",
+    "placed_at": "2026-03-01T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 11900,
+    "tracking_number": "SYNTRK00000030"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00019",
+    "delivered_at": "2026-06-04T12:00:00Z",
+    "items": [
+      {
+        "name": "Braided Cable 1m",
+        "quantity": 1,
+        "sku": "SYN-CBL-01",
+        "unit_price_cents": 900
+      }
+    ],
+    "order_id": "ord_gen000031",
+    "placed_at": "2026-06-02T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 900,
+    "tracking_number": "SYNTRK00000031"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00019",
+    "delivered_at": "2026-06-02T12:00:00Z",
+    "items": [
+      {
+        "name": "Hush Headphones",
+        "quantity": 1,
+        "sku": "SYN-HDP-07",
+        "unit_price_cents": 17900
+      }
+    ],
+    "order_id": "ord_gen000032",
+    "placed_at": "2026-05-28T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 17900,
+    "tracking_number": "SYNTRK00000032"
+  },
+  {
+    "carrier": "USPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00020",
+    "delivered_at": "2026-03-29T12:00:00Z",
+    "items": [
+      {
+        "name": "Pebble Speaker",
+        "quantity": 1,
+        "sku": "SYN-SPK-05",
+        "unit_price_cents": 7900
+      }
+    ],
+    "order_id": "ord_gen000033",
+    "placed_at": "2026-03-26T12:00:00Z",
+    "status": "returned",
+    "total_cents": 7900,
+    "tracking_number": "SYNTRK00000033"
+  },
+  {
+    "carrier": null,
+    "currency": "USD",
+    "customer_id": "cus_gen00020",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000034",
+    "placed_at": "2026-06-13T07:00:00Z",
+    "status": "placed",
+    "total_cents": 27900,
+    "tracking_number": null
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00014",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Clearview Monitor",
+        "quantity": 1,
+        "sku": "SYN-MON-08",
+        "unit_price_cents": 27900
+      }
+    ],
+    "order_id": "ord_gen000035",
+    "placed_at": "2026-06-13T03:00:00Z",
+    "status": "shipped",
+    "total_cents": 27900,
+    "tracking_number": "SYNTRK00000035"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00018",
+    "delivered_at": "2026-05-28T12:00:00Z",
+    "items": [
+      {
+        "name": "Braided Cable 1m",
+        "quantity": 1,
+        "sku": "SYN-CBL-01",
+        "unit_price_cents": 900
+      }
+    ],
+    "order_id": "ord_gen000036",
+    "placed_at": "2026-05-26T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 900,
+    "tracking_number": "SYNTRK00000036"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00014",
+    "delivered_at": "2026-05-25T12:00:00Z",
+    "items": [
+      {
+        "name": "Nimbus Air Laptop",
+        "quantity": 1,
+        "sku": "SYN-LAP-10",
+        "unit_price_cents": 89900
+      }
+    ],
+    "order_id": "ord_gen000037",
+    "placed_at": "2026-05-21T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 89900,
+    "tracking_number": "SYNTRK00000037"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00012",
+    "delivered_at": "2026-05-31T12:00:00Z",
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000038",
+    "placed_at": "2026-05-26T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 11900,
+    "tracking_number": "SYNTRK00000038"
+  },
+  {
+    "carrier": "DHL",
+    "currency": "USD",
+    "customer_id": "cus_gen00014",
+    "delivered_at": "2026-06-01T12:00:00Z",
+    "items": [
+      {
+        "name": "Slate Tablet",
+        "quantity": 1,
+        "sku": "SYN-TAB-09",
+        "unit_price_cents": 39900
+      }
+    ],
+    "order_id": "ord_gen000039",
+    "placed_at": "2026-05-29T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 39900,
+    "tracking_number": "SYNTRK00000039"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00017",
+    "delivered_at": "2026-06-07T12:00:00Z",
+    "items": [
+      {
+        "name": "Pocket Charger",
+        "quantity": 1,
+        "sku": "SYN-CHG-02",
+        "unit_price_cents": 2400
+      }
+    ],
+    "order_id": "ord_gen000040",
+    "placed_at": "2026-06-04T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 2400,
+    "tracking_number": "SYNTRK00000040"
+  },
+  {
+    "carrier": "FedEx",
+    "currency": "USD",
+    "customer_id": "cus_gen00008",
+    "delivered_at": "2026-04-27T12:00:00Z",
+    "items": [
+      {
+        "name": "Braided Cable 1m",
+        "quantity": 1,
+        "sku": "SYN-CBL-01",
+        "unit_price_cents": 900
+      }
+    ],
+    "order_id": "ord_gen000041",
+    "placed_at": "2026-04-23T12:00:00Z",
+    "status": "delivered",
+    "total_cents": 900,
+    "tracking_number": "SYNTRK00000041"
+  },
+  {
+    "carrier": "UPS",
+    "currency": "USD",
+    "customer_id": "cus_gen00008",
+    "delivered_at": null,
+    "items": [
+      {
+        "name": "Quietkey Keyboard",
+        "quantity": 1,
+        "sku": "SYN-KBD-06",
+        "unit_price_cents": 11900
+      }
+    ],
+    "order_id": "ord_gen000042",
+    "placed_at": "2026-06-12T21:00:00Z",
+    "status": "shipped",
+    "total_cents": 11900,
+    "tracking_number": "SYNTRK00000042"
+  }
+]
