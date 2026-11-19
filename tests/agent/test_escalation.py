@@ -12,6 +12,7 @@ from tests.agent.helpers import (
     refund_ticket,
     review,
     stack,
+    text,
     triage,
 )
 from triagewright.agent import prompts
@@ -21,6 +22,7 @@ from triagewright.contracts.agents import (
     ResolutionStatus,
 )
 from triagewright.contracts.evals import ToolFault
+from triagewright.contracts.llm import StopReason
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.testing import (
     sample_ticket,
@@ -249,3 +251,31 @@ async def test_an_unreadable_account_status_is_a_tool_failure(category: ErrorCat
     args = s.escalation_args()
     assert args["queue"] == "tier1"
     assert "tool_failure" in str(args["reason_codes"])
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)  # the draft can't be confirmed
+
+
+async def test_a_provider_refusal_still_routes_a_suspended_account_to_tier2() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ]
+    )
+    ticket = sample_ticket("My account is locked. How do I get back in?", customer_id="cus_eli05")
+    response = await s.resolve(ticket)
+    assert response.stop is LoopStop.REFUSAL
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["queue"] == "tier2"
+    assert response.reply.startswith(prompts.FALLBACK_REPLY)
+
+
+async def test_a_provider_refusal_on_an_active_account_stays_refused() -> None:
+    s = stack(
+        [
+            triage("account_access", intent="Get back into a locked account"),
+            text("I can't help with that.", StopReason.REFUSAL),
+        ]
+    )
+    response = await s.resolve(sample_ticket("My account is locked. How do I get back in?"))
+    assert response.status is ResolutionStatus.REFUSED
+    assert s.calls(ToolName.CREATE_ESCALATION) == []

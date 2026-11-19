@@ -28,6 +28,7 @@ redaction), and ``routing`` (escalation and status). :class:`Coordinator` runs t
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Mapping
 from typing import Literal
@@ -189,6 +190,9 @@ class Coordinator(Routing):
                 ) from None
             await self._propose_deferred(run)
         except Refused:
+            # A provider refusal isn't a scope decision: the account's status still routes.
+            with contextlib.suppress(Fallback):
+                await _check_account(run)
             return await self._respond(
                 run, prompts.REFUSAL_REPLY, ResolutionStatus.REFUSED, [], None, LoopStop.REFUSAL
             )

@@ -116,9 +116,11 @@ class Routing(Replies, RefundRules):
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
         if run.triage is not None and (_refund_requested(run) or _refund_proposed(run)):
             reply = self._refund_reply(reply, decision)
-        elif decision is not None and (run.planted_in or _inactive_account(run)):
+        elif decision is not None and (
+            run.planted_in or _inactive_account(run) or ToolName.GET_CUSTOMER in run.tool_failures
+        ):
             # The models read the planted text, or drafted a self-serve answer the account's
-            # status rules out, so none of their words go out.
+            # status rules out or that its status can't confirm, so none of their words go out.
             reply = prompts.FALLBACK_REPLY
         if decision is not None:
             status = ResolutionStatus.ESCALATED
@@ -198,9 +200,9 @@ def _inactive_account(run: RequestRun) -> bool:
 async def _check_account(run: RequestRun) -> None:
     """Read the customer's status for an account-access ticket if no model did: only
     ``get_customer`` shows a suspension, and it decides the queue."""
-    assert run.triage is not None
     customer = run.ticket.customer_id
-    if run.triage.category is not TicketCategory.ACCOUNT_ACCESS or customer is None:
+    account = run.triage is not None and run.triage.category is TicketCategory.ACCOUNT_ACCESS
+    if not account or customer is None:
         return
     if run.customer_status is None:
         args = GetCustomerInput(customer_id=customer).model_dump(mode="json")
