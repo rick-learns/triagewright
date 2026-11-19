@@ -8,7 +8,7 @@ Modules: ``aggregate`` (summary, category stats, judge usage), ``baseline`` (the
 per-mode gate), ``results`` (reading a results JSONL), ``targets`` (release
 targets and review status), ``failures`` (failing checks with their
 expectations), ``model`` (:class:`EvalReport` and :func:`build_report`), and
-``markdown`` (rendering). Every name stays importable from this package.
+``markdown`` (rendering). Every name the old ``report.py`` defined stays importable here.
 """
 
 from __future__ import annotations

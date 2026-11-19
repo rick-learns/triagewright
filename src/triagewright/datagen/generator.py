@@ -10,7 +10,7 @@ refund policy outcome; the intended outcome of each ticket goes into an
 :func:`generate` lives here; the pieces it uses are in ``models`` (clock, policy,
 output records), ``mix`` (category weights), ``builder`` (the world), ``refunds``
 (refund scenarios), ``templates`` (ticket text), and ``writer`` (:func:`write`).
-Every name stays importable from this module.
+Every name this module defined before the split stays importable from it.
 """
 
 from __future__ import annotations
