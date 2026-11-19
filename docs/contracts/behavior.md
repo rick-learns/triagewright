@@ -70,8 +70,9 @@ Returned orders follow the same rule as delivered ones.
 
 Code, not the model, owns every refund outcome. A refund ask is triage's
 `refund_request` category or its `refund_requested` flag (a money-back ask under
-another category; refund-policy questions and status checks on earlier refunds
-are not asks). For a signed-in customer, the reply must follow an `issue_refund`
+another category; refund-policy questions, status checks on earlier refunds,
+and double charges or billing disputes are not asks: billing investigates
+those, per the escalation table below). For a signed-in customer, the reply must follow an `issue_refund`
 proposal, so the table above decides, and code states the outcome. Once a
 refund is proposed (on any ticket, whatever triage called it), code writes the
 reply and the refund-policy citation itself, looking the policy up once after
