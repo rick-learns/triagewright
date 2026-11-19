@@ -243,7 +243,6 @@ def test_multi_tool_response_round_trips_into_the_next_request() -> None:
         ("stop", False, StopReason.END_TURN),
         ("stop", True, StopReason.TOOL_USE),  # some providers say "stop" for tool calls
         ("tool_calls", True, StopReason.TOOL_USE),
-        ("function_call", True, StopReason.TOOL_USE),
         ("length", False, StopReason.MAX_TOKENS),
         ("length", True, StopReason.MAX_TOKENS),
         ("content_filter", False, StopReason.REFUSAL),
@@ -257,6 +256,20 @@ def test_stop_reason_mapping(finish: str, tool_calls: bool, stop: StopReason) ->
         chat(message, finish), request=request(), provider=Provider.GEMINI, latency_ms=0
     )
     assert resp.stop_reason is stop
+
+
+def test_length_drops_cut_off_tool_calls() -> None:
+    req = request(tools=[ORDER_TOOL])
+    calls = [
+        {"id": "a", "function": {"name": "get_order", "arguments": '{"order_id":"ord_a1b2"}'}},
+        {"id": "b", "function": {"name": "get_order", "arguments": '{"order_id":"ord_'}},
+    ]
+    body = chat({"content": "", "tool_calls": calls}, finish="length")
+    resp = from_chat_response(body, request=req, provider=Provider.GEMINI, latency_ms=0)
+    assert resp.stop_reason is StopReason.MAX_TOKENS
+    assert resp.content == [
+        ToolUseBlock(id=tool_use_id(req, 0), name="get_order", input={"order_id": "ord_a1b2"})
+    ]
 
 
 @pytest.mark.parametrize(
@@ -278,16 +291,21 @@ def test_malformed_responses_raise(body: dict[str, Any]) -> None:
 
 def test_usage_follows_anthropic_semantics_and_cost_only_when_reported() -> None:
     usage = {
-        "prompt_tokens": 120,
+        "prompt_tokens": 170,
         "completion_tokens": 30,
-        "prompt_tokens_details": {"cached_tokens": 100},
+        "prompt_tokens_details": {"cached_tokens": 100, "cache_write_tokens": 50},
         "cost": 0,
     }
     message = {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}
     resp = from_chat_response(
         chat(message, usage=usage), request=request(), provider=Provider.OPENROUTER, latency_ms=0
     )
-    assert resp.usage == Usage(input_tokens=20, output_tokens=30, cache_read_input_tokens=100)
+    assert resp.usage == Usage(
+        input_tokens=20,
+        output_tokens=30,
+        cache_read_input_tokens=100,
+        cache_creation_input_tokens=50,
+    )
     assert resp.provider_cost_usd == 0.0
     assert resp.content == [TextBlock(text="hi")]
     bare = from_chat_response(
@@ -346,9 +364,10 @@ async def test_retry_budget_is_bounded_and_honors_retry_after() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(429, headers={"Retry-After": "3"}, json={"error": {"message": "q"}})
+        err = {"message": "q", "status": "RESOURCE_EXHAUSTED"}
+        return httpx.Response(429, headers={"Retry-After": "3"}, json={"error": err})
 
-    with pytest.raises(ModelUnavailableError, match="HTTP 429: q") as info:
+    with pytest.raises(ModelUnavailableError, match="HTTP 429 RESOURCE_EXHAUSTED") as info:
         await gemini(handler, sleeps).complete(request())
     assert calls == 3 and sleeps.calls == [3.0, 3.0]
     assert info.value.retryable and info.value.status == 429 and info.value.retry_after_s == 3.0
@@ -395,14 +414,14 @@ async def test_non_retryable_statuses_raise_at_once(status: int, error: type[Exc
     def handler(req: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(status, json=[{"error": {"message": "nope " * 100}}])
+        # The provider's free text can echo the request; only its status code is kept.
+        err = {"message": f"bad key {KEY} for 'Where is ord_a1b2?'", "status": "INVALID_ARGUMENT"}
+        return httpx.Response(status, json=[{"error": err}])
 
     with pytest.raises(error) as info:
         await gemini(handler, sleeps).complete(request())
     assert calls == 1 and sleeps.calls == []
-    assert f"HTTP {status}: nope" in str(info.value)
-    assert len(str(info.value)) < 260  # provider text is truncated
-    assert KEY not in str(info.value) and "ord_a1b2" not in str(info.value)
+    assert str(info.value) == f"gemini {GEMINI}: HTTP {status} INVALID_ARGUMENT"
 
 
 async def test_openrouter_error_in_a_200_body_is_classified() -> None:
@@ -469,3 +488,79 @@ def test_retry_after_parsing() -> None:
     assert retry_after_seconds("Thu, 19 Nov 2026 11:00:00 GMT", now=now) == 0.0
     assert retry_after_seconds("soon") is None
     assert retry_after_seconds(None) is None
+
+
+async def test_gemini_resends_thought_signatures_and_falls_back_to_the_sentinel() -> None:
+    sent: list[dict[str, Any]] = []
+    calls = [
+        {
+            "id": "function-call-1",
+            "type": "function",
+            "function": {"name": "get_order", "arguments": '{"order_id":"ord_a1b2"}'},
+            "extra_content": {"google": {"thought_signature": "SIG_A"}},
+        },
+        {
+            "id": "function-call-2",
+            "type": "function",
+            "function": {"name": "get_order", "arguments": '{"order_id":"ord_c3d4"}'},
+        },
+    ]
+    replies = iter(
+        [
+            chat({"role": "assistant", "content": None, "tool_calls": calls}, "tool_calls"),
+            chat({"role": "assistant", "content": "Both shipped."}),
+        ]
+    )
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(req.content))
+        return httpx.Response(200, json=next(replies))
+
+    client = gemini(handler)
+    first_req = request(tools=[ORDER_TOOL])
+    first = await client.complete(first_req)
+    a, b = (blk for blk in first.content if isinstance(blk, ToolUseBlock))
+    follow = request(
+        tools=[ORDER_TOOL],
+        messages=[
+            *first_req.messages,
+            Message(role="assistant", content=first.content),
+            Message(
+                role="user",
+                content=[
+                    ToolResultBlock(tool_use_id=a.id, content="{}"),
+                    ToolResultBlock(tool_use_id=b.id, content="{}"),
+                ],
+            ),
+        ],
+    )
+    assert (await client.complete(follow)).stop_reason is StopReason.END_TURN
+    wire_calls = sent[1]["messages"][2]["tool_calls"]
+    assert [c["id"] for c in wire_calls] == [a.id, b.id]
+    assert wire_calls[0]["extra_content"] == {"google": {"thought_signature": "SIG_A"}}
+    assert "extra_content" not in wire_calls[1]
+    assert follow.fingerprint() != first_req.fingerprint()  # signatures never enter fingerprints
+
+    # History this client didn't produce (a resumed recording): the sentinel on the first call.
+    fresh = gemini(lambda req: httpx.Response(200, json=chat({"content": "ok"})))
+    body = fresh._wire_body(follow)
+    google = {"google": {"thought_signature": "skip_thought_signature_validator"}}
+    assert body["messages"][2]["tool_calls"][0]["extra_content"] == google
+    assert "extra_content" not in body["messages"][2]["tool_calls"][1]
+    # Other providers never get Gemini's extension.
+    assert "extra_content" not in json.dumps(to_chat_request(follow))
+
+
+def test_gemini_signature_map_is_bounded() -> None:
+    client = gemini(lambda req: httpx.Response(200))
+    client.max_signatures = 2
+    for n in range(3):
+        call = {
+            "id": str(n),
+            "function": {"name": "f", "arguments": "{}"},
+            "extra_content": {"google": {"thought_signature": f"S{n}"}},
+        }
+        client._remember(chat({"tool_calls": [call]}), request(system=f"s{n}"))
+    assert list(client._signatures.values()) == ["S1", "S2"]
+    client._remember({"choices": []}, request())  # malformed bodies carry no signatures
+    assert len(client._signatures) == 2

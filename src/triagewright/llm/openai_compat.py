@@ -13,10 +13,18 @@ Translation (``ModelRequest`` to the wire and the wire back to ``ModelResponse``
 - ``finish_reason``: ``stop`` -> end_turn (tool_use if the message has tool
   calls, since some providers report ``stop`` for them), ``tool_calls`` ->
   tool_use, ``length`` -> max_tokens, ``content_filter`` -> refusal. Anything
-  else is a :class:`ModelResponseError`.
-- Usage follows the contract: ``input_tokens`` excludes cached prompt tokens.
+  else is a :class:`ModelResponseError`. On ``length``, tool calls whose
+  arguments were cut off are dropped, so the caller still sees max_tokens.
+- Usage follows the contract: ``input_tokens`` excludes cache reads and writes.
   ``provider_cost_usd`` is set only when the provider reports ``usage.cost``.
   Calls don't stream, so ``ttft_ms`` is not measurable and stays ``None``.
+- Gemini 3 rejects a tool-call turn sent back without its ``thought_signature``
+  (``tool_calls[].extra_content.google``). The contract has no field for it, so
+  :class:`GeminiClient` keeps the signatures of its own responses in a bounded
+  in-memory map keyed by tool-use id and resends them; for history it didn't
+  produce (a resumed recording, a restart) it sends Google's documented
+  ``skip_thought_signature_validator`` on the first call of the turn.
+  Signatures are not part of ``ModelRequest``, so fingerprints don't change.
 
 Retry policy (the only retries; the port forbids silent ones beyond it): 408,
 429, 500, 502, 503, 504, timeouts, and connection errors are retried up to
@@ -25,7 +33,10 @@ at ``max_delay_s``). A ``Retry-After`` header replaces the computed delay; one
 longer than ``max_delay_s`` fails at once rather than stall the turn. After the
 budget the client raises :class:`ModelUnavailableError`. 401/403 raise
 :class:`ModelAuthError` and other 4xx :class:`ModelRequestError`, without
-retrying. ``latency_ms`` is the wall time of the whole call, retries included.
+retrying. Error messages carry only the provider, model, HTTP status, and the
+provider's status code (e.g. ``RESOURCE_EXHAUSTED``), never the provider's
+free-text message, which can echo the request. ``latency_ms`` is the wall time
+of the whole call, retries included.
 """
 
 from __future__ import annotations
@@ -33,7 +44,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -71,26 +84,33 @@ RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 _STOP_REASONS = {
     "stop": StopReason.END_TURN,
     "tool_calls": StopReason.TOOL_USE,
-    "function_call": StopReason.TOOL_USE,
     "length": StopReason.MAX_TOKENS,
     "content_filter": StopReason.REFUSAL,
 }
-_ERROR_TEXT_LIMIT = 200
+_ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 type Sleep = Callable[[float], Awaitable[None]]
+type SignatureLookup = Callable[[str], str | None]
 
 
 def tool_use_id(request: ModelRequest, index: int) -> str:
     return stable_id("toolu", request.fingerprint(), index)
 
 
-def to_chat_request(request: ModelRequest) -> dict[str, Any]:
-    """The chat-completions body for ``request`` (``purpose`` is never sent)."""
+def to_chat_request(
+    request: ModelRequest, *, signatures: SignatureLookup | None = None
+) -> dict[str, Any]:
+    """The chat-completions body for ``request`` (``purpose`` is never sent).
+
+    With ``signatures`` (Gemini), each assistant tool call gets its thought
+    signature, and the first call of a turn gets the skip sentinel if unknown.
+    """
     messages: list[Any] = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
     for message in request.messages:
-        messages.extend(_wire_messages(message))
+        messages.extend(_wire_messages(message, signatures))
     body: dict[str, Any] = {
         "model": request.model,
         "messages": messages,
@@ -115,10 +135,10 @@ def to_chat_request(request: ModelRequest) -> dict[str, Any]:
     return body
 
 
-def _wire_messages(message: Message) -> list[dict[str, Any]]:
+def _wire_messages(message: Message, signatures: SignatureLookup | None) -> list[dict[str, Any]]:
     texts = [b.text for b in message.content if isinstance(b, TextBlock)]
     if message.role == "assistant":
-        calls = [
+        calls: list[dict[str, Any]] = [
             {
                 "id": b.id,
                 "type": "function",
@@ -127,6 +147,11 @@ def _wire_messages(message: Message) -> list[dict[str, Any]]:
             for b in message.content
             if isinstance(b, ToolUseBlock)
         ]
+        if signatures is not None:
+            for i, call in enumerate(calls):
+                sig = signatures(call["id"]) or (SKIP_THOUGHT_SIGNATURE if i == 0 else None)
+                if sig:
+                    call["extra_content"] = {"google": {"thought_signature": sig}}
         out: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(texts) or None}
         if calls:
             out["tool_calls"] = calls
@@ -168,7 +193,12 @@ def from_chat_response(
         for i, call in enumerate(message.get("tool_calls") or []):
             fn = call["function"]
             raw = fn.get("arguments") or "{}"
-            args = json.loads(raw) if isinstance(raw, str) else raw
+            try:
+                args = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError:
+                if finish == "length":
+                    continue  # cut off mid-arguments; the caller sees max_tokens
+                raise
             if not isinstance(args, dict):
                 raise TypeError("tool arguments are not an object")
             content.append(ToolUseBlock(id=tool_use_id(request, i), name=fn["name"], input=args))
@@ -207,14 +237,30 @@ def _message_text(content: Any) -> str:
     return "".join(p["text"] for p in content if p.get("type") == "text")
 
 
+def thought_signatures(body: Any, request: ModelRequest) -> dict[str, str]:
+    """Gemini thought signatures in a chat-completions body, by our tool-use id."""
+    found: dict[str, str] = {}
+    try:
+        calls = body["choices"][0]["message"].get("tool_calls") or []
+        for i, call in enumerate(calls):
+            sig = ((call.get("extra_content") or {}).get("google") or {}).get("thought_signature")
+            if isinstance(sig, str) and sig:
+                found[tool_use_id(request, i)] = sig
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return {}
+    return found
+
+
 def _usage(raw: Any) -> tuple[Usage, float | None]:
     prompt = int(raw.get("prompt_tokens") or 0)
     details = raw.get("prompt_tokens_details") or {}
     cached = int(details.get("cached_tokens") or 0)
+    written = int(details.get("cache_write_tokens") or 0)
     usage = Usage(
-        input_tokens=max(prompt - cached, 0),
+        input_tokens=max(prompt - cached - written, 0),
         output_tokens=int(raw.get("completion_tokens") or 0),
         cache_read_input_tokens=cached,
+        cache_creation_input_tokens=written,
     )
     cost = raw.get("cost")
     is_number = isinstance(cost, int | float) and not isinstance(cost, bool)
@@ -272,7 +318,7 @@ class OpenAICompatClient:
     async def complete(self, request: ModelRequest) -> ModelResponse:
         if request.model != self.model:
             raise ModelConfigError(f"client for {self.model!r} got a request for {request.model!r}")
-        body = to_chat_request(request)
+        body = self._wire_body(request)
         started = time.perf_counter()
         attempt = 0
         while True:
@@ -295,9 +341,17 @@ class OpenAICompatClient:
                 await self._sleep(delay)
                 continue
             latency_ms = (time.perf_counter() - started) * 1000
-            return from_chat_response(
+            response = from_chat_response(
                 data, request=request, provider=self.provider, latency_ms=latency_ms
             )
+            self._remember(data, request)
+            return response
+
+    def _wire_body(self, request: ModelRequest) -> dict[str, Any]:
+        return to_chat_request(request)
+
+    def _remember(self, data: Any, request: ModelRequest) -> None:
+        """Hook for provider state carried between calls (Gemini thought signatures)."""
 
     def _delay(self, attempt: int, retry_after_s: float | None) -> float | None:
         delay = (
@@ -343,9 +397,8 @@ def _status_error(where: str, status: int, data: Any, retry_after: str | None) -
     if isinstance(data, list) and data:  # Gemini sometimes wraps the error body in a list
         data = data[0]
     err = data.get("error") if isinstance(data, dict) else None
-    detail = ""
-    if isinstance(err, dict) and isinstance(err.get("message"), str):
-        detail = ": " + err["message"][:_ERROR_TEXT_LIMIT]
+    code = err.get("status") if isinstance(err, dict) else None
+    detail = f" {code}" if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else ""
     message = f"{where}: HTTP {status}{detail}"
     if status in RETRYABLE_STATUS:
         return ModelUnavailableError(
@@ -362,6 +415,21 @@ class GeminiClient(OpenAICompatClient):
     """Gemini API free tier through its OpenAI-compatible endpoint."""
 
     provider = Provider.GEMINI
+    max_signatures = 4096
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._signatures: OrderedDict[str, str] = OrderedDict()
+
+    def _wire_body(self, request: ModelRequest) -> dict[str, Any]:
+        return to_chat_request(request, signatures=self._signatures.get)
+
+    def _remember(self, data: Any, request: ModelRequest) -> None:
+        for tool_id, sig in thought_signatures(data, request).items():
+            self._signatures[tool_id] = sig
+            self._signatures.move_to_end(tool_id)
+        while len(self._signatures) > self.max_signatures:
+            self._signatures.popitem(last=False)
 
 
 class OpenRouterClient(OpenAICompatClient):

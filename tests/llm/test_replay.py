@@ -157,3 +157,21 @@ async def test_factory_shares_one_file_across_roles(tmp_path: Path) -> None:
     with pytest.raises(ReplayMissError, match=r"happy-001\.judge\.jsonl"):
         await clients.for_role("judge").complete(request(model="gemini-3.8-flash"))
     await clients.aclose()
+
+
+async def test_unicode_line_separators_survive_record_and_replay(tmp_path: Path) -> None:
+    path = tmp_path / "happy-001.jsonl"
+    odd = request("line\u2028separated\u0085text\x1c")
+    store = RecordingFile(path, case_id="happy-001")
+    store.append(odd, model_response(text_block("reply\u2029ok"), model=GEMINI))
+    assert len(path.read_text(encoding="utf-8").split("\n")) == 2
+    resp = await ReplayClient(RecordingFile(path), model=GEMINI).complete(odd)
+    assert resp.content == [TextBlock(text="reply\u2029ok")]
+
+
+def test_append_after_a_file_without_a_final_newline(tmp_path: Path) -> None:
+    path = tmp_path / "happy-001.jsonl"
+    path.write_text(canonical_json(rec(0, request(), "a").model_dump(mode="json")))
+    RecordingFile(path).append(request("b"), model_response(text_block("b"), model=GEMINI))
+    reloaded = RecordingFile(path)
+    assert reloaded.take(request()) is not None and reloaded.take(request("b")) is not None

@@ -47,7 +47,8 @@ class RecordingFile:
 
     def _load(self) -> None:
         seen: set[int] = set()
-        for lineno, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
+        # Split on "\n" only: canonical JSON keeps U+2028 and friends, which splitlines() splits on.
+        for lineno, line in enumerate(self.path.read_text(encoding="utf-8").split("\n"), 1):
             if not line.strip():
                 continue
             try:
@@ -84,8 +85,14 @@ class RecordingFile:
             response=response,
         )
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(canonical_json(rec.model_dump(mode="json")) + "\n")
+        with self.path.open("a+b") as f:
+            f.seek(0, 2)
+            if f.tell() > 0:
+                f.seek(-1, 2)
+                lead = b"" if f.read(1) == b"\n" else b"\n"
+            else:
+                lead = b""
+            f.write(lead + (canonical_json(rec.model_dump(mode="json")) + "\n").encode())
         self._next_sequence += 1
         recs = self._by_fingerprint.setdefault(rec.fingerprint, [])
         recs.append(rec)
