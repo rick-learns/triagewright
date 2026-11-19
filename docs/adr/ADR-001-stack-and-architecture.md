@@ -1,13 +1,13 @@
 # ADR-001: Stack and architecture
 
-- Status: Accepted (council round 5, 2026-11-19; PR #1)
+- Status: Accepted (council round 5, 2026-11-19; PR #1). Amended 2026-11-19: Gemini free tier added as a live provider (owner decision), Podman as the local container runtime.
 - Date: 2026-11-19
 
 ## Context
 
 triagewright is a local-first customer-support agent: triage, tool use over MCP,
 grounded answers with citations, and escalation to a human. It must run on one
-machine with `docker compose up`, stay under $50 in model spend, and
+machine with `podman compose up` (or `docker compose up`), stay under $50 in model spend, and
 be testable in CI with no API keys. Ten lanes are built in parallel, so the
 contracts between them must be fixed before fan-out.
 
@@ -20,19 +20,32 @@ reject unknown fields, and use integer cents. JSON Schemas in `schemas/` are
 generated from them (`scripts/export_schemas.py`), and a test fails if they're
 stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 
-### 2. Model layer shaped like the Anthropic Messages API, served by OpenRouter
+### 2. Model layer shaped like the Anthropic Messages API, served by free models
 
 - `ModelRequest`/`ModelResponse` mirror Messages: content blocks (`text`,
   `tool_use`, `tool_result`), `stop_reason`, and usage including cache tokens.
   `Usage.input_tokens` excludes cache tokens; adapters normalize to that.
-- **The owner chose OpenRouter as the only live provider** (2026-11-19).
-  Adapters: `openrouter` and `replay`. The OpenRouter adapter translates
-  to and from its OpenAI-compatible chat API and refuses model ids without
-  `:free`; settings reject any other model id, with no opt-out. Defaults:
-  `google/gemma-4-31b-it:free` for every role and
-  `nvidia/nemotron-3-ultra-550b-a55b:free` for the judge, both with tool
-  calling. Free models are rate-limited (20 requests/min, and a daily cap),
-  so live runs are throttled and resumable.
+- **The owner allows free models only, at $0** (2026-11-19). Adapters:
+  `gemini`, `openrouter`, and `replay`. Both live adapters use an
+  OpenAI-compatible chat API and refuse any model id for which
+  `config.is_free_model(provider, model)` is false; settings reject them
+  too, with no opt-out.
+  - **Gemini API free tier** is the default live provider and the one
+    recordings are made with. The key's Google project must be on the free
+    plan (no billing linked), so going over a limit returns 429, never a
+    charge. Only numbered Flash, Flash-Lite, and Gemma ids are allowed (no
+    `-latest` aliases). Defaults: `gemini-3.5-flash-lite` for every agent
+    role and `gemini-3.8-flash` for the judge. A probe on 2026-11-19 got
+    correct tool calls from Flash-Lite in 0.4–0.7 s, while Flash and Gemma
+    returned 503 "high demand", so the adapter treats 429 and 503 as
+    retryable. Free-tier prompts may be used by Google for training; all
+    data here is synthetic.
+  - **OpenRouter** serves `:free` models only. Defaults:
+    `google/gemma-4-31b-it:free` for every role and
+    `nvidia/nemotron-3-ultra-550b-a55b:free` for the judge. It's the
+    fallback when Gemini's free quota runs out (20 requests/min, 1,000/day
+    on this key).
+  - Live runs are throttled and resumable on both.
 - The default provider is `replay`, so nothing calls the network unless
   `.env` opts in. CI always replays. A missing recording is a hard error,
   never a live fallback.
@@ -231,8 +244,10 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   - `POST /approvals/{id}/decision` (requires the approver token)
   - `GET /healthz`
 - The CLI is Typer.
-- One Docker image runs both the API and the MCP server. Compose binds to
-  localhost only. Settings follow 12-factor via `TW_*` env vars.
+- One container image runs both the API and the MCP server. Compose binds to
+  localhost only. The supported runtime is rootless Podman with
+  podman-compose (`podman compose up`); Docker Compose works with the same
+  file. Settings follow 12-factor via `TW_*` env vars.
 
 ### 10. Lane ownership
 

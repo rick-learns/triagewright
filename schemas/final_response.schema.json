@@ -449,6 +449,7 @@
     },
     "Provider": {
       "enum": [
+        "gemini",
         "openrouter",
         "replay"
       ],

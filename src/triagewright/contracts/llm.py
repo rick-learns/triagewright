@@ -1,6 +1,6 @@
 """Provider-neutral model I/O, shaped like the Anthropic Messages API.
 
-Adapters (Anthropic, OpenRouter, replay) translate to and from these types, so
+Adapters (Gemini, OpenRouter, replay) translate to and from these types, so
 the agent loop handles ``stop_reason`` and ``tool_use`` blocks the same way on
 every provider. Recordings let CI replay model calls without API keys.
 """
@@ -18,7 +18,8 @@ from triagewright.contracts.common import Contract, JsonObject
 
 
 class Provider(StrEnum):
-    OPENROUTER = "openrouter"
+    GEMINI = "gemini"  # Gemini API free tier, via its OpenAI-compatible endpoint
+    OPENROUTER = "openrouter"  # ``:free`` models only
     REPLAY = "replay"
 
 
