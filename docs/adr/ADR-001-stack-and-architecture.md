@@ -1,6 +1,6 @@
 # ADR-001: Stack and architecture
 
-- Status: Proposed (council round 3)
+- Status: Accepted (council round 5, 2026-11-19; PR #1)
 - Date: 2026-11-19
 
 ## Context
