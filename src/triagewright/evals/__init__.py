@@ -1,23 +1,14 @@
-"""Lane F: eval harness and graders.
+"""Lane F: eval harness, graders, and report.
 
-Until lane F lands, ``triagewright-evals smoke`` only validates every case file
-against the :class:`~triagewright.contracts.evals.EvalCase` contract.
+``triagewright-evals smoke`` validates every case file against the
+:class:`~triagewright.contracts.evals.EvalCase` contract. ``triagewright-evals
+run`` resolves every case on its own isolated stack, grades the evidence,
+writes the report, and exits non-zero on a regression against
+``evals/baseline.json``. See ``evals/README.md``.
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+from triagewright.evals.cli import main
 
-from triagewright.data import load_eval_cases
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = sys.argv[1:] if argv is None else argv
-    if args[:1] != ["smoke"]:
-        print("usage: triagewright-evals smoke [CASES_DIR]", file=sys.stderr)
-        return 2
-    cases_dir = Path(args[1]) if len(args) > 1 else Path("evals/cases")
-    cases = load_eval_cases(cases_dir)
-    print(f"validated {len(cases)} eval cases in {cases_dir} (harness not implemented yet)")
-    return 0
+__all__ = ["main"]
