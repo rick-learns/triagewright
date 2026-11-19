@@ -91,7 +91,9 @@ def respond(
 ) -> FinalResponse:
     if metrics is None and mode != "stub":
         metrics = RequestMetrics(
-            request_id=stable_id("req", ticket.ticket_id), ticket_id=ticket.ticket_id
+            request_id=stable_id("req", ticket.ticket_id),
+            ticket_id=ticket.ticket_id,
+            estimated=mode == "replay",
         )
     return FinalResponse(
         request_id=stable_id("req", ticket.ticket_id),

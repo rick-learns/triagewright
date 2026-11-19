@@ -65,6 +65,7 @@ class RunConfig:
     concurrency: int = 4
     min_interval_s: float = 0.0  # minimum gap between case starts
     case_timeout_s: float = 120.0
+    stack: str = ""  # provider and models of the stack under test; part of the resume key
     results_path: Path | None = None  # JSONL of finished cases
     resume: bool = False  # keep finished cases from results_path and skip them
 
@@ -85,9 +86,17 @@ class _Throttle:
             self._next = time.monotonic() + self._interval
 
 
-def input_key(case: EvalCase, mode: Mode, judge_model: str | None) -> str:
-    """Hash of everything a saved result depends on: the case, the mode, and the judge."""
-    payload = {"case": case.model_dump(mode="json"), "mode": mode, "judge": judge_model}
+def input_key(
+    case: EvalCase, *, mode: Mode, timeout_s: float, stack: str, judge_model: str | None
+) -> str:
+    """Hash of everything a saved result depends on: the case and how it was run."""
+    payload = {
+        "case": case.model_dump(mode="json"),
+        "mode": mode,
+        "timeout_s": timeout_s,
+        "stack": stack,
+        "judge": judge_model,
+    }
     return hashlib.sha256(canonical_json(payload).encode()).hexdigest()
 
 
@@ -113,10 +122,12 @@ async def run_case(
     seed_as_of: datetime,
     mode: Mode,
     timeout_s: float,
+    stack: str = "",
     judge: JudgeConfig | None = None,
 ) -> CaseRecord:
     """Build the case's stack, resolve its ticket, and grade the evidence. Never raises."""
-    key = input_key(case, mode, judge.model if judge else None)
+    judge_model = judge.model if judge else None
+    key = input_key(case, mode=mode, timeout_s=timeout_s, stack=stack, judge_model=judge_model)
     try:
         runtime = factory.build(
             case_id=case.id,
@@ -143,8 +154,11 @@ async def run_case(
     wall_ms = (time.perf_counter() - started) * 1000
     if response is not None and response.mode != mode:
         error = f"mode mismatch: response is {response.mode}, run is {mode}"
-    elif response is not None and mode != "stub" and response.metrics is None:
-        error = "response has no request metrics"  # cost and latency would be made up
+    elif response is not None and mode != "stub":
+        if response.metrics is None:
+            error = "response has no request metrics"  # cost and latency would be made up
+        elif response.metrics.estimated != (mode == "replay"):
+            error = f"metrics estimated={response.metrics.estimated} in a {mode} run"
 
     ev = Evidence(
         case=case,
@@ -164,9 +178,9 @@ async def run_case(
             judge_status = "skipped"
         else:
             try:
-                async with asyncio.timeout(timeout_s):
-                    recordings = judge_recordings(judge.recordings_dir, case.id)
-                    client = judge.factory(case_id=case.id, recordings=recordings)
+                recordings = judge_recordings(judge.recordings_dir, case.id)
+                client = judge.factory(case_id=case.id, recordings=recordings)
+                async with asyncio.timeout(timeout_s):  # bounds the model call
                     grade, judge_reply = await grade_rubric(
                         client, case, response, model=judge.model
                     )
@@ -232,7 +246,14 @@ async def run_cases(
             saved = load_records(path)
             judge_model = judge.model if judge else None
             for case in cases:
-                record = saved.get(input_key(case, config.mode, judge_model))
+                key = input_key(
+                    case,
+                    mode=config.mode,
+                    timeout_s=config.case_timeout_s,
+                    stack=config.stack,
+                    judge_model=judge_model,
+                )
+                record = saved.get(key)
                 if record is not None:
                     done[case.id] = record
         else:
@@ -251,6 +272,7 @@ async def run_cases(
                 seed_as_of=seed_as_of,
                 mode=config.mode,
                 timeout_s=config.case_timeout_s,
+                stack=config.stack,
                 judge=judge,
             )
         if path is not None:

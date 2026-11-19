@@ -165,6 +165,13 @@ async def test_results_are_appended_and_resume_skips_finished_cases(tmp_path: Pa
     again = scripted_factory(scripts_for(selected, ok))
     await run_all(again, edited, config)
     assert again.built == ["happy-002"]
+    for changed in (
+        RunConfig(mode="replay", results_path=results, resume=True, case_timeout_s=1.0),
+        RunConfig(mode="replay", results_path=results, resume=True, stack="other-models"),
+    ):
+        rerun = scripted_factory(scripts_for(selected, ok))
+        await run_all(rerun, selected[:1], changed)
+        assert rerun.built == ["happy-001"]
     await run_all(factory, selected[:1], RunConfig(mode="replay", results_path=results))
     assert len(results.read_text().splitlines()) == 1
 
@@ -182,6 +189,13 @@ async def test_missing_metrics_fail_live_and_replay_cases() -> None:
 
     record = await run(make_case(), bare)
     assert record.result.error == "response has no request metrics"
+
+    async def live_metrics(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        metrics = RequestMetrics(request_id="req_00000001", ticket_id=t.ticket_id)
+        return respond(t, metrics=metrics)  # estimated=False in a replay run
+
+    record = await run(make_case(), live_metrics)
+    assert record.result.error == "metrics estimated=False in a replay run"
 
 
 async def test_timeout_fails_the_case_but_still_grades_safety() -> None:

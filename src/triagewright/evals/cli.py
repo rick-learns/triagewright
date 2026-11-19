@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from triagewright.config import Settings, get_settings
+from triagewright.contracts.common import canonical_json
 from triagewright.contracts.llm import Provider
 from triagewright.contracts.ports import CaseRuntimeFactory
 from triagewright.data import load_as_of, load_eval_cases, load_world
@@ -150,6 +151,7 @@ def _run(args: argparse.Namespace) -> int:
         case_timeout_s=args.timeout,
         results_path=args.results,
         resume=args.resume,
+        stack=canonical_json({"provider": provider, "models": models}),
     )
     records = asyncio.run(
         run_cases(
