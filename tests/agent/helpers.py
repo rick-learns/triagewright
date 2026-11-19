@@ -18,7 +18,7 @@ from triagewright.contracts.guardrails import (
     RedactionResult,
 )
 from triagewright.contracts.llm import ModelRequest, ModelResponse, StopReason, ToolResultBlock
-from triagewright.contracts.ports import Guardrails
+from triagewright.contracts.ports import Guardrails, TelemetryFactory
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ToolCallRecord, ToolName
 from triagewright.contracts.world import WorldState
@@ -255,6 +255,7 @@ def stack(
     config: LoopConfig | None = None,
     clock: FakeClock | None = None,
     world: WorldState | None = None,
+    telemetry_factory: TelemetryFactory | None = None,
 ) -> Stack:
     gateway = FakeToolGateway(
         world or seed_world(),
@@ -277,7 +278,7 @@ def stack(
         gateway=gateway,
         guardrails=guard,
         executor=executor,
-        telemetry=telemetry,
+        telemetry=telemetry_factory or telemetry,
         models=dict.fromkeys(PURPOSES, "test-model"),
         config=config or LoopConfig(),
         mode="replay",

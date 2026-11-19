@@ -351,7 +351,7 @@ class Coordinator:
                     EscalationReason.ACCOUNT_INACTIVE if inactive else EscalationReason.POLICY_LIMIT
                 )
                 why.append(f"refund blocked by policy ({winning})")
-        reviewed = review is not None and review.escalate
+        reviewed = review is not None and review.escalate and not _approval_only(run, review)
         if review is not None and reviewed:
             queue = queue or review.queue or EscalationQueue.TIER1
             priority = review.priority
@@ -591,6 +591,21 @@ def _refund_requested(run: RequestRun) -> bool:
     """Triage's category, or its flag for a refund asked for under another category."""
     assert run.triage is not None
     return run.triage.category is TicketCategory.REFUND_REQUEST or run.triage.refund_requested
+
+
+def _approval_only(run: RequestRun, review: EscalationDecision) -> bool:
+    """An escalation only for approval adds nothing when the request's one action (only
+    refunds are irreversible) awaits a human approver: the approval queue is that human
+    step. Any other human need triage found, or more than one action, keeps the handoff."""
+    if set(review.reasons) != {EscalationReason.APPROVAL_REQUIRED} or len(run.outcomes) != 1:
+        return False
+    (outcome,) = run.outcomes
+    triage = run.triage
+    other_need = triage is not None and (
+        bool(set(triage.needs_human_reasons) - {EscalationReason.APPROVAL_REQUIRED})
+        or (triage.needs_human and not triage.needs_human_reasons)
+    )
+    return outcome.status is ActionStatus.PENDING_APPROVAL and not other_need
 
 
 def _refund_proposed(run: RequestRun) -> bool:

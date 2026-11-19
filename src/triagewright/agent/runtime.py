@@ -365,7 +365,9 @@ class RequestRun:
                     LoopStop.TIMEOUT, EscalationReason.LOOP_LIMIT, f"{purpose} model call timed out"
                 ) from None
             except Exception as exc:
-                span.set_error(type(exc).__name__)
+                status = getattr(exc, "status", None)  # model errors carry the HTTP status
+                http = f" (HTTP {status})" if isinstance(status, int) else ""
+                span.set_error(type(exc).__name__ + http)
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, f"{purpose} model call failed"
                 ) from exc
