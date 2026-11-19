@@ -33,6 +33,10 @@ else
     exit 2
 fi
 
+for tool in curl python3 timeout; do
+    command -v "$tool" >/dev/null || { echo "compose_smoke: needs $tool" >&2; exit 2; }
+done
+
 port="${TW_SMOKE_PORT:-18080}"
 timeout_s="${TW_SMOKE_TIMEOUT:-180}"
 project="${TW_SMOKE_PROJECT:-tw-smoke-$$}"
@@ -104,7 +108,7 @@ done
 mcp_listening() {
     local left=$((deadline - SECONDS))
     ((left > 0)) || return 1
-    timeout "$((left < 10 ? left : 10))" "${compose[@]}" -p "$project" -f compose.yaml \
+    timeout -k 2 "$((left < 10 ? left : 10))" "${compose[@]}" -p "$project" -f compose.yaml \
         -f "$override" exec -T mcp \
         python -c "import socket; socket.create_connection(('127.0.0.1', 8765), 2)" >/dev/null 2>&1
 }
