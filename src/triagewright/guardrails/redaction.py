@@ -70,7 +70,7 @@ _GROUP = re.compile(r"\d+")
 def _cards(text: str) -> Iterator[_Match]:
     """Luhn-valid 13-19 digit windows of whole groups, taken left to right.
 
-    A card starts at the first group that can start one; of the windows from
+    A card starts at the first group of 4+ digits that can start one; of the windows from
     there, the one that leaves the most digits coverable after it wins (ties:
     the longer card). So "4111 1111 1111 1111 1228 123" keeps the expiry and
     CVV, and two cards in a row are both redacted, whatever their group lengths.
@@ -83,7 +83,9 @@ def _cards(text: str) -> Iterator[_Match]:
         covered, card_end = [0] * (n + 1), [0] * (n + 1)
         for i in reversed(range(n)):
             best, digits = -1, ""
-            for j in range(i, n):
+            # A grouped card starts with 4+ digits, so a short label ("card 6 4111 ...") isn't
+            # taken into it.
+            for j in range(i, n if len(groups[i].group()) >= 4 else i):
                 digits += groups[j].group()
                 if len(digits) > 19:
                     break

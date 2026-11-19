@@ -53,7 +53,7 @@ _ON_A_THING = (
 _CHECK = (
     r"(?:(?:approval|verification|eligibility|policy|security|fraud)\W+"
     r"(?:checks?|requirements?|process|steps?|rules)"
-    r"|(?:approval|verification)(?!\W+(?:emails?|messages?|links?|codes?|texts?|letters?"
+    r"|(?:approval|verification)(?![ -](?:emails?|messages?|links?|codes?|texts?|letters?"
     r"|notifications?)\b))"
 )
 _TARGET = (
@@ -175,7 +175,8 @@ _RULES: tuple[_Rule, ...] = (
             rf"|prompt|instructions)|(?:ignore|disregard|override|bypass)\W+(?:\w+\W+){{0,2}}?"
             rf"(?:{_TARGET}|(?:refund\W+)?limits?|{_CHECK})"
             r"|(?:grant|approve|issue)\W+(?:\w+\W+){0,2}?refunds?\W+(?:without\W+(?:\w+\W+){0,2}?"
-            r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?|asking)"
+            r"(?:approval|review|verification|authori[sz]ation|eligibility|checks?"
+            r"|asking(?! \w))"  # bare "without asking", not "without asking the customer to ..."
             r"|regardless\W+of|to\W+(?:any|every|all)))\b",
         ),
     ),

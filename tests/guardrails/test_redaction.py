@@ -28,6 +28,7 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
         [PIIType.CARD_NUMBER, PIIType.CARD_NUMBER],
     ),
     ("card 4111 1111 1111 1111 1228 123", "card [CARD_NUMBER_1] 1228 123", [PIIType.CARD_NUMBER]),
+    ("card 6 4111 1111 1111 1111", "card 6 [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
     ("ssn 123-45-6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("ssn 123 45 6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("my SSN is 123456789", "my SSN is [SSN_1]", [PIIType.SSN]),
