@@ -175,7 +175,7 @@ def test_from_settings_picks_the_transport(tmp_path: Path) -> None:
     )
     params = McpToolGateway.from_settings(stdio)._client.server
     assert isinstance(params, StdioServerParameters) and params.env is not None
-    assert params.args[-2:] == ["--transport", "stdio"]
+    assert params.args[-3:] == ["--transport", "stdio", "--no-env-file"]
     # The child gets the resolved settings, not just whatever is in os.environ.
     assert params.env["TW_APPROVAL_KEY"] == "s" * 40
     assert params.env["TW_DB_PATH"] == str(tmp_path / "db.sqlite")
@@ -188,12 +188,17 @@ def test_from_settings_picks_the_transport(tmp_path: Path) -> None:
         stdio_server_parameters(unkeyed)
 
 
-def test_stdio_child_keeps_memory_db_and_inherited_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TW_LLM_PROVIDER", "replay")
-    monkeypatch.setenv("TW_DB_PATH", "/elsewhere.sqlite")
-    settings = Settings(_env_file=None, approval_key="s" * 40, db_path=Path(":memory:"))
-    env = stdio_server_parameters(settings).env
-    assert env and env["TW_DB_PATH"] == ":memory:" and env["TW_LLM_PROVIDER"] == "replay"
+def test_stdio_child_gets_only_resolved_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The parent accepted these settings; ambient env the child could reject must not reach it.
+    monkeypatch.setenv("TW_LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("TW_MODEL_TRIAGE", "example/example:free")
+    settings = Settings(
+        _env_file=None, llm_provider="replay", approval_key="s" * 40, db_path=Path(":memory:")
+    )
+    params = stdio_server_parameters(settings)
+    assert params.env and params.env["TW_DB_PATH"] == ":memory:"
+    assert not {"TW_LLM_PROVIDER", "TW_MODEL_TRIAGE"} & params.env.keys()
+    assert params.args[-1] == "--no-env-file"
 
 
 async def test_a_rejected_reentry_keeps_the_live_session() -> None:

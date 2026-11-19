@@ -104,6 +104,7 @@ async def open_harness(
         settings = Settings(
             _env_file=None,
             mcp_transport="stdio",
+            llm_provider="replay",
             approval_key=env["TW_APPROVAL_KEY"],
             db_path=Path(env["TW_DB_PATH"]),
             seed_dir=Path(env["TW_SEED_DIR"]),

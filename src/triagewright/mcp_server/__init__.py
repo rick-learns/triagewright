@@ -70,13 +70,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--transport", choices=["stdio", "http"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--no-env-file", action="store_true", help="read settings from the environment only"
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     try:
-        settings = Settings()
+        settings = Settings(_env_file=None) if args.no_env_file else Settings()
     except ValidationError as exc:  # report only the messages: inputs may hold secrets
         raise SystemExit("; ".join(e["msg"] for e in exc.errors())) from None
     if settings.approval_key is None:

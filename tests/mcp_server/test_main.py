@@ -49,6 +49,21 @@ def test_short_key_error_does_not_echo_the_secret(
     assert "at least 32" in str(info.value) and "short-secret-value" not in str(info.value)
 
 
+def test_no_env_file_ignores_dotenv(
+    server_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".env").write_text("TW_APPROVAL_KEY=short\n")
+    monkeypatch.delenv("TW_APPROVAL_KEY")
+    with pytest.raises(SystemExit, match="at least 32"):
+        main(["--transport", "stdio"])
+    monkeypatch.setenv("TW_APPROVAL_KEY", server_env["TW_APPROVAL_KEY"])
+    (tmp_path / ".env").write_text("TW_LLM_PROVIDER=nonsense\n")
+    ran: list[Any] = []
+    monkeypatch.setattr(anyio, "run", lambda fn, server: ran.append(fn))
+    main(["--transport", "stdio", "--no-env-file"])
+    assert ran == [run_stdio]
+
+
 def test_serves_stdio_and_http(server_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
     ran: list[Any] = []
     monkeypatch.setattr(anyio, "run", lambda fn, server: ran.append((fn, server)))

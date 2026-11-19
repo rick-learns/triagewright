@@ -8,7 +8,6 @@ eval ``ToolFault``s before the call leaves the gateway, like
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import time
 from collections.abc import Sequence
@@ -271,9 +270,9 @@ def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
     if settings.approval_key is None:
         raise ValueError("TW_APPROVAL_KEY is required to launch the MCP server")
     db = str(settings.db_path) if str(settings.db_path) == MEMORY else settings.db_path.resolve()
-    # Resolved settings win over the inherited TW_* env; the child still validates the rest.
-    inherited = {k: v for k, v in os.environ.items() if k.startswith("TW_")}
-    env = inherited | {
+    # The child gets exactly the parent's resolved server settings: no ambient TW_* env (the SDK
+    # passes only a safe default env) and no .env, so it can't reject what the parent accepted.
+    env = {
         "TW_APPROVAL_KEY": settings.approval_key.get_secret_value(),
         "TW_DB_PATH": str(db),
         "TW_SEED_DIR": str(settings.seed_dir.resolve()),
@@ -284,6 +283,6 @@ def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
     }
     return StdioServerParameters(
         command=sys.executable,
-        args=["-m", "triagewright.mcp_server", "--transport", "stdio"],
+        args=["-m", "triagewright.mcp_server", "--transport", "stdio", "--no-env-file"],
         env=env,
     )
