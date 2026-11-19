@@ -2,7 +2,7 @@
 
 | ADR | Title | Status | Date |
 | --- | --- | --- | --- |
-| [ADR-001](../adr/ADR-001-stack-and-architecture.md) | Stack and architecture | Proposed | 2026-11-19 |
+| [ADR-001](../adr/ADR-001-stack-and-architecture.md) | Stack and architecture | Accepted (council, 5 rounds) | 2026-11-19 |
 
 ## Owner decisions
 
