@@ -1,16 +1,18 @@
 """What the API and CLI share: the ports they run on, the wiring hook, and the decision path.
 
 Both surfaces are thin. They take a :class:`Services` bundle of ports and never
-build lanes themselves. The real bundle comes from integration
-(``triagewright.wiring.build_services(settings)``, task X1); until that lands,
-:func:`load_services` raises :class:`WiringUnavailableError` with a helpful message.
+build lanes themselves. The real bundle comes from
+``triagewright.wiring.build_services(settings)``; when it can't be built (for
+example in replay mode), :func:`load_services` raises
+:class:`WiringUnavailableError` with a helpful message.
 """
 
 from __future__ import annotations
 
 import hmac
 import importlib
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 
 from pydantic import SecretStr, ValidationError
@@ -23,15 +25,28 @@ from triagewright.contracts.ports import ActionExecutor, ApprovalStore, TicketRe
 WIRING_MODULE = "triagewright.wiring"
 
 
+def _no_cleanup() -> None:
+    pass
+
+
+async def _no_async_cleanup() -> None:
+    pass
+
+
 @dataclass(frozen=True)
 class Services:
     resolver: TicketResolver
     executor: ActionExecutor
     approvals: ApprovalStore
+    # Teardown: await ``aclose`` on the event loop that served requests (it owns the HTTP pool),
+    # then call ``close`` (connections, stores, trace flush).
+    close: Callable[[], None] = _no_cleanup
+    _: KW_ONLY
+    aclose: Callable[[], Awaitable[None]] = _no_async_cleanup
 
 
 class WiringUnavailableError(RuntimeError):
-    """The real lanes aren't wired yet (``triagewright.wiring`` lands at integration)."""
+    """The real lanes can't be built from these settings (see ``triagewright.wiring``)."""
 
 
 class ApprovalNotFoundError(LookupError):
@@ -43,7 +58,7 @@ class DecisionConflictError(Exception):
 
 
 def load_services(settings: Settings) -> Services:
-    """Placeholder wiring hook: ``triagewright.wiring.build_services(settings)`` if it exists."""
+    """The wiring hook: ``triagewright.wiring.build_services(settings)``."""
     try:
         wiring = importlib.import_module(WIRING_MODULE)
     except ModuleNotFoundError as exc:

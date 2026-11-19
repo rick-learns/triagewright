@@ -10,7 +10,7 @@ from tests.mcp_server.conftest import ctx, open_harness
 from triagewright.contracts.common import JsonObject
 from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.policy import approval_token, refund_idempotency_key
-from triagewright.contracts.ports import ToolGateway
+from triagewright.contracts.ports import Retriever, ToolGateway
 from triagewright.contracts.tools import (
     TOOL_SPECS,
     CallContext,
@@ -19,6 +19,7 @@ from triagewright.contracts.tools import (
     ToolName,
     ToolResult,
 )
+from triagewright.rag import HashingEmbedder, HybridRetriever, KBIndex
 from triagewright.testing import FakeRetriever, FakeToolGateway, seed_as_of, seed_kb, seed_world
 
 pytestmark = pytest.mark.anyio
@@ -95,9 +96,18 @@ PARITY_CALLS: list[tuple[ToolName, JsonObject, CallContext]] = [
 ]
 
 
+def reference_retriever(kind: str) -> Retriever:
+    if kind != "mcp-stdio":
+        return FakeRetriever(seed_kb())
+    # The server process runs build_service: lane C's retriever (hashing embedder by default).
+    index = KBIndex(":memory:", HashingEmbedder())
+    index.ingest(seed_kb())
+    return HybridRetriever(index)
+
+
 async def test_reads_match_the_reference_fake(kind: str, tmp_path: Path) -> None:
     reference = FakeToolGateway(
-        seed_world(), as_of=seed_as_of(), retriever=FakeRetriever(seed_kb())
+        seed_world(), as_of=seed_as_of(), retriever=reference_retriever(kind)
     )
     async with open_harness(kind, tmp_path) as h:
         for name, args, call_ctx in PARITY_CALLS:

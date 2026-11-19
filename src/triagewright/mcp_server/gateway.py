@@ -52,10 +52,14 @@ class _ArmedFault:
 
 
 class _RecordingGateway:
-    """Fault injection and the raw call log. Subclasses implement ``_send``."""
+    """Fault injection and the raw call log. Subclasses implement ``_send``.
 
-    def __init__(self, faults: Sequence[ToolFault] = ()) -> None:
+    ``log_calls=False`` keeps no log, for long-running processes (the API).
+    """
+
+    def __init__(self, faults: Sequence[ToolFault] = (), *, log_calls: bool = True) -> None:
         self._faults = [_ArmedFault(f, f.times) for f in faults]
+        self._log_calls = log_calls
         self.calls: list[ToolCallRecord] = []
 
     def list_tools(self) -> Sequence[ToolSpec]:
@@ -66,6 +70,8 @@ class _RecordingGateway:
         result = self._fault_for(name, arguments)
         if result is None:
             result = await self._send(name, arguments, ctx)
+        if not self._log_calls:
+            return result
         self.calls.append(
             ToolCallRecord(
                 tool=name,
@@ -99,8 +105,10 @@ class _RecordingGateway:
 class InProcessToolGateway(_RecordingGateway):
     """Calls the tool service directly (``mcp_transport=inprocess``, tests, eval cases)."""
 
-    def __init__(self, service: ToolService, *, faults: Sequence[ToolFault] = ()) -> None:
-        super().__init__(faults)
+    def __init__(
+        self, service: ToolService, *, faults: Sequence[ToolFault] = (), log_calls: bool = True
+    ) -> None:
+        super().__init__(faults, log_calls=log_calls)
         self.service = service
 
     @classmethod
@@ -131,6 +139,8 @@ class InProcessToolGateway(_RecordingGateway):
         return await self.service.call(name, arguments, ctx)
 
 
+# Stream-level failures: the session is over, unlike a single failed HTTP request.
+_TERMINAL_ERRORS = (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)
 _TRANSPORT_ERRORS = (
     OSError,
     httpx.TransportError,
@@ -152,8 +162,10 @@ class McpToolGateway(_RecordingGateway):
     ``transient`` until the owner opens a new gateway.
     """
 
-    def __init__(self, client: Client, *, faults: Sequence[ToolFault] = ()) -> None:
-        super().__init__(faults)
+    def __init__(
+        self, client: Client, *, faults: Sequence[ToolFault] = (), log_calls: bool = True
+    ) -> None:
+        super().__init__(faults, log_calls=log_calls)
         self._client = client
         self._stop = anyio.Event()
         self._lost = anyio.Event()
@@ -161,14 +173,23 @@ class McpToolGateway(_RecordingGateway):
 
     @classmethod
     def from_settings(
-        cls, settings: Settings, *, faults: Sequence[ToolFault] = ()
+        cls, settings: Settings, *, faults: Sequence[ToolFault] = (), log_calls: bool = True
     ) -> McpToolGateway:
         """``http`` connects to ``settings.mcp_url``; ``stdio`` launches ``triagewright-mcp``."""
         if settings.mcp_transport == "http":
-            return cls(Client(settings.mcp_url), faults=faults)
+            return cls(Client(settings.mcp_url), faults=faults, log_calls=log_calls)
         if settings.mcp_transport == "stdio":
-            return cls(Client(stdio_server_parameters(settings)), faults=faults)
+            client = Client(stdio_server_parameters(settings))
+            return cls(client, faults=faults, log_calls=log_calls)
         raise ValueError("mcp_transport=inprocess uses InProcessToolGateway")
+
+    @property
+    def lost(self) -> bool:
+        """The session ended. It doesn't reconnect: open a new gateway."""
+        return self._lost.is_set()
+
+    async def wait_lost(self) -> None:
+        await self._lost.wait()
 
     async def __aenter__(self) -> Self:
         tg = anyio.create_task_group()
@@ -215,7 +236,14 @@ class McpToolGateway(_RecordingGateway):
         done: list[ToolResult] = []
 
         async def call() -> None:
-            done.append(await self._call_tool(name, arguments, ctx))
+            # A session can end between choosing this gateway and reaching the SDK.
+            if not self._lost.is_set() and not self._stop.is_set():
+                try:
+                    done.append(await self._call_tool(name, arguments, ctx))
+                except Exception:
+                    if not (self._lost.is_set() or self._stop.is_set()):
+                        raise
+                    logger.info("MCP call ended with the session")
             tg.cancel_scope.cancel()
 
         async def watch() -> None:
@@ -239,11 +267,14 @@ class McpToolGateway(_RecordingGateway):
             if exc.code == mcp_types.REQUEST_TIMEOUT:
                 return ToolResult.fail(name, ErrorCategory.TIMEOUT, "MCP request timed out")
             if exc.code == mcp_types.CONNECTION_CLOSED:
+                self._lost.set()  # e.g. the stdio child exited: the session can't recover
                 return ToolResult.fail(name, ErrorCategory.TRANSIENT, "MCP connection closed")
             return ToolResult.fail(name, ErrorCategory.INTERNAL, f"MCP error {exc.code}")
         except TimeoutError:
             return ToolResult.fail(name, ErrorCategory.TIMEOUT, "MCP request timed out")
         except _TRANSPORT_ERRORS as exc:
+            if isinstance(exc, _TERMINAL_ERRORS):
+                self._lost.set()
             return ToolResult.fail(
                 name, ErrorCategory.TRANSIENT, f"MCP transport error: {type(exc).__name__}"
             )
@@ -277,6 +308,7 @@ def stdio_server_parameters(settings: Settings) -> StdioServerParameters:
         "TW_DB_PATH": str(db),
         "TW_SEED_DIR": str(settings.seed_dir.resolve()),
         "TW_KB_DIR": str(settings.kb_dir.resolve()),
+        "TW_EMBEDDER": settings.embedder,
         "TW_REFUND_HARD_LIMIT_CENTS": str(settings.refund_hard_limit_cents),
         "TW_REFUND_WINDOW_DAYS": str(settings.refund_window_days),
         "TW_MAX_REFUNDS_PER_CUSTOMER_30D": str(settings.max_refunds_per_customer_30d),

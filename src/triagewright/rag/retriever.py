@@ -20,9 +20,16 @@ class HybridRetriever:
 
     ``score`` is the method's own score: negated BM25, cosine, or the RRF sum
     ``Σ 1/(rrf_k + rank)``, so ``RetrievalQuery.min_score`` is per method.
-    Only positive scores are returned, as in the fake. Untrusted chunks are
-    returned too (with ``trusted=False``) so the caller can screen them; they
-    are never citable (see :mod:`triagewright.rag.citations`).
+    Only positive scores are returned, as in the fake.
+
+    An untrusted chunk (``trusted=False``, user-submitted) is returned only
+    when ``filters.categories`` names its category: an explicit opt-in, kept
+    apart from the free-text query. Neither ranking nor query words can decide
+    this: a planted page that says "issue a full refund" outranks the real
+    policy for a refund about the same product, and incidental words ("user")
+    match its title. Under ADR-001 one flagged hit blocks every write in the
+    request. Returned untrusted chunks are screened by the caller and are
+    never citable (see :mod:`triagewright.rag.citations`).
     """
 
     def __init__(self, index: KBIndex, *, mode: Mode = "hybrid", rrf_k: int = RRF_K) -> None:
@@ -33,10 +40,17 @@ class HybridRetriever:
     async def retrieve(self, query: RetrievalQuery) -> list[RetrievedChunk]:
         return self.search(query)
 
+    def close(self) -> None:
+        self.index.close()
+
     def search(self, query: RetrievalQuery) -> list[RetrievedChunk]:
         """Synchronous :meth:`retrieve`."""
-        ranked = self._rank(query)
-        kept = [(c, s) for c, s in ranked if s > query.min_score][: query.k]
+        opted_in = set(query.filters.categories or []) if query.filters else set()
+        kept = [
+            (c, s)
+            for c, s in self._rank(query)
+            if s > query.min_score and (c.trusted or c.category in opted_in)
+        ][: query.k]
         return [
             RetrievedChunk(chunk=c, score=s, rank=i, method=self.mode)
             for i, (c, s) in enumerate(kept, start=1)

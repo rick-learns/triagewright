@@ -69,6 +69,13 @@ class ToolService:
         self.policy = policy or PolicyConfig()
         self._approval_key = approval_key
 
+    def close(self) -> None:
+        """Close the record store and the KB index, if the retriever has one."""
+        self.systems.close()
+        close = getattr(self.retriever, "close", None)
+        if callable(close):
+            close()
+
     async def call(self, name: ToolName, arguments: JsonObject, ctx: CallContext) -> ToolResult:
         try:
             return await self._call(name, arguments, ctx)

@@ -155,7 +155,16 @@ class ListOrdersInput(Contract):
 class SearchKBInput(Contract):
     query: Annotated[str, Field(min_length=1, max_length=500)]
     k: Annotated[int, Field(ge=1, le=10)] = 5
-    categories: list[str] | None = None
+    categories: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "Only search these categories. User-submitted pages (category"
+                " 'community') are searched only when listed here: list it only when the"
+                " customer explicitly asks about the community tips."
+            )
+        ),
+    ] = None
 
 
 class CheckRefundEligibilityInput(Contract):

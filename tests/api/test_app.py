@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
+import signal
+import subprocess
+import sys
+import threading
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -188,11 +194,11 @@ def test_unknown_route_is_a_structured_404(stack: Stack) -> None:
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
 
 
-def test_main_exits_with_a_helpful_message_without_wiring(
+def test_main_exits_with_a_helpful_message_in_replay_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None))
-    with pytest.raises(SystemExit, match="task X1"):
+    with pytest.raises(SystemExit, match="replay only replays eval-case recordings"):
         api.main()
     with pytest.raises(WiringUnavailableError):
         load_services(Settings(_env_file=None))
@@ -206,6 +212,94 @@ def test_main_serves_the_app_on_the_configured_host_and_port(
     monkeypatch.setattr(api, "get_settings", lambda: settings)
     monkeypatch.setattr(api, "load_services", lambda s: stack.services)
     monkeypatch.setattr(uvicorn, "run", lambda app, **kw: served.update(app=app, **kw))
+    monkeypatch.setenv("WEB_CONCURRENCY", "2")
     api.main()
     assert served["host"] == "127.0.0.1" and served["port"] == 9123
     assert served["access_log"] is False
+    assert served["workers"] == 1  # the app object can't be shared across workers
+
+
+def test_lifespan_shutdown_releases_the_services(stack: Stack) -> None:
+    closed: list[str] = []
+
+    async def aclose() -> None:
+        closed.append("aclose")
+
+    services = dataclasses.replace(
+        stack.services, close=lambda: closed.append("close"), aclose=aclose
+    )
+    with TestClient(create_app(services, approver_token=None)) as client:
+        assert client.get("/healthz").status_code == 200
+        assert closed == []
+    assert closed == ["aclose", "close"]
+
+
+_SERVE = """
+import asyncio, dataclasses, sqlite3, sys
+from pathlib import Path
+import uvicorn
+from triagewright.api import create_app
+from triagewright.config import Settings
+from triagewright.wiring import build_services
+
+tmp = Path(sys.argv[2])
+log = open(sys.argv[1], "a", buffering=1)
+settings = Settings(
+    _env_file=None,
+    db_path=tmp / "world.sqlite",
+    approvals_db_path=tmp / "approvals.sqlite",
+    trace_exporter="none",
+    mcp_transport="inprocess",  # the thread-affine world store, whatever the env says
+)
+real = build_services(settings, model_factory=lambda case_id: object())  # the in-process stack
+
+async def aclose():
+    log.write("aclose-start\\n")
+    await real.aclose()
+    await asyncio.sleep(0.2)  # a real suspension: a signal must not cut it short
+    log.write("aclose-done\\n")
+
+def close():
+    real.close()
+    try:
+        real.approvals.list_pending()
+    except sqlite3.ProgrammingError:
+        log.write("close\\n")  # every store closed without error
+
+services = dataclasses.replace(real, close=close, aclose=aclose)
+app = create_app(services, approver_token=None)
+uvicorn.run(app, host="127.0.0.1", port=0, log_level="info")
+"""
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+def test_a_signal_runs_the_full_teardown(tmp_path: Path, sig: signal.Signals) -> None:
+    script, log = tmp_path / "serve.py", tmp_path / "teardown.log"
+    script.write_text(_SERVE)
+    proc = subprocess.Popen(  # noqa: S603
+        [sys.executable, str(script), str(log), str(tmp_path)], stderr=subprocess.PIPE, text=True
+    )
+    ready = threading.Event()  # started, or exited before starting
+    started: list[bool] = []
+    output: list[str] = []
+
+    def watch() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            output.append(line)
+            if "Application startup complete" in line:
+                started.append(True)
+                ready.set()
+        ready.set()
+
+    threading.Thread(target=watch, daemon=True).start()
+    try:
+        assert ready.wait(30), "server did not start within 30s"
+        assert started, "server exited before starting:\n" + "".join(output)
+        proc.send_signal(sig)
+        proc.wait(timeout=10)
+    finally:
+        proc.kill()
+        proc.wait()
+    assert log.read_text().split() == ["aclose-start", "aclose-done", "close"]

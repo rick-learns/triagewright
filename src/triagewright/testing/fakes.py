@@ -44,7 +44,7 @@ from triagewright.contracts.policy import (
     refund_idempotency_key,
     verify_approval_token,
 )
-from triagewright.contracts.ports import Guardrails, TicketResolver
+from triagewright.contracts.ports import Guardrails, Retriever, TicketResolver
 from triagewright.contracts.rag import Chunk, KBDocument, RetrievalQuery, RetrievedChunk
 from triagewright.contracts.telemetry import AttrValue, RequestMetrics, SpanKind
 from triagewright.contracts.tickets import Ticket
@@ -161,7 +161,7 @@ class FakeToolGateway:
         world: WorldState,
         *,
         as_of: datetime,
-        retriever: FakeRetriever | None = None,
+        retriever: Retriever | None = None,
         faults: Sequence[ToolFault] = (),
         policy: PolicyConfig | None = None,
         approval_key: bytes = TEST_APPROVAL_KEY,

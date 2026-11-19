@@ -33,11 +33,12 @@ import anyio
 from pydantic import ValidationError
 
 from triagewright.config import Settings
-from triagewright.data import load_as_of, load_kb, load_world
+from triagewright.data import load_as_of, load_world
 from triagewright.mcp_server.gateway import InProcessToolGateway, McpToolGateway
 from triagewright.mcp_server.server import CTX_META_KEY, build_server, http_app, run_stdio
 from triagewright.mcp_server.service import ToolService
 from triagewright.mcp_server.store import MockSystems
+from triagewright.rag import build_retriever
 
 __all__ = [
     "CTX_META_KEY",
@@ -52,15 +53,15 @@ __all__ = [
 
 
 def build_service(settings: Settings, *, approval_key: bytes) -> ToolService:
-    """The tool service over ``settings.db_path``, seeded from ``settings.seed_dir`` if new."""
-    # Interim KB search until lane C's retriever is wired in at integration.
-    from triagewright.testing import FakeRetriever
+    """The tool service over ``settings.db_path``, seeded from ``settings.seed_dir`` if new.
 
+    KB search is lane C's hybrid retriever, indexed into the same database.
+    """
     return ToolService(
         MockSystems.open(settings.db_path, seed=load_world(settings.seed_dir)),
         as_of=load_as_of(settings.seed_dir),
         approval_key=approval_key,
-        retriever=FakeRetriever(load_kb(settings.kb_dir)),
+        retriever=build_retriever(settings),
         policy=settings.policy_config(),
     )
 
