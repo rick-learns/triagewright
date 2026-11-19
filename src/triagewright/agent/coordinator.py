@@ -258,7 +258,7 @@ class Coordinator:
         """A refund reply with no proposal behind it is written by code, never the model,
         so no model can deny or settle a refund: a sign-in request for an anonymous ticket,
         or a question about which order when the records leave it open."""
-        if not _refund_requested(run) or _refund_proposed(run) or run.ticket_flagged:
+        if not _refund_requested(run) or _refund_proposed(run):
             return final
         if run.ticket.customer_id is None:
             reply = prompts.SIGN_IN_FOR_REFUND
@@ -361,12 +361,13 @@ class Coordinator:
             reasons.append(EscalationReason.TOOL_FAILURE)
             failed = sorted({t.value for t in run.tool_failures})
             why.append(f"tool kept failing after retries ({', '.join(failed)})")
-        forced_write = (
-            run.ticket_flagged
-            and run.triage is not None
-            and (
-                _refund_requested(run)
-                or EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
+        # A refund ask with injection suspected anywhere, the reviewer's screen included
+        # (it runs last), goes to security whatever the models did.
+        forced_write = run.triage is not None and (
+            _refund_requested(run)
+            or (
+                run.ticket_flagged
+                and EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
             )
         )
         if run.injection and (queue is not None or run.irreversible_requested or forced_write):
@@ -400,6 +401,8 @@ class Coordinator:
     ) -> FinalResponse:
         decision = self._route(run, review)
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
+        if run.triage is not None and _refund_requested(run):
+            reply = self._refund_reply(run, reply, decision, notes)
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
@@ -412,6 +415,19 @@ class Coordinator:
         else:
             status = proposed
         return self._final(run, status, reply, notes, citations, decision, stop)
+
+    def _refund_reply(
+        self, run: RequestRun, reply: str, decision: EscalationDecision | None, notes: list[str]
+    ) -> str:
+        """Code states every refund outcome (``_note``), and the model wrote its reply before
+        the executor decided, so a reply beside an outcome is dropped; a security handoff
+        never carries model text. What's left is a reply code wrote (``_own_refund_reply``)."""
+        security = decision is not None and decision.queue is EscalationQueue.SECURITY
+        if security:
+            return prompts.FALLBACK_REPLY
+        if notes:
+            return prompts.REFUND_OUTCOME_REPLY
+        return reply
 
     async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
         """The safe fallback: hand off to a human, never a half-finished action."""
@@ -583,9 +599,17 @@ def _refund_proposed(run: RequestRun) -> bool:
 
 
 def _order_unclear(run: RequestRun) -> bool:
-    """The ticket names no order and the action subagent found other than one on file."""
+    """The ticket names no order id, and the customer's orders (from ``list_orders``)
+    don't narrow to one: by a product the ticket names, else by count. A full page
+    may have more orders behind it, so one order on it is not one order."""
     ticket = f"{run.ticket.subject}\n{run.ticket.body}"
-    return run.listed_orders not in (None, 1) and _ORDER_ID.search(ticket) is None
+    if run.listed_orders is None or _ORDER_ID.search(ticket) is not None:
+        return False
+    text = ticket.lower()
+    named = [o for o in run.listed_orders if any(i.name.lower() in text for i in o.items)]
+    if named:
+        return len(named) != 1
+    return len(run.listed_orders) != 1 or not run.listed_all
 
 
 def _refund_decidable(run: RequestRun, status: str) -> bool:
@@ -594,9 +618,9 @@ def _refund_decidable(run: RequestRun, status: str) -> bool:
     The executor decides from a queued ``issue_refund`` proposal (with injection suspected,
     it blocks the proposal and the ticket goes to security). Without one, only a
     ``needs_info`` that code rewrites is accepted: no signed-in customer, or no clear order.
-    A flagged ticket needs none: ``_decide`` sends a flagged refund ask to security.
+    With injection suspected it needs none: ``_decide`` sends the ask to security.
     """
-    if _refund_proposed(run) or run.ticket.customer_id is None or run.ticket_flagged:
+    if _refund_proposed(run) or run.ticket.customer_id is None or run.injection:
         return True
     return status == "needs_info" and _order_unclear(run)
 

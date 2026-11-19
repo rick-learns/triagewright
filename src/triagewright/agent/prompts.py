@@ -136,6 +136,7 @@ PROPOSE_REFUND_FIRST = (
     "ticket names no order and the customer doesn't have exactly one, finalize with status "
     "`needs_info`; the system writes the question."
 )
+REFUND_OUTCOME_REPLY = "Thanks for your patience. Here's where your refund request stands."
 SIGN_IN_FOR_REFUND = (
     "I can help with a refund once I can see your account. Please sign in and send your "
     "request again with the order number."

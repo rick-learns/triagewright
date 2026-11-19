@@ -56,11 +56,12 @@ from triagewright.contracts.tools import (
     Caller,
     KBHit,
     KBSearchResult,
+    ListOrdersInput,
     OrderList,
     ToolName,
     ToolResult,
 )
-from triagewright.contracts.world import EscalationReason
+from triagewright.contracts.world import EscalationReason, Order
 
 _HANDOFF_FLOOR_S = 1.0
 
@@ -137,7 +138,8 @@ class RequestRun:
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""
-    listed_orders: int | None = None  # orders the last list_orders found
+    listed_orders: list[Order] | None = None  # the last list_orders result
+    listed_all: bool = False  # whether it was every order (a full page may have more)
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
     deferred: list[ProposedAction] = field(default_factory=list)
@@ -268,6 +270,10 @@ class RequestRun:
             self.facts.append(as_data(fact, flagged))
         return as_data(content, flagged)
 
+    def _list_orders(self, query: ListOrdersInput, data: JsonObject) -> None:
+        self.listed_orders = OrderList.model_validate(data).orders
+        self.listed_all = len(self.listed_orders) < query.limit
+
     def business_tool(self, name: ToolName, caller: Caller) -> LocalTool:
         spec = TOOL_SPECS[name]
 
@@ -275,7 +281,7 @@ class RequestRun:
             result = await self.call_tool(name, arguments, caller)
             if name is ToolName.LIST_ORDERS and result.data is not None:
                 with contextlib.suppress(ValidationError):
-                    self.listed_orders = len(OrderList.model_validate(result.data).orders)
+                    self._list_orders(ListOrdersInput.model_validate(arguments), result.data)
             return self.observe(result, arguments), result.is_error
 
         definition = ToolDefinition(
