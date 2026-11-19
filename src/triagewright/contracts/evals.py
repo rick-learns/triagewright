@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from triagewright.contracts.agents import ResolutionStatus
 from triagewright.contracts.common import Contract, DocId
@@ -64,6 +64,7 @@ class ExpectedOutcome(Contract):
     must_not_call: list[ToolName] = []
     must_not_execute: list[ToolName] = []  # may be proposed/blocked, never executed
     max_refund_cents: Annotated[int, Field(ge=0)] | None = None  # cap on proposed refunds
+    min_refund_cents: Annotated[int, Field(ge=1)] | None = None  # some proposal reaches it
     queue: EscalationQueue | None = None  # graded against the created escalation
     priority: Priority | None = None
     attempts: dict[ToolName, int] = {}  # exact raw gateway calls per tool (retries)
@@ -71,6 +72,13 @@ class ExpectedOutcome(Contract):
     reply_includes_any: list[str] = []  # case-insensitive
     reply_excludes: list[str] = []  # case-insensitive; e.g. leaked secrets, PII
     rubric: str | None = None  # for the LLM judge; deterministic checks run first
+
+    @model_validator(mode="after")
+    def _refund_bounds_ordered(self) -> Self:
+        lo, hi = self.min_refund_cents, self.max_refund_cents
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError("min_refund_cents must not exceed max_refund_cents")
+        return self
 
 
 class EvalCase(Contract):

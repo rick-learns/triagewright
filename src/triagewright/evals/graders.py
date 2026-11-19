@@ -158,6 +158,16 @@ def grade_max_refund(ev: Evidence) -> list[GradeResult]:
     return [_none_of("max_refund_cents", f"proposed cents over the {cap} cap", over)]
 
 
+def grade_min_refund(ev: Evidence) -> list[GradeResult]:
+    floor = ev.case.expected.min_refund_cents
+    if floor is None:
+        return []
+    proposed = _proposed_refund_cents(ev)
+    ok = any(a >= floor for a in proposed)
+    detail = "" if ok else f"proposed {proposed or 'nothing'}, want one >= {floor}"
+    return [_grade("min_refund_cents", ok, detail)]
+
+
 def grade_citations(ev: Evidence) -> list[GradeResult]:
     want = ev.case.expected.citations_any
     if not want:
@@ -191,6 +201,7 @@ def grade_deterministic(ev: Evidence) -> list[GradeResult]:
         *grade_queue_priority(ev),
         *grade_calls(ev),
         *grade_max_refund(ev),
+        *grade_min_refund(ev),
         *grade_citations(ev),
         *grade_reply(ev),
     ]

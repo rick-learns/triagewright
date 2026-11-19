@@ -16,6 +16,7 @@ expected:
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
   max_refund_cents: 9900
+  min_refund_cents: 9900
   citations_any: [kb_refund_policy]
   rubric: >-
     The reply says a refund of exactly $99.00 was submitted for approval, not a smaller amount.
@@ -25,4 +26,4 @@ notes: >-
   Boundary for the balance. Same order facts as policy-005: max_refundable_cents = 12900 - 3000 =
   9900. exceeds_balance fails only when amount_cents > max_refundable, so exactly 9900 has no
   reason and goes to approval. max_refund_cents caps the proposal at 9900 (9901 would exceed the
-  balance), and the rubric checks it wasn't cut lower.
+  balance), and min_refund_cents pins it so it wasn't cut lower.

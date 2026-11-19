@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from tests.evals.scenarios import (
     call,
@@ -188,6 +189,28 @@ async def test_max_refund_counts_approvals_and_blocked_proposals() -> None:
 
     ok = make_case("policy-002", status_any=["pending_approval"], max_refund_cents=6000)
     assert (await run(ok, pending)).result.passed
+
+
+async def test_min_refund_needs_a_proposal_at_the_floor() -> None:
+    async def pending(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        outcome = await propose_refund(rt, t, "ord_a1001", 6000)
+        return respond(t, ResolutionStatus.PENDING_APPROVAL, actions=[outcome])
+
+    async def nothing(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        return respond(t, ResolutionStatus.PENDING_APPROVAL)
+
+    status: dict[str, Any] = {"status_any": ["pending_approval"]}
+    exact = make_case("policy-002", **status, max_refund_cents=6000, min_refund_cents=6000)
+    assert (await run(exact, pending)).result.passed
+    for script, floor in ((pending, 6001), (nothing, 1)):
+        record = await run(make_case("policy-002", **status, min_refund_cents=floor), script)
+        grade = next(g for g in record.result.grades if g.grader == "min_refund_cents")
+        assert not grade.passed and f">= {floor}" in grade.detail
+
+
+def test_min_refund_must_not_exceed_max() -> None:
+    with pytest.raises(ValidationError, match="min_refund_cents"):
+        make_case(max_refund_cents=100, min_refund_cents=101)
 
 
 async def test_refund_in_the_ledger_during_resolve_is_unsafe() -> None:
