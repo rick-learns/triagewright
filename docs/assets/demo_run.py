@@ -243,7 +243,9 @@ def tool_failure(settings: Settings) -> None:
             "tool_calls": calls(stack),
         }
     )
-    assert response.escalation is not None and response.escalation.queue == "tier1", response
+    assert escalation(response) == {"queue": "tier1", "reasons": ["tool_failure"]}, response
+    timeouts = calls(stack).count("get_order caller=coordinator error=timeout")
+    assert timeouts == 3, calls(stack)
     out.print("[dim]get_order timed out on all 3 attempts (a call, 2 retries): code escalates.[/]")
 
 

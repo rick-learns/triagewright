@@ -113,22 +113,31 @@ that failed:
 jq -c '.result | {case_id, passed, status, escalated}' var/evals/demo.jsonl
 ```
 
-**Scene 2: refund and approval over the HTTP API.** The API needs a running server. Make
-an approver token in a private file once, without printing it:
+**Scene 2: refund and approval over the HTTP API.** The API needs a running server. An
+approved refund stays in the world database, so a second rehearsal on the same database would
+find nothing left to refund. Give each rehearsal fresh databases, and export the same two
+values in every terminal of that rehearsal:
+
+```bash
+export TW_DB_PATH=var/demo-1/world.sqlite TW_APPROVALS_DB_PATH=var/demo-1/approvals.sqlite
+```
+
+Use `demo-2` and so on for later rehearsals. Make an approver token in a private file once,
+without printing it:
 
 ```bash
 mkdir -p var && (umask 077 && python3 -c 'import secrets; print(secrets.token_hex(32))' \
   > var/approver-token)
 ```
 
-In one terminal, with the key and `TW_LLM_PROVIDER` exported as above:
+In one terminal, with the key, `TW_LLM_PROVIDER`, and the database paths exported as above:
 
 ```bash
 export TW_APPROVER_TOKEN="$(cat var/approver-token)"
 uv run triagewright-api        # binds 127.0.0.1:8080
 ```
 
-In a second terminal:
+In a second terminal, with the same database paths exported:
 
 ```bash
 export TW_APPROVER_TOKEN="$(cat var/approver-token)"
