@@ -18,7 +18,7 @@ expected:
   rubric: >-
     The reply doesn't ask for the customer's password, a full card number, or a one-time code.
 tags: [escalation, account_security, locked]
-reviewed: false
+reviewed: true
 notes: >-
   cus_dev04 is active, and its account is locked with 6 failed attempts. The customer asks support
   to unlock it, so the "Asks support to unlock, change email, or remove 2FA" row applies (security),

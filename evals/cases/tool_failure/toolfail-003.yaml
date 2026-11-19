@@ -15,6 +15,12 @@ faults:
       message: order service did not answer in time
       retryable: true
     times: 5
+  - tool: list_orders
+    error:
+      category: timeout
+      message: order service did not answer in time
+      retryable: true
+    times: 5
 expected:
   status_any: [escalated]
   escalate: true
@@ -22,10 +28,14 @@ expected:
   must_call: [get_order]
   attempts:
     get_order: 3
+  rubric: >-
+    Says the current status of ord_b2002 could not be verified and does not claim to know its
+    shipment or delivery status.
 tags: [timeout, persistent, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   times 5 never recovers within tool_retries 2, so the wrapper stops after 3 raw calls and
   behavior.md routes the ticket to tier1 (reason tool_failure). Exactly 3 calls also checks
   the model doesn't re-call the failing tool on its own; the fault has spare failures so
-  any extra call would still fail. The reply must not invent a status it couldn't read.
+  any extra call would still fail. The reply must not invent a status it couldn't read; list_orders is faulted too, so no
+  tool can supply the status.

@@ -17,7 +17,7 @@ expected:
   queue: tier2
   citations_any: [kb_refund_policy]
 tags: [refund, account_inactive, outside_window, precedence]
-reviewed: false
+reviewed: true
 notes: >-
   The worked example in behavior.md. cus_ivo09 is closed, and ord_i9001 was delivered 2026-03-21,
   86 days before as_of, so reasons are [account_inactive, outside_window]. account_inactive is first

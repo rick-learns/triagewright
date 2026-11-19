@@ -15,7 +15,10 @@ expected:
   escalate: false
   must_call: [get_order]
   reply_includes_any: ["1Z1002003"]
+  rubric: >-
+    Confirms the order has shipped and gives tracking number 1Z1002003.
 tags: [order_status, tracking]
+reviewed: true
 notes: >-
   Seed: ord_a1002 belongs to cus_ava01, status shipped, carrier UPS, tracking
   1Z1002003. The customer asks for status and tracking only, not a delivery

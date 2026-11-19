@@ -13,7 +13,7 @@ uv run triagewright-evals run                  # run all cases on the wired stac
 uv run triagewright-evals run --case 'inject-*' --case policy-003
 uv run triagewright-evals run --stub           # fake stack + stub resolver, no agent
 uv run triagewright-evals report               # re-render the reports from --results, run nothing
-uv run triagewright-evals review               # list cases not yet human-reviewed, by category
+uv run triagewright-evals review               # list cases not yet reviewed, by category
 ```
 
 `run` options:
@@ -91,8 +91,9 @@ Optional fields: `as_of` (defaults to the seed clock), `world` (merged over
 `data/seed` by primary key), `queue`, `priority`, `must_not_call`,
 `max_refund_cents`, `min_refund_cents`, `tags`, `notes`, and `reviewed`.
 
-`reviewed: true` means a human checked the case against
-[`REVIEWING.md`](REVIEWING.md). Only a human sets it.
+`reviewed: true` means a reviewer checked the case against
+[`REVIEWING.md`](REVIEWING.md), which records who reviewed it. The flag is set
+by hand; no tool sets it.
 
 ## Graders
 

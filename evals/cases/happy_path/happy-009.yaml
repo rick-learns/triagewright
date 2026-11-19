@@ -16,13 +16,15 @@ expected:
   citations_any: [kb_account_lockout]
   rubric: >-
     Directs the customer to the "Forgot password" link on the sign-in page,
-    which sends a reset link to the email on file and unlocks the account.
+    which sends a reset link to the email on file; completing the password reset unlocks
+    the account.
     Doesn't claim support unlocked the account, and never asks for the
     customer's password or a one-time code.
 tags: [account_access, lockout, citation]
+reviewed: true
 notes: >-
-  Seed: cus_dev04 is active; their account is locked after 6 failed sign-in
-  attempts. behavior.md row "Locked account or password reset (active
+  Seed: cus_dev04 is active; their account is locked and the record shows 6 failed
+  sign-in attempts (the policy threshold is 5 in a row). behavior.md row "Locked account or password reset (active
   account)" -> resolved, get_account optional (so it's not in must_call),
   cite kb_account_lockout. The customer asks what to do, not for support to
   unlock it, so the "asks support to unlock -> security" row doesn't apply.

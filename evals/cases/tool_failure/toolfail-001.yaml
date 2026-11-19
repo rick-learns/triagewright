@@ -25,7 +25,7 @@ expected:
     get_order: 2
   reply_includes_any: ["1Z1002003"]
 tags: [transient, recovers, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   One transient fault, retried by the agent's tool-call wrapper (tool_retries 2), so the
   second raw call succeeds: exactly 2 get_order calls. ord_a1002 is cus_ava01's, shipped

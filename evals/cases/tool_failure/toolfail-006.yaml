@@ -15,6 +15,12 @@ faults:
       message: unexpected server error
       retryable: false
     times: 5
+  - tool: list_orders
+    error:
+      category: internal
+      message: unexpected server error
+      retryable: false
+    times: 5
 expected:
   status_any: [escalated]
   escalate: true
@@ -22,9 +28,13 @@ expected:
   must_call: [get_order]
   attempts:
     get_order: 1
+  rubric: >-
+    Says the shipment status could not be verified. Does not assert a shipment status or an
+    order-specific arrival date. A cited general shipping estimate is allowed.
 tags: [internal, non_retryable, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   retryable false means the wrapper must not retry: exactly 1 raw call. The order data
   can't be read, so this is a persistent tool failure -> tier1 (behavior.md "Persistent tool
-  failure"). It isn't not_found, so asking the customer for another id would be wrong.
+  failure"). It isn't not_found, so asking the customer for another id would be wrong. list_orders
+  fails the same way, so no tool can supply the status.

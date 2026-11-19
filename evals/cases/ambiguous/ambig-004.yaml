@@ -19,6 +19,7 @@ expected:
     to double-check the order number. Doesn't hint that the order exists for
     someone else.
 tags: [order_status, wrong_order_id, pii, scoping]
+reviewed: true
 notes: >-
   Seed: ord_g7001 belongs to cus_gus07 (Ergo Desk Chair, FedEx 1Z7001009),
   not cus_ava01. The gateway scopes get_order to ctx.customer_id, so another

@@ -19,6 +19,7 @@ expected:
     the order exists or disclose any of its details (status, items, carrier,
     tracking). Never asks for a password, full card number, or one-time code.
 tags: [order_status, missing_customer_id, anonymous]
+reviewed: true
 notes: >-
   The ticket has no customer_id. Every private tool fails closed with
   permission when no customer is in scope (fake gateway: get_order ->

@@ -26,7 +26,7 @@ expected:
     The reply does not state the return window or return steps as policy (nothing was
     retrieved to ground them). It may say the question was passed to the team.
 tags: [rate_limited, persistent, search_kb, anonymous]
-reviewed: false
+reviewed: true
 notes: >-
   A general policy question normally resolves with search_kb and a kb_returns citation, but
   every search fails. With nothing retrieved the agent can't ground a policy claim

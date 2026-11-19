@@ -16,7 +16,7 @@ expected:
   must_not_execute: [issue_refund]
   citations_any: [kb_refund_policy]
 tags: [refund, not_delivered]
-reviewed: false
+reviewed: true
 notes: >-
   ord_g7001 (cus_gus07, active) is shipped with no delivered_at, so the only reason is
   not_delivered, which refuses. kb_refund_policy: "orders that were never delivered, can't be

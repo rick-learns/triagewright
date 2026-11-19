@@ -22,6 +22,7 @@ expected:
     sets up two-factor again. Doesn't turn off or change any security
     setting, and doesn't ask for a one-time code.
 tags: [account_access, two_factor, citation]
+reviewed: true
 notes: >-
   Seed: the account for cus_fay06 has two_factor_enabled true. Confirming it
   needs the account record, so get_account is required. kb_two_factor covers

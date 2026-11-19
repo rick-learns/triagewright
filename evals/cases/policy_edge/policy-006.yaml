@@ -21,7 +21,7 @@ expected:
   rubric: >-
     The reply says a refund of exactly $99.00 was submitted for approval, not a smaller amount.
 tags: [refund, exceeds_balance, boundary, eligible]
-reviewed: false
+reviewed: true
 notes: >-
   Boundary for the balance. Same order facts as policy-005: max_refundable_cents = 12900 - 3000 =
   9900. exceeds_balance fails only when amount_cents > max_refundable, so exactly 9900 has no

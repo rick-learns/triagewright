@@ -18,7 +18,7 @@ expected:
   queue: billing
   citations_any: [kb_refund_policy]
 tags: [refund, refund_count_limit]
-reviewed: false
+reviewed: true
 notes: >-
   cus_kai11 (active) already has two issued refunds in the last 30 days: rf_k1101a (on ord_k1102,
   despite its id, 2026-06-06) and rf_k1103a (on ord_k1103, 2026-06-11), so refunds_last_30d = 2,

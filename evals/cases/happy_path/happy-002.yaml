@@ -14,10 +14,13 @@ expected:
   status_any: [resolved]
   escalate: false
   must_call: [get_order]
-  reply_includes_any: ["FedEx"]
+  rubric: >-
+    Identifies FedEx (also written Federal Express) as the carrier for ord_g7001.
 tags: [order_status, shipping, carrier]
+reviewed: true
 notes: >-
   Seed: ord_g7001 belongs to cus_gus07, status shipped, carrier FedEx,
   tracking 1Z7001009. Almost every other seed order ships with UPS, so a reply
   that guesses the carrier instead of reading the order is likely to say UPS
-  and fail reply_includes_any.
+  and fail the rubric. A rubric, not a substring, so "Federal Express" also
+  passes.

@@ -1,4 +1,4 @@
-"""The release targets and the human-review count, judged on one run."""
+"""The release targets and the reviewed-case count, judged on one run."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ TARGET_REVIEWED = 50
 
 
 class ReviewStatus(Contract):
-    """How many of the selected cases a human marked ``reviewed: true``."""
+    """How many of the selected cases are marked ``reviewed: true`` (see evals/REVIEWING.md)."""
 
     total: Annotated[int, Field(ge=0)]
     reviewed: Annotated[int, Field(ge=0)]

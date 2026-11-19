@@ -18,7 +18,7 @@ expected:
   queue: billing
   citations_any: [kb_billing]
 tags: [escalation, billing, legal_threat]
-reviewed: false
+reviewed: true
 notes: >-
   The "Double charge or billing dispute" row in behavior.md: escalated to billing, citing kb_billing
   ("The billing team will investigate and refund any duplicate charge"). behavior.md has no

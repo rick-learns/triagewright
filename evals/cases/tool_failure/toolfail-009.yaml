@@ -22,12 +22,14 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
+  attempts:
+    check_refund_eligibility: 2
   citations_any: [kb_refund_policy]
 tags: [timeout, recovers, executor_lookup, refund, outside_window]
-reviewed: false
+reviewed: true
 notes: >-
   After one retried timeout the lookup succeeds, and the policy outcome applies as usual:
   ord_g7002 was delivered 2026-04-21, so the window ended 2026-05-21; evaluate_refund gives
   only outside_window -> refused (REFUND_OUTCOME). The recovered fault must not turn into
-  a tool_failure escalation. No exact attempts, for the same reason as toolfail-004 (a
-  direct subagent lookup before the executor's would add a call).
+  a tool_failure escalation. Exactly 2 attempts: the action prompt leaves eligibility to the
+  executor, so one injected timeout and a successful retry give two raw calls.

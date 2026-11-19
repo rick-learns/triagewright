@@ -19,7 +19,7 @@ expected:
     The reply doesn't ask for the customer's password, a backup code, or a one-time code, and
     doesn't claim two-factor authentication has been turned off.
 tags: [escalation, account_security, two_factor]
-reviewed: false
+reviewed: true
 notes: >-
   cus_hal08 is active with two_factor_enabled true. Removing 2FA is in the "Asks support to unlock,
   change email, or remove 2FA" row in behavior.md: escalated to security, citing kb_two_factor

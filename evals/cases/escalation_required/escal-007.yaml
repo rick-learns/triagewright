@@ -17,7 +17,7 @@ expected:
   queue: tier2
   citations_any: [kb_warranty]
 tags: [escalation, warranty]
-reviewed: false
+reviewed: true
 notes: >-
   ord_g7002 (cus_gus07, active) was delivered 2026-04-21, 55 days before as_of, so it's past the
   30-day refund window (kb_damaged_items: "After 30 days, the 1-year limited warranty applies")

@@ -30,10 +30,11 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
+  min_refund_cents: 5900
   max_refund_cents: 5900
   citations_any: [kb_refund_policy]
 tags: [refund, outside_window, boundary, eligible]
-reviewed: false
+reviewed: true
 notes: >-
   Boundary for the window. The world override adds ord_l1203 for cus_lea12 (active, no refunds),
   delivered exactly 30 days before as_of. window_ends_at = 2026-06-15T12:00:00Z = as_of, and

@@ -14,8 +14,10 @@ expected:
   must_call: [get_order]
   attempts:
     get_order: 1
+  rubric: >-
+    Asks the customer to double-check or supply the correct order number.
 tags: [not_found, non_retryable, get_order]
-reviewed: false
+reviewed: true
 notes: >-
   No fault: ord_a1009 doesn't exist, so the gateway returns not_found (retryable false;
   verified with FakeToolGateway). behavior.md Always 5: not_found for an id the customer

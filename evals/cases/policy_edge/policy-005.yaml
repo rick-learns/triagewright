@@ -14,16 +14,19 @@ expected:
   escalate: false
   must_call: [check_refund_eligibility]
   must_not_execute: [issue_refund]
-  max_refund_cents: 9900
+  min_refund_cents: 12900
+  max_refund_cents: 12900
   citations_any: [kb_refund_policy]
   rubric: >-
-    The reply explains that the full $129.00 can't be refunded because $30.00 was already
-    refunded on this order, and that the most that can still be refunded is $99.00.
+    Explains that the requested refund exceeds the $99.00 refundable balance on order ord_a1001.
+    Restating the requested $129.00 or the earlier $30.00 refund is optional. Makes no claim of
+    approval or payment.
 tags: [refund, exceeds_balance]
-reviewed: false
+reviewed: true
 notes: >-
   ord_a1001 (cus_ava01, active) totals 12900 and has rf_a1001a for 3000 issued 2026-06-09, so
   max_refundable_cents = 9900. Delivered 2026-06-07 (8 days), and cus_ava01 has only 1 refund in 30
   days, so for 12900 the only reason is exceeds_balance, and the outcome is refused.
-  max_refund_cents caps any proposal at the remaining balance. Offering the $99.00 in the reply is
+  The bounds pin the $129.00 proposal: the policy gate must see it to refuse it against the
+  $99.00 balance (blocked proposals count toward the bounds). No refund may execute. Offering the $99.00 in the reply is
   fine, but the requested $129.00 is refused (see policy-006 for the $99.00 request).

@@ -18,7 +18,7 @@ expected:
   queue: billing
   citations_any: [kb_refund_policy]
 tags: [refund, over_hard_limit]
-reviewed: false
+reviewed: true
 notes: >-
   ord_c3001 belongs to cus_cho03 (active), was delivered 2026-06-09 (6 days before as_of), totals
   89900 with nothing refunded, and cus_cho03 has no refunds. For 89900 the only reason is

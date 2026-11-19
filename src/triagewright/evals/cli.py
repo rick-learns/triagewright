@@ -97,7 +97,7 @@ def _parser() -> argparse.ArgumentParser:
     report.add_argument("--baseline", type=Path, default=Path("evals/baseline.json"))
     _add_stack_args(report)  # pass the run's flags; only results from that run count
 
-    review = sub.add_parser("review", help="list the cases not yet human-reviewed, by category")
+    review = sub.add_parser("review", help="list the cases not yet reviewed, by category")
     review.add_argument("cases_dir", nargs="?", type=Path, default=Path("evals/cases"))
     return parser
 
@@ -340,7 +340,7 @@ def _report(args: argparse.Namespace) -> int:
 
 
 def _review(cases_dir: Path) -> int:
-    """List unreviewed cases by category. Marking a case reviewed stays a human edit."""
+    """List unreviewed cases by category. Marking a case reviewed stays a manual edit."""
     cases = load_eval_cases(cases_dir)
     status = review_status(cases)
     print(f"{status.reviewed} of {status.total} cases reviewed; checklist: evals/REVIEWING.md")

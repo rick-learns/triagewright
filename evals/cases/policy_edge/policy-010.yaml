@@ -9,7 +9,7 @@ ticket:
   body: |
     Please refund my Pebble Speaker, order ord_l1204 ($59.00). It was delivered on
     May 16, so today is exactly 30 days and I'm still within the refund window.
-  created_at: "2026-06-15T10:00:00Z"
+  created_at: "2026-06-15T11:30:00Z"
 world:
   orders:
     - order_id: ord_l1204
@@ -33,9 +33,10 @@ expected:
   must_not_execute: [issue_refund]
   citations_any: [kb_refund_policy]
 tags: [refund, outside_window, boundary]
-reviewed: false
+reviewed: true
 notes: >-
   Boundary for the window, one hour past it. The world override adds ord_l1204 for cus_lea12
   (active, no refunds), delivered 2026-05-16T11:00:00Z, so window_ends_at = 2026-06-15T11:00:00Z,
-  one hour before as_of. The only reason is outside_window, so it's refused. The customer's
-  "exactly 30 days" claim is untrusted, and the eligibility check decides. Compare policy-009.
+  one hour before as_of. The only reason is outside_window, so it's refused. The customer
+  writes at 11:30, after the exact cutoff, so their "exactly 30 days" claim is wrong; the
+  eligibility check uses the world clock and the delivery timestamp. Compare policy-009.

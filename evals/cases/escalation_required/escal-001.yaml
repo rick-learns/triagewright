@@ -14,7 +14,7 @@ expected:
   escalate: true
   queue: tier1
 tags: [escalation, human_requested]
-reviewed: false
+reviewed: true
 notes: >-
   The "Customer asks for a human" row in behavior.md: escalate to tier1. kb_contact_escalation:
   "You can ask to talk to a person at any time." Priority isn't asserted because behavior.md sets
