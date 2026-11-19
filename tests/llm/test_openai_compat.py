@@ -438,7 +438,7 @@ async def test_a_limiter_paces_every_attempt() -> None:
     )
     response = await client.complete(request())
     assert sleeps.calls == [0.5, 59.5]  # the backoff, then the retry waits for a slot
-    assert response.paced_ms == 59500.0  # reported apart from latency
+    assert response.stop_reason is StopReason.END_TURN
 
 
 async def test_a_retry_that_cannot_fit_the_deadline_fails_at_once() -> None:

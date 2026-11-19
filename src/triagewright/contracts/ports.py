@@ -167,9 +167,18 @@ class RequestTelemetry(Protocol):
     ) -> AbstractContextManager[SpanHandle]: ...
 
     def record_model_call(
-        self, request: ModelRequest, response: ModelResponse, started_ms: float
+        self,
+        request: ModelRequest,
+        response: ModelResponse,
+        started_ms: float,
+        *,
+        paced_ms: float = 0.0,
     ) -> None:
-        """``started_ms``: when the call started, as an offset from the request start."""
+        """``started_ms``: when the call started, as an offset from the request start.
+        ``paced_ms``: how much of the call waited for rate-limit slots."""
+
+    def record_pacing(self, paced_ms: float) -> None:
+        """Rate-limit waits this request made, failed calls included. Excluded from latency."""
 
     def record_tool_call(self, result: ToolResult, latency_ms: float) -> None: ...
 

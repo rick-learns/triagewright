@@ -86,13 +86,26 @@ def test_pacing_waits_are_reported_apart_from_live_latency() -> None:
     clock = FakeClock()
     tel = telemetry(clock)
     clock.advance(4000 + 300)  # 4 s waiting for a rate-limit slot, then the call
-    paced = response(latency_ms=300, ttft_ms=50).model_copy(update={"paced_ms": 4000})
-    tel.record_model_call(request("triage"), paced, started_ms=0)
+    tel.record_pacing(4000)
+    paced = response(latency_ms=300, ttft_ms=50)
+    tel.record_model_call(request("triage"), paced, started_ms=0, paced_ms=4000)
     clock.advance(10)
     m = tel.finish()
     assert m.latency_ms == pytest.approx(310) and m.paced_ms == 4000
     assert m.ttft_ms == pytest.approx(4050)  # the first token still came 4.05 s in
     assert m.model_calls[0].paced_ms == 4000
+
+
+def test_only_measured_pacing_leaves_latency() -> None:
+    # A failed call's wait still counts; a response never says how long it was paced.
+    clock = FakeClock()
+    tel = telemetry(clock)
+    clock.advance(80)
+    tel.record_pacing(80)  # a paced call that then failed
+    clock.advance(100)
+    tel.record_model_call(request("triage"), response(latency_ms=100), started_ms=80)
+    m = tel.finish()
+    assert m.paced_ms == 80 and m.latency_ms == pytest.approx(100)
 
 
 def test_replay_swaps_measured_model_time_for_recorded_latency() -> None:

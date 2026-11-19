@@ -365,7 +365,6 @@ class OpenAICompatClient:
             response = from_chat_response(
                 data, request=request, provider=self.provider, latency_ms=latency_ms
             )
-            response = response.model_copy(update={"paced_ms": paced_s * 1000})
             self._remember(data, request, response)
             return response
 

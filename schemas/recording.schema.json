@@ -187,12 +187,6 @@
           "title": "Model",
           "type": "string"
         },
-        "paced_ms": {
-          "default": 0.0,
-          "minimum": 0,
-          "title": "Paced Ms",
-          "type": "number"
-        },
         "provider": {
           "$ref": "#/$defs/Provider"
         },

@@ -36,14 +36,32 @@ class CallBudget:
         self._outer = CALL_BUDGET.get()
 
     def paced(self, wait: float) -> None:
-        """Called on the waiting task's loop before (and after a late wake, for the excess)."""
+        """Called on the waiting task's loop before (and after a late wake, for the excess).
+
+        A deadline that has already passed is never moved back: its timeout fires (or is
+        firing), so the wait is left to be cancelled.
+        """
+        if self.lapsed():
+            return
+        self._credit(wait)
+
+    def _credit(self, wait: float) -> None:
         if self._on_wait is not None:
             self._on_wait(wait)
         if self._outer is not None:
-            self._outer.paced(wait)
+            self._outer._credit(wait)
         when = self._timeout.when()
         if when is not None:
             self._timeout.reschedule(when + wait)
+
+    def lapsed(self) -> bool:
+        """Whether any deadline in the chain has passed or its timeout started cancelling."""
+        when = self._timeout.when()
+        passed = when is not None and when <= asyncio.get_running_loop().time()
+        # asyncio may fire a timer up to its clock resolution early, so check both.
+        if self._timeout.expired() or passed:
+            return True
+        return self._outer is not None and self._outer.lapsed()
 
     def deadline(self) -> float | None:
         """The loop time by which the call must finish (the earliest in the chain), or ``None``."""

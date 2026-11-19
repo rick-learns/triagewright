@@ -14,8 +14,9 @@ calls go through at once; only the excess waits. The window is guarded by a
 thread lock and waits use the caller's ``sleep``, so one limiter serves clients
 on any event loop or thread.
 
-Quotas are per model and project, so a process shares one limiter per model:
-``RateLimits.shared`` is that registry.
+Quotas are per model and project (OpenRouter: per key), so a process shares one
+limiter per model and quota: ``RateLimits.shared`` is that registry, keyed by
+``Settings.quota_id``.
 
 Each wait is reported to the current ``triagewright.pacing.CALL_BUDGET``
 before sleeping, so it stays off the caller's deadlines.
@@ -60,7 +61,8 @@ class RateLimiter:
         """Admit now and return 0, or return how long until a slot may free up."""
         with self._lock:
             now = self._clock()
-            while self._admitted and self._admitted[0] <= now - self._window_s:
+            # One expiry time for both the check and the wait, so they can't disagree.
+            while self._admitted and self._admitted[0] + self._window_s <= now:
                 self._admitted.popleft()
             if len(self._admitted) < self.per_minute:
                 self._admitted.append(now)
@@ -85,7 +87,7 @@ class RateLimiter:
 class RateLimits:
     """One limiter per model, shared by every client built with it."""
 
-    _registry: ClassVar[dict[int, RateLimits]] = {}
+    _registry: ClassVar[dict[tuple[str, int], RateLimits]] = {}
     _registry_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, per_minute: int | None) -> None:
@@ -94,15 +96,17 @@ class RateLimits:
         self._limiters: dict[str, RateLimiter] = {}
 
     @classmethod
-    def shared(cls, per_minute: int | None) -> RateLimits:
-        """The process-wide limits for this quota: the API, CLI, eval cases, and judge all
-        draw on the same project quota, so they must share one window per model."""
+    def shared(cls, per_minute: int | None, *, quota: str) -> RateLimits:
+        """The process-wide limits for one quota (``Settings.quota_id``): the API, CLI, eval
+        cases, and judge all draw on it, so they share one window per model. Other quotas,
+        such as another project's key, get their own."""
         if per_minute is None:
             return cls(None)
+        key = (quota, per_minute)
         with cls._registry_lock:
-            if per_minute not in cls._registry:
-                cls._registry[per_minute] = cls(per_minute)
-            return cls._registry[per_minute]
+            if key not in cls._registry:
+                cls._registry[key] = cls(per_minute)
+            return cls._registry[key]
 
     def for_model(self, model: str) -> RateLimiter | None:
         if self.per_minute is None:

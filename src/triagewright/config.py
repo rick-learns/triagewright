@@ -9,6 +9,7 @@ Blank secrets count as unset.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -188,6 +189,19 @@ class Settings(BaseSettings):
         if self.llm_requests_per_minute is not None:
             return self.llm_requests_per_minute or None
         return FREE_TIER_RPM.get(self.llm_provider)
+
+    def quota_id(self) -> str:
+        """Which provider quota live calls draw on: the provider, endpoint, and a hash of
+        the key (a key belongs to one project). Never logged; the key itself never leaves."""
+        if self.llm_provider is Provider.GEMINI:
+            key, url = self.gemini_api_key, self.gemini_base_url
+        elif self.llm_provider is Provider.OPENROUTER:
+            key, url = self.openrouter_api_key, self.openrouter_base_url
+        else:
+            return self.llm_provider.value
+        secret = key.get_secret_value() if key is not None else ""
+        digest = hashlib.sha256(secret.encode()).hexdigest()[:16]
+        return f"{self.llm_provider.value}:{url}:{digest}"
 
     def models(self) -> dict[str, str]:
         """Model id per purpose: the ``TW_MODEL_*`` override, else the provider default."""

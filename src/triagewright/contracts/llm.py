@@ -111,8 +111,6 @@ class ModelResponse(Contract):
     latency_ms: Annotated[float, Field(ge=0)]
     ttft_ms: Annotated[float, Field(ge=0)] | None = None
     provider_cost_usd: float | None = None  # only when the provider reports it
-    # Client-side rate-limit wait before the call was sent; not part of ``latency_ms``.
-    paced_ms: Annotated[float, Field(ge=0)] = 0.0
 
 
 class Recording(Contract):

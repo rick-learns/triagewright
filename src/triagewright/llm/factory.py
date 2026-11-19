@@ -81,7 +81,7 @@ def build_model_clients(
     http = http_client or httpx.AsyncClient(
         timeout=httpx.Timeout(settings.turn_timeout_s, connect=10.0)
     )
-    limits = limits or RateLimits.shared(settings.requests_per_minute())
+    limits = limits or RateLimits.shared(settings.requests_per_minute(), quota=settings.quota_id())
     live = {role: _live_client(settings, model, http, limits) for role, model in models.items()}
     clients: dict[str, ModelClient] = dict(live)
     if settings.record:

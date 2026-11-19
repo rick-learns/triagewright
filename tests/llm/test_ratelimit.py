@@ -115,9 +115,10 @@ def test_limits_are_per_model_optional_and_shared_per_process() -> None:
     assert a.per_minute == 15
     assert limits.for_model("gemini-3-flash-preview") is not a
     assert RateLimits(None).for_model("gemini-3.5-flash-lite") is None
-    assert RateLimits.shared(15) is RateLimits.shared(15)
-    assert RateLimits.shared(15) is not RateLimits.shared(20)
-    assert RateLimits.shared(None).for_model("m") is None
+    assert RateLimits.shared(15, quota="q") is RateLimits.shared(15, quota="q")
+    assert RateLimits.shared(15, quota="q") is not RateLimits.shared(20, quota="q")
+    assert RateLimits.shared(15, quota="q") is not RateLimits.shared(15, quota="other")
+    assert RateLimits.shared(None, quota="q").for_model("m") is None
     with pytest.raises(ValueError, match="at least 1"):
         RateLimiter(0)
 
@@ -165,3 +166,32 @@ async def test_the_deadline_is_the_earliest_in_the_chain() -> None:
                 await asyncio.sleep(0)
                 assert CallBudget(inner).deadline() == outer.when()
     assert CallBudget(asyncio.timeout(None)).deadline() is None
+
+
+async def test_a_lapsed_deadline_is_not_moved_back() -> None:
+    # Its timeout is due or already cancelling, so crediting it would raise or revive it.
+    loop = asyncio.get_running_loop()
+    seen: list[float] = []
+    due = asyncio.timeout_at(loop.time() - 1)
+    budget = CallBudget(due, on_wait=seen.append)
+    assert budget.lapsed()
+    budget.paced(5)
+    when = due.when()
+    assert when is not None and when < loop.time() and seen == []
+
+
+async def test_a_lapsed_outer_deadline_blocks_the_credit() -> None:
+    loop = asyncio.get_running_loop()
+    inner = asyncio.timeout_at(loop.time() + 10)
+    with CallBudget(asyncio.timeout_at(loop.time() - 1)).installed():
+        budget = CallBudget(inner)
+    before = inner.when()
+    budget.paced(5)
+    assert inner.when() == before
+
+
+async def test_an_expired_timeout_is_lapsed() -> None:
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0) as gone:
+            await asyncio.sleep(1)
+    assert CallBudget(gone).lapsed()

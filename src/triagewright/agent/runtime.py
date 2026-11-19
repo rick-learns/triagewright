@@ -332,6 +332,7 @@ class RequestRun:
             purpose=purpose,
         )
         started_ms = self.elapsed_ms()
+        paced_before = self.paced_s
         with self.telemetry.span(
             f"model.{purpose}", SpanKind.MODEL_CALL, {"model": request.model}
         ) as span:
@@ -356,8 +357,11 @@ class RequestRun:
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, f"{purpose} model call failed"
                 ) from exc
+            finally:
+                paced_ms = (self.paced_s - paced_before) * 1000
+                self.telemetry.record_pacing(paced_ms)
             span.set_attribute("stop_reason", response.stop_reason.value)
-        self.telemetry.record_model_call(request, response, started_ms)
+        self.telemetry.record_model_call(request, response, started_ms, paced_ms=paced_ms)
         return response
 
     async def run_loop[T: BaseModel](

@@ -243,6 +243,15 @@ async def test_pacing_waits_are_not_counted_against_the_total_timeout() -> None:
     assert response.status is ResolutionStatus.RESOLVED and clock.now == 60
 
 
+async def test_a_failed_calls_pacing_is_still_reported() -> None:
+    clock = FakeClock()
+    model = PacedModel([triage(), finalize(), review()], pace_s=2, clock=clock, fail_on=[1])
+    s = stack(model=model, clock=clock)
+    response = await s.resolve(sample_ticket())
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.telemetry.last is not None and s.telemetry.last.paced_ms == 4000  # both calls
+
+
 async def test_pacing_beyond_its_budget_escalates() -> None:
     clock = FakeClock()
     model = PacedModel([triage(), finalize(), review()], pace_s=20, clock=clock)

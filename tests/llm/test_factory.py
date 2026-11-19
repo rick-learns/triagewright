@@ -100,10 +100,22 @@ def test_requests_per_minute_defaults_to_the_free_tier_quota() -> None:
     assert off.requests_per_minute() is None
 
 
+def test_each_key_draws_on_its_own_quota() -> None:
+    # Two Gemini projects (keys) on one model have separate quotas, so separate windows.
+    def pacer(key: str) -> object:
+        s = Settings(_env_file=None, llm_provider="gemini", gemini_api_key=key)
+        return build_model_clients(s).clients["triage"]._limiter  # type: ignore[attr-defined]
+
+    assert pacer("a" * 40) is pacer("a" * 40)
+    assert pacer("a" * 40) is not pacer("b" * 40)
+    one = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="a" * 40)
+    assert "a" * 40 not in one.quota_id()
+
+
 def test_clients_on_one_model_share_a_pacer() -> None:
     settings = Settings(_env_file=None, llm_provider="gemini", gemini_api_key="k" * 20)
     first = build_model_clients(settings)  # the process-wide default
-    second = build_model_clients(settings, limits=RateLimits.shared(15))
+    second = build_model_clients(settings, limits=RateLimits.shared(15, quota=settings.quota_id()))
     pacers = {
         id(c._limiter)  # type: ignore[attr-defined]
         for clients in (first, second)

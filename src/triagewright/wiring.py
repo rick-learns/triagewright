@@ -97,7 +97,7 @@ class _SharedHttp:
         self._settings = settings
         self._client: httpx.AsyncClient | None = None
         # Free-tier quotas are per model and project, so every client shares one pacer.
-        self.limits = RateLimits.shared(settings.requests_per_minute())
+        self.limits = RateLimits.shared(settings.requests_per_minute(), quota=settings.quota_id())
 
     def get(self) -> httpx.AsyncClient | None:
         if self._settings.llm_provider is Provider.REPLAY:
