@@ -1,7 +1,7 @@
 """The KB index: chunks in SQLite, FTS5 for BM25, and float32 embedding blobs.
 
 Tables are prefixed ``kb_`` so the index can share ``Settings.db_path`` with
-other lanes. Scores are rounded to 6 decimals, and ties break on
+other lanes. Scores are rounded to 9 significant digits, and ties break on
 ``(doc_id, ordinal)``, so ranking is identical across runs and machines.
 """
 
@@ -24,7 +24,7 @@ from triagewright.rag.chunking import CHUNKER_VERSION, DEFAULT_MAX_CHARS, chunk_
 from triagewright.rag.embedders import Embedder
 from triagewright.rag.text import terms
 
-SCORE_DECIMALS = 6
+SCORE_DIGITS = 9
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS kb_docs (
@@ -115,6 +115,8 @@ class KBIndex:
             raise ValueError("duplicate doc_id in ingest")
         added = updated = unchanged = 0
         with self._lock, self._conn:
+            # Take the write lock before reading, so concurrent ingests serialize.
+            self._conn.execute("BEGIN IMMEDIATE")
             stored = dict(self._conn.execute("SELECT doc_id, fingerprint FROM kb_docs").fetchall())
             for doc in sorted(docs, key=lambda d: d.doc_id):
                 fingerprint = self._fingerprint(doc)
@@ -267,6 +269,6 @@ def _chunk(row: Sequence[Any]) -> Chunk:
 
 def rank_scores(scored: Scored) -> Scored:
     """Positive scores only, rounded, best first, ties on ``(doc_id, ordinal)``."""
-    rounded = [(c, round(s, SCORE_DECIMALS)) for c, s in scored]
+    rounded = [(c, float(f"{s:.{SCORE_DIGITS}g}")) for c, s in scored]
     kept = [(c, s) for c, s in rounded if s > 0]
     return sorted(kept, key=lambda cs: (-cs[1], cs[0].doc_id, cs[0].ordinal))

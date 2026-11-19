@@ -62,6 +62,9 @@ class HybridRetriever:
 
 def build_retriever(settings: Settings, *, mode: Mode = "hybrid") -> HybridRetriever:
     """Open the index at ``settings.db_path`` and ingest ``settings.kb_dir`` (idempotent)."""
+    if not settings.kb_dir.is_dir():
+        # load_kb would return [] and ingest would then empty the index.
+        raise FileNotFoundError(f"KB directory not found: {settings.kb_dir}")
     index = KBIndex(settings.db_path, make_embedder(settings.embedder))
     index.ingest(load_kb(settings.kb_dir))
     return HybridRetriever(index, mode=mode)

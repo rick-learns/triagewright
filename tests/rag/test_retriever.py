@@ -159,3 +159,9 @@ async def test_build_retriever_from_settings(tmp_path: Path) -> None:
         assert results[0].method == "hybrid"
     finally:
         second.index.close()
+
+
+def test_build_retriever_refuses_a_missing_kb_dir(tmp_path: Path) -> None:
+    settings = Settings(db_path=tmp_path / "tw.sqlite", kb_dir=tmp_path / "missing")
+    with pytest.raises(FileNotFoundError, match="KB directory"):
+        build_retriever(settings)

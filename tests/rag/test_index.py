@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
@@ -75,3 +76,15 @@ def test_embeddings_are_float32_blobs(tmp_path: Path) -> None:
     with closing(sqlite3.connect(db)) as conn:
         sizes = {n for (n,) in conn.execute("SELECT length(embedding) FROM kb_chunks")}
     assert sizes == {128 * 4}
+
+
+def test_concurrent_ingests_on_a_fresh_file_serialize(tmp_path: Path) -> None:
+    db = tmp_path / "kb.sqlite"
+    indexes = [KBIndex(db, HashingEmbedder()) for _ in range(4)]
+    try:
+        with ThreadPoolExecutor(len(indexes)) as pool:
+            stats = list(pool.map(lambda ix: ix.ingest(seed_kb()), indexes))
+    finally:
+        for ix in indexes:
+            ix.close()
+    assert sorted(s.added for s in stats) == [0, 0, 0, len(seed_kb())]
