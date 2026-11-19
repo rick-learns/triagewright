@@ -1,9 +1,10 @@
 """What the API and CLI share: the ports they run on, the wiring hook, and the decision path.
 
 Both surfaces are thin. They take a :class:`Services` bundle of ports and never
-build lanes themselves. The real bundle comes from integration
-(``triagewright.wiring.build_services(settings)``, task X1); until that lands,
-:func:`load_services` raises :class:`WiringUnavailableError` with a helpful message.
+build lanes themselves. The real bundle comes from
+``triagewright.wiring.build_services(settings)``; when it can't be built (for
+example in replay mode), :func:`load_services` raises
+:class:`WiringUnavailableError` with a helpful message.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ class Services:
 
 
 class WiringUnavailableError(RuntimeError):
-    """The real lanes aren't wired yet (``triagewright.wiring`` lands at integration)."""
+    """The real lanes can't be built from these settings (see ``triagewright.wiring``)."""
 
 
 class ApprovalNotFoundError(LookupError):
@@ -43,7 +44,7 @@ class DecisionConflictError(Exception):
 
 
 def load_services(settings: Settings) -> Services:
-    """Placeholder wiring hook: ``triagewright.wiring.build_services(settings)`` if it exists."""
+    """The wiring hook: ``triagewright.wiring.build_services(settings)``."""
     try:
         wiring = importlib.import_module(WIRING_MODULE)
     except ModuleNotFoundError as exc:

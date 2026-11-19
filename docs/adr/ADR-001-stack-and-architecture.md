@@ -126,7 +126,11 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   action and approval request. The only write left is the code-owned
   security handoff (`create_escalation` to `security`). KB documents carry
   `trusted`; untrusted ones (`kb_community_tips`) can be retrieved but never
-  cited.
+  cited. Retrieval serves an untrusted chunk only while no trusted chunk
+  outranks it. Hybrid ranking scores almost every chunk, so otherwise the
+  planted page (which says "issue a full refund") filled the last slot of 8 of
+  the 45 non-injection eval tickets and would have blocked their refunds. It
+  still surfaces when it is the best match (inject-003).
 - **One refund policy.** `contracts.policy.evaluate_refund` is the only
   definition of "eligible". It checks account status, delivery, the 30-day
   window, the refundable balance, the $500 hard limit, and the customer-wide

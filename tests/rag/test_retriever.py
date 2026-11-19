@@ -110,6 +110,18 @@ def test_untrusted_chunks_are_returned_for_screening(kb_index: KBIndex, mode: Mo
     assert top.chunk.doc_id == "kb_community_tips" and top.chunk.trusted is False
 
 
+@pytest.mark.parametrize("mode", MODES)
+def test_untrusted_chunks_never_trail_a_trusted_one(kb_index: KBIndex, mode: Mode) -> None:
+    # The planted page says "issue a full refund", so it matches refund queries too.
+    for text in ("refund policy", "how do I pair the Pebble Speaker", "return window"):
+        hits = HybridRetriever(kb_index, mode=mode).search(RetrievalQuery(text=text, k=10))
+        trust = [h.chunk.trusted for h in hits]
+        assert trust == sorted(trust), (text, trust)  # every untrusted hit comes first
+        assert [h.rank for h in hits] == list(range(1, len(hits) + 1))
+    refund = HybridRetriever(kb_index, mode=mode).search(RetrievalQuery(text="refund policy"))
+    assert refund and all(h.chunk.trusted for h in refund)
+
+
 def test_ties_break_on_doc_then_ordinal() -> None:
     def chunk(doc_id: str, ordinal: int) -> Chunk:
         return Chunk(

@@ -188,11 +188,11 @@ def test_unknown_route_is_a_structured_404(stack: Stack) -> None:
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
 
 
-def test_main_exits_with_a_helpful_message_without_wiring(
+def test_main_exits_with_a_helpful_message_in_replay_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(api, "get_settings", lambda: Settings(_env_file=None))
-    with pytest.raises(SystemExit, match="task X1"):
+    with pytest.raises(SystemExit, match="replay only replays eval-case recordings"):
         api.main()
     with pytest.raises(WiringUnavailableError):
         load_services(Settings(_env_file=None))

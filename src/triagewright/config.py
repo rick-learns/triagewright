@@ -115,7 +115,8 @@ class Settings(BaseSettings):
     # ---- data and storage ----
     seed_dir: Path = Path("data/seed")
     kb_dir: Path = Path("data/kb")
-    db_path: Path = Path("var/triagewright.sqlite")
+    db_path: Path = Path("var/triagewright.sqlite")  # mock world and KB index (MCP side)
+    approvals_db_path: Path = Path("var/approvals.sqlite")  # approvals (API/CLI side)
     embedder: Literal["hashing", "fastembed"] = "hashing"
 
     # ---- MCP ----
