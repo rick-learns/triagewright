@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import pytest
@@ -43,6 +44,7 @@ from triagewright.contracts.guardrails import (
     GuardrailDecision,
     GuardrailVerdict,
     PolicyContext,
+    RedactionResult,
 )
 from triagewright.contracts.llm import StopReason
 from triagewright.contracts.ports import TicketResolver
@@ -540,6 +542,22 @@ async def test_metadata_keys_that_redact_alike_are_all_screened() -> None:
     await s.resolve(ticket)
     assert s.approvals.list_pending() == []
     assert s.escalation_args()["queue"] == "security"
+
+
+class EmailRedactor(PassthroughGuardrails):
+    def redact(self, text: str) -> RedactionResult:
+        return RedactionResult(text="[EMAIL]" if "@" in text else text)
+
+
+def test_many_colliding_metadata_keys_stay_distinct_and_fast() -> None:
+    s = stack(guardrails=EmailRedactor())
+    keys = {"[EMAIL]#3": "literal"} | {f"u{i}@x": str(i) for i in range(20_000)}
+    started = time.perf_counter()
+    redacted = s.coordinator._redact_metadata(keys)
+    assert time.perf_counter() - started < 2
+    assert len(redacted) == len(keys)
+    assert redacted["[EMAIL]#3"] == "literal"
+    assert redacted["[EMAIL]"] == "0" and redacted["[EMAIL]#4"] == "2"
 
 
 async def test_injection_in_ticket_metadata_is_screened() -> None:

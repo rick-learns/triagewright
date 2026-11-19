@@ -526,12 +526,12 @@ class Coordinator:
     def _redact_metadata(self, metadata: Mapping[str, str]) -> dict[str, str]:
         """Redact keys and values. Keys that redact alike stay distinct, so all get screened."""
         redacted: dict[str, str] = {}
+        suffix: dict[str, int] = {}  # the last suffix tried per key, so collisions stay linear
         for key, value in metadata.items():
             base = name = self._guardrails.redact(key).text
-            n = 1
             while name in redacted:
-                n += 1
-                name = f"{base}#{n}"
+                suffix[base] = suffix.get(base, 1) + 1
+                name = f"{base}#{suffix[base]}"
             redacted[name] = self._guardrails.redact(value).text
         return redacted
 
