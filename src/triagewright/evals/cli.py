@@ -105,9 +105,13 @@ def _smoke(cases_dir: Path) -> int:
 
 def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
-    cases = load_eval_cases(args.cases)
+    all_cases = load_eval_cases(args.cases)
+    cases = all_cases
     if args.case:
         cases = [c for c in cases if any(fnmatch.fnmatchcase(c.id, g) for g in args.case)]
+    if not cases:
+        print(f"no eval cases selected in {args.cases}", file=sys.stderr)
+        return 2
     try:
         if args.stub:
             from triagewright.testing import FakeCaseRuntimeFactory
@@ -167,7 +171,7 @@ def _run(args: argparse.Namespace) -> int:
         created_at=datetime.now(UTC),
     )
     baseline = load_baseline(args.baseline)
-    filtered = bool(args.case)
+    filtered = len(cases) < len(all_cases)
     report = EvalReport(
         summary=summary,
         judge=judge_report(records, model=judge.model if judge else None),

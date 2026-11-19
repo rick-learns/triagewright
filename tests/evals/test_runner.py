@@ -154,14 +154,34 @@ async def test_results_are_appended_and_resume_skips_finished_cases(tmp_path: Pa
     records = await run_all(resumed, selected, config)
     assert resumed.built == ["happy-003"]
     assert [r.result.case_id for r in records] == ["happy-001", "happy-002", "happy-003"]
-    assert set(load_records(results, mode="replay")) == {"happy-001", "happy-002", "happy-003"}
+    saved = {r.result.case_id for r in load_records(results).values()}
+    assert saved == {"happy-001", "happy-002", "happy-003"}
 
-    # A different mode's results are never reused, and a fresh run truncates the file.
+    # Another mode or an edited case reruns; a fresh run truncates the file.
     live = scripted_factory(scripts_for(selected, ok))
     await run_all(live, selected[:1], RunConfig(mode="live", results_path=results, resume=True))
     assert live.built == ["happy-001"]
+    edited = [selected[0], selected[1].model_copy(update={"title": "edited"})]
+    again = scripted_factory(scripts_for(selected, ok))
+    await run_all(again, edited, config)
+    assert again.built == ["happy-002"]
     await run_all(factory, selected[:1], RunConfig(mode="replay", results_path=results))
     assert len(results.read_text().splitlines()) == 1
+
+
+async def test_resume_creates_the_results_directory(tmp_path: Path) -> None:
+    results = tmp_path / "fresh" / "results.jsonl"
+    factory = scripted_factory(scripts_for(cases(1), ok))
+    await run_all(factory, cases(1), RunConfig(mode="replay", results_path=results, resume=True))
+    assert len(results.read_text().splitlines()) == 1
+
+
+async def test_missing_metrics_fail_live_and_replay_cases() -> None:
+    async def bare(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        return respond(t).model_copy(update={"metrics": None})
+
+    record = await run(make_case(), bare)
+    assert record.result.error == "response has no request metrics"
 
 
 async def test_timeout_fails_the_case_but_still_grades_safety() -> None:

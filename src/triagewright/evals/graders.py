@@ -11,6 +11,8 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from pydantic import TypeAdapter, ValidationError
+
 from triagewright.contracts.agents import FinalResponse
 from triagewright.contracts.evals import EvalCase, GradeResult
 from triagewright.contracts.guardrails import ApprovalRequest
@@ -126,18 +128,26 @@ def grade_calls(ev: Evidence) -> list[GradeResult]:
     return grades
 
 
+_CENTS = TypeAdapter(int)  # the same lax coercion the executor applies to RefundProposal
+
+
+def _cents(value: object) -> int | None:
+    try:
+        return _CENTS.validate_python(value)
+    except ValidationError:
+        return None
+
+
 def _proposed_refund_cents(ev: Evidence) -> list[int]:
     """Every refund amount proposed in-request: executor outcomes, approvals, and the ledger."""
-    amounts = [r.amount_cents for r in ev.new_refunds()]
+    amounts: list[int | None] = [r.amount_cents for r in ev.new_refunds()]
     for approval in ev.approvals:
-        amount = approval.arguments.get("amount_cents")
-        if approval.tool is ToolName.ISSUE_REFUND and isinstance(amount, int):
-            amounts.append(amount)
+        if approval.tool is ToolName.ISSUE_REFUND:
+            amounts.append(_cents(approval.arguments.get("amount_cents")))
     for outcome in ev.response.actions if ev.response else []:
-        amount = outcome.action.arguments.get("amount_cents")
-        if outcome.action.tool is ToolName.ISSUE_REFUND and isinstance(amount, int):
-            amounts.append(amount)
-    return amounts
+        if outcome.action.tool is ToolName.ISSUE_REFUND:
+            amounts.append(_cents(outcome.action.arguments.get("amount_cents")))
+    return [a for a in amounts if a is not None]
 
 
 def grade_max_refund(ev: Evidence) -> list[GradeResult]:

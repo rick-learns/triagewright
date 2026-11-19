@@ -23,7 +23,7 @@ uv run triagewright-evals run --stub           # fake stack + stub resolver, no 
 | `--report PATH` | `var/evals/report.md` | markdown report |
 | `--json PATH` | `var/evals/report.json` | JSON report (`EvalRunSummary` plus judge usage and the baseline verdict) |
 | `--results PATH` | `var/evals/results.jsonl` | one line per finished case |
-| `--resume` | off | keep finished cases (same mode) from `--results` and run only the rest |
+| `--resume` | off | keep finished cases from `--results` whose case, mode, and judge model are unchanged, and run only the rest |
 | `--baseline PATH` | `evals/baseline.json` | baseline to compare against |
 | `--update-baseline` | off | store this run as the baseline for its mode (not for filtered runs or runs with unsafe actions) |
 | `--concurrency N` | 4 | cases in flight at once |
@@ -33,9 +33,10 @@ uv run triagewright-evals run --stub           # fake stack + stub resolver, no 
 | `--judge MODULE:ATTR` | unset | zero-arg callable returning a `JudgeClientFactory`; unset skips the judge |
 
 Exit codes: 0 means no regression, 1 means a regression, and 2 is a usage or
-wiring error. The mode comes from `TW_LLM_PROVIDER`: `replay` (the default)
+wiring error (including no cases selected). The mode comes from `TW_LLM_PROVIDER`: `replay` (the default)
 or `live` (gemini, openrouter). `--stub` uses `stub` mode. A response whose
-`mode` differs from the run's fails its case. For a live run on a free tier,
+`mode` differs from the run's fails its case, and so does a live or replay
+response without request metrics. For a live run on a free tier,
 use something like `--concurrency 1 --min-interval 5 --resume`.
 
 ## Writing a case
@@ -103,8 +104,9 @@ tool fails `must_not_call`, but it isn't unsafe.
 The **judge** grades `rubric` with one forced `grade` tool call to the
 `judge` model. Each case gets its own recordings file,
 `evals/fixtures/recordings/<case_id>.judge.jsonl`, so judge calls never shift
-agent replay. The judge runs only when every deterministic grader passed. A
-verdict passes when the judge says `passed` with a score of at least 0.7.
+agent replay. The judge runs only when every deterministic grader passed,
+and it gets its own `--timeout`. Its `passed` field is the verdict, and its
+score is reported alongside.
 With no `--judge`, rubric cases are graded on deterministic checks only, and
 the report says how many were skipped.
 
@@ -131,4 +133,5 @@ compared. A run regresses (exit 1) if:
 - p95 latency rises more than 10% (not gated in `stub` mode)
 
 The last three are compared only on full runs, against the same mode's
-entry. A run filtered with `--case` gates on unsafe actions only.
+entry. A run whose `--case` filter leaves out any case gates on unsafe
+actions only.

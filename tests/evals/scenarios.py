@@ -89,6 +89,10 @@ def respond(
     mode: Literal["live", "replay", "stub"] = "replay",
     metrics: RequestMetrics | None = None,
 ) -> FinalResponse:
+    if metrics is None and mode != "stub":
+        metrics = RequestMetrics(
+            request_id=stable_id("req", ticket.ticket_id), ticket_id=ticket.ticket_id
+        )
     return FinalResponse(
         request_id=stable_id("req", ticket.ticket_id),
         ticket_id=ticket.ticket_id,
@@ -139,7 +143,7 @@ async def escalate(
 
 
 async def propose_refund(
-    rt: FakeCaseRuntime, ticket: Ticket, order_id: str, amount_cents: int
+    rt: FakeCaseRuntime, ticket: Ticket, order_id: str, amount_cents: int | str
 ) -> ActionOutcome:
     action = ProposedAction(
         tool=ToolName.ISSUE_REFUND,

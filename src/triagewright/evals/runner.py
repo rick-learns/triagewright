@@ -8,6 +8,7 @@ an interrupted run can resume where it stopped.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from collections.abc import Sequence
@@ -19,14 +20,19 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from triagewright.contracts.agents import FinalResponse
-from triagewright.contracts.common import Contract
+from triagewright.contracts.common import Contract, canonical_json
 from triagewright.contracts.evals import CaseResult, EvalCase
 from triagewright.contracts.llm import ModelResponse, Usage
 from triagewright.contracts.ports import CaseRuntimeFactory
 from triagewright.contracts.world import WorldState
 from triagewright.data import merge_world
 from triagewright.evals.graders import Evidence, grade_deterministic
-from triagewright.evals.judge import JudgeClientFactory, grade_rubric, judge_recordings
+from triagewright.evals.judge import (
+    JudgeClientFactory,
+    grade_rubric,
+    judge_failure,
+    judge_recordings,
+)
 
 Mode = Literal["live", "replay", "stub"]
 
@@ -38,6 +44,7 @@ JudgeStatus = Literal["none", "skipped", "after_failure", "judged"]
 class CaseRecord(Contract):
     """One finished case, as appended to the results JSONL."""
 
+    key: str  # input_key(): resume reuses a record only for identical inputs
     mode: Mode
     result: CaseResult
     judge_status: JudgeStatus = "none"
@@ -78,6 +85,12 @@ class _Throttle:
             self._next = time.monotonic() + self._interval
 
 
+def input_key(case: EvalCase, mode: Mode, judge_model: str | None) -> str:
+    """Hash of everything a saved result depends on: the case, the mode, and the judge."""
+    payload = {"case": case.model_dump(mode="json"), "mode": mode, "judge": judge_model}
+    return hashlib.sha256(canonical_json(payload).encode()).hexdigest()
+
+
 def _error_result(case: EvalCase, error: str) -> CaseResult:
     return CaseResult(
         case_id=case.id,
@@ -103,6 +116,7 @@ async def run_case(
     judge: JudgeConfig | None = None,
 ) -> CaseRecord:
     """Build the case's stack, resolve its ticket, and grade the evidence. Never raises."""
+    key = input_key(case, mode, judge.model if judge else None)
     try:
         runtime = factory.build(
             case_id=case.id,
@@ -113,7 +127,8 @@ async def run_case(
         before = runtime.ledger()
         first_call = len(runtime.tool_calls())
     except Exception as exc:
-        return CaseRecord(mode=mode, result=_error_result(case, f"build failed: {exc!r}"))
+        failed = _error_result(case, f"build failed: {exc!r}")
+        return CaseRecord(key=key, mode=mode, result=failed)
 
     response: FinalResponse | None = None
     error: str | None = None
@@ -128,6 +143,8 @@ async def run_case(
     wall_ms = (time.perf_counter() - started) * 1000
     if response is not None and response.mode != mode:
         error = f"mode mismatch: response is {response.mode}, run is {mode}"
+    elif response is not None and mode != "stub" and response.metrics is None:
+        error = "response has no request metrics"  # cost and latency would be made up
 
     ev = Evidence(
         case=case,
@@ -146,10 +163,17 @@ async def run_case(
         elif judge is None:
             judge_status = "skipped"
         else:
-            client = judge.factory(
-                case_id=case.id, recordings=judge_recordings(judge.recordings_dir, case.id)
-            )
-            grade, judge_reply = await grade_rubric(client, case, response, model=judge.model)
+            try:
+                async with asyncio.timeout(timeout_s):
+                    recordings = judge_recordings(judge.recordings_dir, case.id)
+                    client = judge.factory(case_id=case.id, recordings=recordings)
+                    grade, judge_reply = await grade_rubric(
+                        client, case, response, model=judge.model
+                    )
+            except TimeoutError:
+                grade = judge_failure(f"judge timed out after {timeout_s:g}s")
+            except Exception as exc:  # e.g. the factory can't open the recordings
+                grade = judge_failure(f"judge setup failed: {exc!r}")
             grades.append(grade)
             judge_status = "judged"
 
@@ -169,6 +193,7 @@ async def run_case(
         error=error,
     )
     return CaseRecord(
+        key=key,
         mode=mode,
         result=result,
         judge_status=judge_status,
@@ -177,16 +202,15 @@ async def run_case(
     )
 
 
-def load_records(path: Path, *, mode: Mode) -> dict[str, CaseRecord]:
-    """Finished cases of ``mode`` from a results JSONL. Later lines win."""
+def load_records(path: Path) -> dict[str, CaseRecord]:
+    """Finished cases from a results JSONL, by ``input_key``. Later lines win."""
     records: dict[str, CaseRecord] = {}
     if not path.exists():
         return records
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             record = CaseRecord.model_validate(json.loads(line))
-            if record.mode == mode:
-                records[record.result.case_id] = record
+            records[record.key] = record
     return records
 
 
@@ -203,11 +227,15 @@ async def run_cases(
     done: dict[str, CaseRecord] = {}
     path = config.results_path
     if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         if config.resume:
-            wanted = {c.id for c in cases}
-            done = {k: v for k, v in load_records(path, mode=config.mode).items() if k in wanted}
+            saved = load_records(path)
+            judge_model = judge.model if judge else None
+            for case in cases:
+                record = saved.get(input_key(case, config.mode, judge_model))
+                if record is not None:
+                    done[case.id] = record
         else:
-            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("", encoding="utf-8")
 
     slots = asyncio.Semaphore(max(1, config.concurrency))

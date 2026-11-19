@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +126,25 @@ def test_case_filter_gates_only_unsafe_and_never_updates_the_baseline(
     assert report.filtered and report.regressions == []
 
 
-def test_missing_wiring_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_empty_selection_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_cases(tmp_path)
+    assert main(run_args(tmp_path, "--case", "nope-*")) == 2
+    assert main([*run_args(tmp_path), "--cases", str(tmp_path / "missing")]) == 2
+    assert "no eval cases selected" in capsys.readouterr().err
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_a_filter_matching_every_case_is_a_full_run(tmp_path: Path) -> None:
+    write_cases(tmp_path)
+    assert main(run_args(tmp_path, "--case", "*")) == 0
+    report = EvalReport.model_validate_json((tmp_path / "report.json").read_text())
+    assert not report.filtered
+
+
+def test_missing_wiring_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "triagewright.wiring", None)  # import raises ImportError
     write_cases(tmp_path)
     args = [a for a in run_args(tmp_path) if a != "--stub"]
     assert main(args) == 2

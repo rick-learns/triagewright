@@ -41,6 +41,7 @@ def rec(
     judge_usage: Usage | None = None,
 ) -> CaseRecord:
     return CaseRecord(
+        key=case_id,
         mode=mode,
         result=CaseResult(
             case_id=case_id,

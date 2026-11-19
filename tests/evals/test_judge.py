@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
 
-from tests.evals.scenarios import call, judge_config, make_case, respond, run
+from tests.evals.scenarios import call, grades_by_name, judge_config, make_case, respond, run
 from triagewright.contracts.agents import FinalResponse
 from triagewright.contracts.llm import ModelRequest, ModelResponse
 from triagewright.contracts.ports import ModelClient
@@ -69,7 +70,6 @@ async def test_judge_passes_and_uses_its_own_recordings(tmp_path: Path) -> None:
     ("response", "detail"),
     [
         (verdict(False, 0.9), "ok"),
-        (verdict(True, 0.5), "ok"),  # below PASS_SCORE
         (model_response(text_block("looks fine")), "no valid grade call"),
         (model_response(tool_use_block("grade", {"passed": "maybe"})), "no valid grade call"),
     ],
@@ -109,6 +109,39 @@ async def test_no_rubric_means_no_judge(tmp_path: Path) -> None:
     judges = Judges()
     record = await run(make_case(), resolved, judge=judge_config(judges, tmp_path))
     assert record.judge_status == "none" and judges.calls == []
+
+
+async def test_judge_verdict_is_its_passed_field(tmp_path: Path) -> None:
+    judges = Judges(verdict(True, 0.3))
+    record = await run(make_case(rubric=RUBRIC), resolved, judge=judge_config(judges, tmp_path))
+    grade = record.result.grades[-1]
+    assert grade.passed and grade.score == 0.3 and record.result.passed
+
+
+async def test_judge_factory_error_keeps_the_case_result(tmp_path: Path) -> None:
+    def broken(*, case_id: str, recordings: Path) -> ModelClient:
+        raise FileNotFoundError(recordings)
+
+    record = await run(make_case(rubric=RUBRIC), resolved, judge=judge_config(broken, tmp_path))
+    grade = record.result.grades[-1]
+    assert not grade.passed and "judge setup failed: FileNotFoundError" in grade.detail
+    assert grades_by_name(record)["status"] is True and not record.result.passed
+
+
+async def test_judge_has_a_timeout(tmp_path: Path) -> None:
+    class Stalled:
+        async def complete(self, request: ModelRequest) -> ModelResponse:
+            await asyncio.sleep(10)
+            raise AssertionError("unreachable")  # pragma: no cover
+
+    def stalled(*, case_id: str, recordings: Path) -> ModelClient:
+        return Stalled()
+
+    case = make_case(rubric=RUBRIC)
+    record = await run(case, resolved, timeout_s=0.02, judge=judge_config(stalled, tmp_path))
+    grade = record.result.grades[-1]
+    assert not grade.passed and grade.detail == "judge timed out after 0.02s"
+    assert record.result.error is None and grades_by_name(record)["status"] is True
 
 
 def test_parse_verdict_takes_the_grade_call_only() -> None:
