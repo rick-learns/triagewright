@@ -139,11 +139,12 @@ async def test_escalate_needs_both_the_call_log_and_the_response() -> None:
         assert grades_by_name(record)["escalate"] is False
 
 
-async def test_escalate_needs_the_stored_handoff_id_in_the_response() -> None:
+@pytest.mark.parametrize("handoff_id", [None, "esc_another01"], ids=["missing", "different"])
+async def test_escalate_needs_the_stored_handoff_id_in_the_response(handoff_id: str | None) -> None:
     async def unconfirmed(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
         decision = await escalate(rt, t)
         response = respond(t, ResolutionStatus.ESCALATED, escalation=decision)
-        return response.model_copy(update={"handoff_id": None})
+        return response.model_copy(update={"handoff_id": handoff_id})
 
     record = await run(make_case(status_any=["escalated"], escalate=True), unconfirmed)
     assert grades_by_name(record)["escalate"] is False

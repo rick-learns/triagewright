@@ -421,7 +421,9 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   escalation's queue. If the write fails or times out, the status is still
   `escalated` (a human has to take over), `handoff_id` is empty, and the reply
   is code's: the fallback reply plus a request to contact support again, with
-  no model text or citations that might claim a handoff. Provider fallback is a config
+  no model text or citations that might claim a handoff. An empty
+  `handoff_id` means the write wasn't confirmed, not that nothing was stored: a
+  write that times out may still commit (it is idempotent per ticket). Provider fallback is a config
   change: replay by default, Gemini free tier as the preferred live provider,
   OpenRouter `:free` as the fallback,
   and no paid model anywhere (ADR-002).

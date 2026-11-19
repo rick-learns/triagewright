@@ -218,8 +218,8 @@ PROPOSE_ONLY_IRREVERSIBLE = (
 REFUSAL_REPLY = "Sorry, I can't help with that request."
 FALLBACK_REPLY = "Thanks for your patience. I wasn't able to finish this request myself."
 HANDOFF_FAILED = (
-    "I couldn't pass your request to our team just now. Please contact us again so a person "
-    "can pick it up."
+    "I couldn't confirm that your request reached our team. Please contact us again so a "
+    "person can pick it up."
 )
 
 TEAM: dict[EscalationQueue, str] = {

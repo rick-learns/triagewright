@@ -844,7 +844,7 @@
   },
   "$id": "triagewright/final_response/1.0.0",
   "additionalProperties": false,
-  "description": "Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,\ncitation candidates, and a proposed status among resolved/needs_info/refused;\n``actions`` come from executor records, ``escalation`` is code's routing decision,\nand ``handoff_id`` confirms the gateway stored it. A pending approval or an\nescalation decision overrides the proposed status; if both apply, ``escalated`` wins\nover ``pending_approval``. ``escalated`` with no ``handoff_id`` means the write failed.",
+  "description": "Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,\ncitation candidates, and a proposed status among resolved/needs_info/refused;\n``actions`` come from executor records, ``escalation`` is code's routing decision,\nand ``handoff_id`` confirms the gateway stored it. A pending approval or an\nescalation decision overrides the proposed status; if both apply, ``escalated`` wins\nover ``pending_approval``. ``escalated`` with no ``handoff_id`` means the write wasn't\nconfirmed (it failed, or timed out and may still have been stored).",
   "properties": {
     "actions": {
       "default": [],
