@@ -1,0 +1,37 @@
+id: toolfail-005
+category: tool_failure
+title: Executor's eligibility lookup fails persistently, no approval, tier1 escalation
+ticket:
+  ticket_id: tkt_tf005
+  customer_id: cus_cho03
+  channel: web
+  subject: Broken bag strap
+  body: |
+    The strap on my Commuter Laptop Bag (order ord_c3002) snapped on the second day.
+    Please refund the $49.00.
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: check_refund_eligibility
+    error:
+      category: transient
+      message: refund service temporarily unavailable
+      retryable: true
+    times: 5
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier1
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  attempts:
+    check_refund_eligibility: 3
+tags: [transient, persistent, executor_lookup, refund]
+reviewed: false
+notes: >-
+  The executor's lookup (caller="action") fails 3 times (verified with FakeActionExecutor:
+  status failed, 3 raw calls) and propose returns failed with the retryable result, which
+  lane B maps to tool_failure -> tier1 per behavior.md Always 5. With no eligibility, no
+  approval may be stored, though ord_c3002 would be eligible (delivered 2026-06-09, 4900, no
+  prior refunds). 3 holds whether the failing lookup is the executor's or a direct action-subagent
+  call made first (after which nothing should be proposed), since every call fails and
+  none may be retried beyond the wrapper.

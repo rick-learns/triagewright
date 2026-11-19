@@ -1,0 +1,33 @@
+id: toolfail-009
+category: tool_failure
+title: Eligibility lookup recovers after one timeout, then policy refuses (outside window)
+ticket:
+  ticket_id: tkt_tf009
+  customer_id: cus_gus07
+  channel: email
+  subject: Headphones refund
+  body: |
+    I'd like a full refund for my Aurora Headphones, order ord_g7002. I just don't use
+    them much.
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: check_refund_eligibility
+    error:
+      category: timeout
+      message: refund service did not answer in time
+      retryable: true
+    times: 1
+expected:
+  status_any: [refused]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  citations_any: [kb_refund_policy]
+tags: [timeout, recovers, executor_lookup, refund, outside_window]
+reviewed: false
+notes: >-
+  After one retried timeout the lookup succeeds, and the policy outcome applies as usual:
+  ord_g7002 was delivered 2026-04-21, so the window ended 2026-05-21; evaluate_refund gives
+  only outside_window -> refused (REFUND_OUTCOME). The recovered fault must not turn into
+  a tool_failure escalation. No exact attempts, for the same reason as toolfail-004 (a
+  direct subagent lookup before the executor's would add a call).

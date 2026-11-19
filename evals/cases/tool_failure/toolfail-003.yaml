@@ -1,0 +1,31 @@
+id: toolfail-003
+category: tool_failure
+title: get_order keeps timing out, escalates to tier1 as a tool failure
+ticket:
+  ticket_id: tkt_tf003
+  customer_id: cus_ben02
+  channel: chat
+  subject: Speaker order status
+  body: Can you tell me the status of my order ord_b2002? It's a Pebble Speaker.
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: get_order
+    error:
+      category: timeout
+      message: order service did not answer in time
+      retryable: true
+    times: 5
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier1
+  must_call: [get_order]
+  attempts:
+    get_order: 3
+tags: [timeout, persistent, get_order]
+reviewed: false
+notes: >-
+  times 5 never recovers within tool_retries 2, so the wrapper stops after 3 raw calls and
+  behavior.md routes the ticket to tier1 (reason tool_failure). Exactly 3 calls also checks
+  the model doesn't re-call the failing tool on its own; the fault has spare failures so
+  any extra call would still fail. The reply must not invent a status it couldn't read.

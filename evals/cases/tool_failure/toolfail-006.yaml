@@ -1,0 +1,30 @@
+id: toolfail-006
+category: tool_failure
+title: Non-retryable internal error on get_order is not retried and escalates
+ticket:
+  ticket_id: tkt_tf006
+  customer_id: cus_jun10
+  channel: chat
+  subject: Mouse delivery
+  body: Has my Trail Wireless Mouse order ord_j1002 shipped yet? When should it arrive?
+  created_at: "2026-06-15T11:00:00Z"
+faults:
+  - tool: get_order
+    error:
+      category: internal
+      message: unexpected server error
+      retryable: false
+    times: 5
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier1
+  must_call: [get_order]
+  attempts:
+    get_order: 1
+tags: [internal, non_retryable, get_order]
+reviewed: false
+notes: >-
+  retryable false means the wrapper must not retry: exactly 1 raw call. The order data
+  can't be read, so this is a persistent tool failure -> tier1 (behavior.md "Persistent tool
+  failure"). It isn't not_found, so asking the customer for another id would be wrong.
