@@ -412,9 +412,18 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   output, a model failure, or a refusal by the action subagent or the
   escalation reviewer gives the safe fallback: no deferred proposal still
   waiting is sent (an approval already queued stays queued), and the ticket
-  is escalated with a code-built handoff summary. Refusals elsewhere get the
-  fixed refusal reply (section 3, TicketResolver). If the handoff write itself fails, the reply
-  says the request was logged for review. Provider fallback is a config
+  is escalated with a code-built handoff summary. A fallback keeps what code
+  already knows: a safety, legal or privacy need found by triage goes to tier2
+  (urgent if triage said so), a suspended account to tier2, and a suspected
+  injection to security. Refusals elsewhere get the fixed refusal reply
+  (section 3, TicketResolver). The response carries `handoff_id` only once
+  `create_escalation` stored the handoff, and the reply names the stored
+  escalation's queue. If the write fails or times out, the status is still
+  `escalated` (a human has to take over), `handoff_id` is empty, and the reply
+  is code's: the fallback reply plus a request to contact support again, with
+  no model text or citations that might claim a handoff. An empty
+  `handoff_id` means the write wasn't confirmed, not that nothing was stored: a
+  write that times out may still commit (it is idempotent per ticket). Provider fallback is a config
   change: replay by default, Gemini free tier as the preferred live provider,
   OpenRouter `:free` as the fallback,
   and no paid model anywhere (ADR-002).

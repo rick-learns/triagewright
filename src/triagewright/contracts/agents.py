@@ -17,6 +17,7 @@ from triagewright.contracts.common import (
     ApprovalId,
     Cents,
     Contract,
+    EscalationId,
     JsonObject,
     OrderId,
     RequestId,
@@ -195,9 +196,11 @@ class LoopConfig(Contract):
 class FinalResponse(Contract):
     """Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,
     citation candidates, and a proposed status among resolved/needs_info/refused;
-    ``actions`` and ``escalation`` come from executor and gateway records, and a
-    pending approval or a created escalation overrides the proposed status.
-    If both apply, ``escalated`` wins over ``pending_approval``.
+    ``actions`` come from executor records, ``escalation`` is code's routing decision,
+    and ``handoff_id`` confirms the gateway stored it. A pending approval or an
+    escalation decision overrides the proposed status; if both apply, ``escalated`` wins
+    over ``pending_approval``. ``escalated`` with no ``handoff_id`` means the write wasn't
+    confirmed (it failed, or timed out and may still have been stored).
     """
 
     request_id: RequestId
@@ -208,6 +211,10 @@ class FinalResponse(Contract):
     triage: TriageResult | None = None
     actions: list[ActionOutcome] = []
     escalation: EscalationDecision | None = None
+    # Set only once ``create_escalation`` confirmed the stored handoff. An unconfirmed write
+    # leaves the status ``escalated`` (a human must take over) with no id, and the reply
+    # says so. No id isn't proof nothing was stored: a timed-out write may have committed.
+    handoff_id: EscalationId | None = None
     stop: LoopStop = LoopStop.COMPLETED
     turns: Annotated[int, Field(ge=0)] = 0
     metrics: RequestMetrics | None = None

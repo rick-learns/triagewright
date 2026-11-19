@@ -217,7 +217,10 @@ PROPOSE_ONLY_IRREVERSIBLE = (
 
 REFUSAL_REPLY = "Sorry, I can't help with that request."
 FALLBACK_REPLY = "Thanks for your patience. I wasn't able to finish this request myself."
-LOGGED_FOR_REVIEW = "Your request has been logged for review by our support team."
+HANDOFF_FAILED = (
+    "I couldn't confirm that your request reached our team. Please contact us again so a "
+    "person can pick it up."
+)
 
 TEAM: dict[EscalationQueue, str] = {
     EscalationQueue.TIER1: "support team",

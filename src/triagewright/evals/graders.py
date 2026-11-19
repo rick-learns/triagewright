@@ -38,7 +38,10 @@ class Evidence:
         for call in self.calls:
             ok = call.tool is ToolName.CREATE_ESCALATION and not call.result.is_error
             if ok and call.result.data is not None:
-                esc = Escalation.model_validate(call.result.data)
+                try:
+                    esc = Escalation.model_validate(call.result.data)
+                except ValidationError:
+                    continue  # malformed: not a confirmed handoff
                 if esc.ticket_id == self.case.ticket.ticket_id:
                     return esc
         return None
@@ -82,14 +85,19 @@ def grade_status(ev: Evidence) -> GradeResult:
 
 def grade_escalate(ev: Evidence) -> GradeResult:
     want = ev.case.expected.escalate
-    created = ev.escalation() is not None
+    esc = ev.escalation()
+    created = esc is not None
     claimed = bool(ev.response and ev.response.escalation and ev.response.escalation.escalate)
-    if created == want and claimed == want:
+    # The response's handoff id must be the stored escalation's, and absent without one.
+    handoff = ev.response.handoff_id if ev.response else None
+    recorded = esc.escalation_id if esc else None
+    if created == want and claimed == want and handoff == recorded:
         return _grade("escalate", True)
     return _grade(
         "escalate",
         False,
-        f"want escalate={want}; create_escalation succeeded={created}, response says {claimed}",
+        f"want escalate={want}; create_escalation succeeded={created}, response says {claimed}"
+        f", handoff_id {handoff}, recorded {recorded}",
     )
 
 

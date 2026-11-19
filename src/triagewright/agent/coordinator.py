@@ -187,6 +187,8 @@ class Coordinator(Routing):
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, "escalation reviewer refused"
                 ) from None
+            if review.escalate and EscalationReason.INJECTION_SUSPECTED in review.reasons:
+                run.injection = True  # the reviewer's suspicion blocks writes like a screen's
             await self._propose_deferred(run)
         except Refused:
             # A provider refusal isn't a scope decision: the account's status still routes.

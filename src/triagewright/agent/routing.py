@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import ValidationError
+
 from triagewright.agent import prompts
 from triagewright.agent.outcomes import _needs_info, _refund_reason, _refused
 from triagewright.agent.refunds import RefundRules, _refund_proposed, _refund_requested
@@ -25,6 +27,7 @@ from triagewright.contracts.tools import (
 )
 from triagewright.contracts.world import (
     CustomerStatus,
+    Escalation,
     EscalationQueue,
     EscalationReason,
     Priority,
@@ -124,6 +127,9 @@ class Routing(Replies, RefundRules):
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
+            if run.handoff is None:
+                # The draft may say it was passed on, so only code's words go out.
+                reply, citations = prompts.FALLBACK_REPLY, []
         elif any(o.status is ActionStatus.PENDING_APPROVAL for o in run.outcomes):
             status = ResolutionStatus.PENDING_APPROVAL
         elif any(_refused(o) for o in run.outcomes):
@@ -137,8 +143,16 @@ class Routing(Replies, RefundRules):
     async def _fallback(self, run: RequestRun, fallback: Fallback) -> FinalResponse:
         """The safe fallback: hand off to a human, never a half-finished action."""
         queue = EscalationQueue.TIER1
+        priority = Priority.NORMAL
         reasons = [fallback.reason]
         why = [fallback.detail]
+        triage = run.triage
+        if triage is not None and EscalationReason.LEGAL_OR_SAFETY in triage.needs_human_reasons:
+            # Triage already found a safety, legal, or privacy need: its specialists take it.
+            queue = EscalationQueue.TIER2
+            reasons.append(EscalationReason.LEGAL_OR_SAFETY)
+            if triage.urgency is Priority.URGENT:
+                priority = Priority.URGENT
         if run.tool_failures:
             reasons.append(EscalationReason.TOOL_FAILURE)
         if _inactive_account(run):
@@ -153,7 +167,7 @@ class Routing(Replies, RefundRules):
             escalate=True,
             reasons=list(dict.fromkeys(reasons)),
             queue=queue,
-            priority=Priority.NORMAL,
+            priority=priority,
             handoff_summary=self._redact(self._summary(run, why))[:_SUMMARY_MAX],
         )
         notes = [note for o in run.outcomes if (note := self._note(run, o))]
@@ -186,8 +200,16 @@ class Routing(Replies, RefundRules):
                 handoff=True,
             )
         except Fallback:
-            return prompts.LOGGED_FOR_REVIEW
-        return prompts.LOGGED_FOR_REVIEW if result.is_error else prompts.handed_off(decision.queue)
+            return prompts.HANDOFF_FAILED
+        try:
+            stored = Escalation.model_validate(result.data) if not result.is_error else None
+        except ValidationError:
+            stored = None
+        if stored is None or stored.ticket_id != run.ticket.ticket_id:
+            return prompts.HANDOFF_FAILED
+        run.handoff = stored
+        # An earlier handoff for the ticket is kept as it was, so name its queue.
+        return prompts.handed_off(stored.queue)
 
 
 def _inactive_account(run: RequestRun) -> bool:

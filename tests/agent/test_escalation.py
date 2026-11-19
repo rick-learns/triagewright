@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import pytest
 
 from tests.agent.helpers import (
+    SHIPPING,
     FakeClock,
     RedactingGuardrails,
     TimedModel,
@@ -26,9 +30,17 @@ from triagewright.contracts.agents import (
 )
 from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.llm import StopReason
-from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
+from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName, ToolResult
+from triagewright.contracts.world import (
+    Escalation,
+    EscalationQueue,
+    EscalationReason,
+    Priority,
+)
 from triagewright.testing import (
     sample_ticket,
+    seed_as_of,
+    seed_world,
 )
 
 pytestmark = pytest.mark.anyio
@@ -111,14 +123,27 @@ async def test_reviewer_escalations_reach_the_gateway(
 async def test_failed_escalation_write_does_not_promise_a_follow_up() -> None:
     error = ToolError(category=ErrorCategory.INTERNAL, message="db down", retryable=False)
     fault = ToolFault(tool=ToolName.CREATE_ESCALATION, error=error)
+    cited = [(SHIPPING.chunk_id, SHIPPING.text[:40])]
     s = stack(
-        [triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])],
+        [
+            triage("shipping"),
+            call("search_kb", {"query": SHIPPING.text}),
+            finalize("I've passed you to a person.", citations=cited),
+            review(True, "tier1", ["customer_requested_human"]),
+        ],
         faults=[fault],
     )
     response = await s.resolve(sample_ticket("A human, please."))
     assert response.status is ResolutionStatus.ESCALATED
-    assert response.reply.endswith(prompts.LOGGED_FOR_REVIEW)
-    assert "passed your request" not in response.reply
+    assert response.reply == f"{prompts.FALLBACK_REPLY}\n\n{prompts.HANDOFF_FAILED}"
+    assert response.citations == []
+    assert response.handoff_id is None
+
+
+async def test_a_stored_handoff_has_its_id_in_the_response() -> None:
+    s = stack([triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])])
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.handoff_id is not None and response.handoff_id.startswith("esc_")
 
 
 async def test_a_full_reviewer_summary_still_fits_the_code_reasons() -> None:
@@ -384,3 +409,93 @@ async def test_a_status_read_past_the_budget_after_a_refusal_hands_off() -> None
     assert response.status is ResolutionStatus.ESCALATED
     assert s.calls(ToolName.GET_CUSTOMER) == []
     assert s.escalation_args()["queue"] == "tier1"
+
+
+async def test_an_earlier_handoff_keeps_its_queue_in_the_reply() -> None:
+    earlier = Escalation(
+        escalation_id="esc_earlier01",
+        ticket_id="tkt_0001",
+        queue=EscalationQueue.BILLING,
+        priority=Priority.NORMAL,
+        summary="Duplicate charge.",
+        reason_codes=[EscalationReason.CUSTOMER_REQUESTED_HUMAN],
+        created_at=seed_as_of(),
+    )
+    world = seed_world().model_copy(update={"escalations": [earlier]})
+    s = stack(
+        [triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])],
+        world=world,
+    )
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.handoff_id == "esc_earlier01"
+    assert response.reply.endswith(prompts.handed_off(EscalationQueue.BILLING))
+
+
+async def test_a_fallback_keeps_a_triaged_safety_issue_in_tier2_urgent() -> None:
+    safety = triage("complaint", urgency="urgent", needs_human=True, reasons=["legal_or_safety"])
+    s = stack(
+        [safety, call("get_order", {"order_id": "ord_a1001"})], config=LoopConfig(max_turns=1)
+    )
+    response = await s.resolve(sample_ticket("My charger is swelling and smells burnt."))
+    assert response.stop is LoopStop.MAX_TURNS
+    args = s.escalation_args()
+    assert (args["queue"], args["priority"]) == ("tier2", "urgent")
+    codes = args["reason_codes"]
+    assert isinstance(codes, list) and "legal_or_safety" in codes
+
+
+async def test_a_handoff_that_times_out_does_not_claim_it_was_passed_on() -> None:
+    clock = FakeClock()
+    model = TimedModel([triage()], clock=clock, step_s=40)  # work overruns the budget
+    s = stack(model=model, clock=clock)
+    call_gateway = s.gateway.call
+
+    async def hang_on_handoff(name: ToolName, arguments: Any, ctx: Any) -> Any:
+        if name is ToolName.CREATE_ESCALATION:
+            await asyncio.sleep(10)  # past the handoff's one-second floor
+        return await call_gateway(name, arguments, ctx)
+
+    s.gateway.call = hang_on_handoff  # type: ignore[method-assign]
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.status is ResolutionStatus.ESCALATED
+    assert response.reply.endswith(prompts.HANDOFF_FAILED)
+    assert response.handoff_id is None
+
+
+async def test_another_tickets_escalation_is_not_this_tickets_handoff() -> None:
+    other = Escalation(
+        escalation_id="esc_other001",
+        ticket_id="tkt_9999",
+        queue=EscalationQueue.BILLING,
+        priority=Priority.NORMAL,
+        summary="Another ticket.",
+        reason_codes=[EscalationReason.CUSTOMER_REQUESTED_HUMAN],
+        created_at=seed_as_of(),
+    )
+    s = stack([triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])])
+    call_gateway = s.gateway.call
+
+    async def wrong_ticket(name: ToolName, arguments: Any, ctx: Any) -> Any:
+        if name is ToolName.CREATE_ESCALATION:
+            return ToolResult.ok(name, other)
+        return await call_gateway(name, arguments, ctx)
+
+    s.gateway.call = wrong_ticket  # type: ignore[method-assign]
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.reply.endswith(prompts.HANDOFF_FAILED)
+    assert response.handoff_id is None
+
+
+async def test_a_malformed_handoff_result_does_not_claim_it_was_passed_on() -> None:
+    s = stack([triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])])
+    call_gateway = s.gateway.call
+
+    async def malformed_handoff(name: ToolName, arguments: Any, ctx: Any) -> Any:
+        if name is ToolName.CREATE_ESCALATION:
+            return ToolResult(tool=name, is_error=False, data={"queue": "tier1"})
+        return await call_gateway(name, arguments, ctx)
+
+    s.gateway.call = malformed_handoff  # type: ignore[method-assign]
+    response = await s.resolve(sample_ticket("A human, please."))
+    assert response.reply.endswith(prompts.HANDOFF_FAILED)
+    assert response.handoff_id is None
