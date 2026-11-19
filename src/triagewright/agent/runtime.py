@@ -353,6 +353,7 @@ class RequestRun:
         output: type[T],
         output_tool: str,
         output_description: str,
+        check: Callable[[T], str | None] | None = None,
     ) -> T:
         """Run one bounded agentic loop until the model returns a valid ``output``.
 
@@ -360,7 +361,8 @@ class RequestRun:
         ``tool_use`` runs every requested tool and appends the results; ``end_turn``
         (or ``stop_sequence``) forces the output tool; ``max_tokens`` gets one
         continuation; ``pause_turn`` continues; ``refusal`` raises :class:`Refused`.
-        Invalid output gets one repair attempt with the validation error. Any bound,
+        Invalid output, or output ``check`` rejects with a message, gets one repair
+        attempt (a ``check`` repair leaves the tools free). Any bound,
         a second truncation, or a second invalid output raises :class:`Fallback`.
         ``turn_timeout_s`` bounds each model call; tool calls are bounded by the total
         budget, and writes are never cancelled midway.
@@ -429,15 +431,17 @@ class RequestRun:
                     if use.name == output_tool and mixed:
                         # The result must not be accepted before the model sees the others.
                         content, is_error = prompts.output_alone(output_tool), True
-                        force = True
                     elif use.name == output_tool:
                         try:
                             value = output.model_validate(use.input)
                         except ValidationError as exc:
-                            invalid = True
+                            invalid = force = True
                             content, is_error = validation_message(exc), True
                         else:
                             content, is_error = "Accepted.", False
+                            if check is not None and (problem := check(value)) is not None:
+                                value, invalid = None, True
+                                content, is_error = problem, True
                     elif (handler := handlers.get(use.name)) is not None:
                         content, is_error = await handler(use.input)
                     else:
@@ -456,7 +460,6 @@ class RequestRun:
                             EscalationReason.LOW_CONFIDENCE,
                             f"{purpose} returned invalid output twice",
                         )
-                    force = True
         raise Fallback(
             LoopStop.MAX_TURNS, EscalationReason.LOOP_LIMIT, f"{purpose} hit the turn limit"
         )

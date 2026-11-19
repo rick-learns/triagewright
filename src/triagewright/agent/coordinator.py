@@ -92,8 +92,7 @@ READ_TOOLS: tuple[ToolName, ...] = tuple(
     name for name, spec in TOOL_SPECS.items() if spec.side_effect is SideEffect.READ
 )
 
-# With an injection in the ticket, these intents get the security handoff (behavior.md).
-_SENSITIVE = frozenset({TicketCategory.REFUND_REQUEST, TicketCategory.ACCOUNT_ACCESS})
+_REFUND_POLICY_DOC = "kb_refund_policy"
 # Errors the customer can fix by giving other details; anything else is a tool failure.
 _ASK_CUSTOMER = frozenset(
     {ErrorCategory.NOT_FOUND, ErrorCategory.VALIDATION, ErrorCategory.PERMISSION}
@@ -185,7 +184,8 @@ class Coordinator:
 
     async def _resolve(self, run: RequestRun) -> FinalResponse:
         # Metadata reaches the models with the ticket, so it is screened with it.
-        texts = [run.ticket.subject, run.ticket.body, *run.ticket.metadata.values()]
+        meta = [f"{k}: {v}" for k, v in run.ticket.metadata.items()]
+        texts = [run.ticket.subject, run.ticket.body, *meta]
         run.ticket_flagged = run.screen("\n".join(texts), ContentSource.CUSTOMER)
         try:
             run.triage = await subagents.triage(run)
@@ -226,7 +226,18 @@ class Coordinator:
             FinalizeArgs,
             "finalize",
             prompts.FINALIZE_DESCRIPTION,
+            check=lambda final: self._check_final(run, final),
         )
+
+    def _check_final(self, run: RequestRun, final: FinalizeArgs) -> str | None:
+        """A refund reply must carry a verified refund-policy citation (behavior.md)."""
+        assert run.triage is not None
+        if run.triage.category is not TicketCategory.REFUND_REQUEST:
+            return None
+        citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
+        if any(c.doc_id == _REFUND_POLICY_DOC for c in citations):
+            return None
+        return prompts.CITE_REFUND_POLICY
 
     def _tools(self, run: RequestRun) -> list[LocalTool]:
         async def answer(_: JsonObject) -> tuple[str, bool]:
@@ -268,6 +279,7 @@ class Coordinator:
         The budget is checked around each proposal: one in flight is never cancelled, its
         outcome is kept, and an overrun hands the ticket off.
         """
+        run.ensure_time()  # the reviewer may have used up the budget
         while run.deferred:
             run.ensure_time()
             proposal = run.deferred.pop(0)
@@ -314,24 +326,32 @@ class Coordinator:
             reasons.append(EscalationReason.TOOL_FAILURE)
             failed = sorted({t.value for t in run.tool_failures})
             why.append(f"tool kept failing after retries ({', '.join(failed)})")
-        category = run.triage.category if run.triage else None
-        forced_write = run.ticket_flagged and category in _SENSITIVE
+        forced_write = (
+            run.ticket_flagged
+            and run.triage is not None
+            and (
+                run.triage.category is TicketCategory.REFUND_REQUEST
+                or EscalationReason.ACCOUNT_SECURITY in run.triage.needs_human_reasons
+            )
+        )
         if run.injection and (queue is not None or run.irreversible_requested or forced_write):
             queue = EscalationQueue.SECURITY
             reasons.insert(0, EscalationReason.INJECTION_SUSPECTED)
             why.insert(0, "possible prompt injection alongside a write or handoff request")
         if queue is None:
             return None
-        summary = review.handoff_summary if review is not None and reviewed else ""
-        if summary and why:
-            also = f"\nAlso: {'; '.join(why)}."[:_SUMMARY_MAX]
+        given = review.handoff_summary if review is not None and reviewed else ""
+        summary = self._redact(given or self._summary(run, why))
+        if given and why:
+            # Redacted before the cut, so redaction can't push code's reasons out.
+            also = "\n" + self._redact(f"Also: {'; '.join(why)}.")[: _SUMMARY_MAX - 1]
             summary = summary[: _SUMMARY_MAX - len(also)] + also
         return EscalationDecision(
             escalate=True,
             reasons=list(dict.fromkeys(reasons)) or [EscalationReason.LOW_CONFIDENCE],
             queue=queue,
             priority=priority,
-            handoff_summary=self._redact(summary or self._summary(run, why))[:_SUMMARY_MAX],
+            handoff_summary=summary[:_SUMMARY_MAX],
         )
 
     async def _respond(
@@ -500,7 +520,8 @@ class Coordinator:
                     "body": self._guardrails.redact(ticket.body).text,
                     "subject": self._guardrails.redact(ticket.subject).text,
                     "metadata": {
-                        k: self._guardrails.redact(v).text for k, v in ticket.metadata.items()
+                        self._guardrails.redact(k).text: self._guardrails.redact(v).text
+                        for k, v in ticket.metadata.items()
                     },
                 }
             )
@@ -522,7 +543,7 @@ def _refused(outcome: ActionOutcome) -> bool:
 def _needs_info(outcome: ActionOutcome) -> bool:
     """A proposal that failed on its arguments, scope, or a missing record, not on the backend."""
     error = outcome.result.error if outcome.result else None
-    if error is None or error.category not in _ASK_CUSTOMER:
+    if error is None or error.retryable or error.category not in _ASK_CUSTOMER:
         return False
     return outcome.status is ActionStatus.FAILED or (
         outcome.status is ActionStatus.BLOCKED and outcome.verdict is None

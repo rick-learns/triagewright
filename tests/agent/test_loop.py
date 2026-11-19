@@ -297,7 +297,7 @@ async def test_finalize_mixed_with_other_tools_waits_for_their_results() -> None
     found, rejected = tool_results(retry)
     assert found.is_error and not found.content.startswith("Not accepted")
     assert rejected.is_error and rejected.content == prompts.output_alone("finalize")
-    assert retry.tool_choice == ToolChoice(type="tool", name="finalize")
+    assert retry.tool_choice is None  # free to look up something else first
 
 
 async def test_invalid_subagent_output_gets_one_repair() -> None:

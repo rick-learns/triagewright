@@ -125,6 +125,13 @@ def force_output(tool: str) -> str:
     return f"Call `{tool}` now with your result."
 
 
+CITE_REFUND_POLICY = (
+    "Not accepted. A reply to a refund request must cite the refund policy: search the "
+    "knowledge base for it, then call `finalize` with a verbatim quote from a "
+    "`kb_refund_policy` chunk."
+)
+
+
 def output_alone(tool: str) -> str:
     return f"Not accepted. Read the other tool results first, then call `{tool}` on its own."
 
