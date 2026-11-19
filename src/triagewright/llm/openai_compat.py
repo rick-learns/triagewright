@@ -198,7 +198,7 @@ def from_chat_response(
         for i, call in enumerate(message.get("tool_calls") or []):
             fn = call["function"]
             raw = fn.get("arguments")
-            if finish == "length" and not raw:
+            if finish == "length" and raw in (None, ""):
                 continue  # cut off before any arguments; the caller sees max_tokens
             raw = raw or "{}"
             try:

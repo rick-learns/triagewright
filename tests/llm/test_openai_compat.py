@@ -266,12 +266,14 @@ def test_length_drops_cut_off_tool_calls() -> None:
         {"id": "b", "function": {"name": "get_order", "arguments": '{"order_id":"ord_'}},
         {"id": "c", "function": {"name": "get_order", "arguments": ""}},
         {"id": "d", "function": {"name": "get_order"}},
+        {"id": "e", "function": {"name": "list_orders", "arguments": {}}},
     ]
     body = chat({"content": "", "tool_calls": calls}, finish="length")
     resp = from_chat_response(body, request=req, provider=Provider.GEMINI, latency_ms=0)
     assert resp.stop_reason is StopReason.MAX_TOKENS
     assert resp.content == [
-        ToolUseBlock(id=tool_use_id(req, 0), name="get_order", input={"order_id": "ord_a1b2"})
+        ToolUseBlock(id=tool_use_id(req, 0), name="get_order", input={"order_id": "ord_a1b2"}),
+        ToolUseBlock(id=tool_use_id(req, 4), name="list_orders", input={}),
     ]
 
 
