@@ -208,6 +208,8 @@ def test_cli_rejects_bad_arguments(tmp_path: Path) -> None:
         main([*SAMPLE_ARGS, "--out", str(tmp_path), "--mix", "nope=1"])
     gen = generate(1, 1, 2, parse_mix("billing=1"))
     assert [e.category for e in gen.expected] == [TicketCategory.BILLING] * 2
+    with pytest.raises(ValueError, match="at least 1 customer"):
+        generate(1, 0, 2, parse_mix("billing=1"))
     with pytest.raises(ValueError, match="tickets must be"):
         generate(1, 5, -1)
     with pytest.raises(ValueError, match="non-negative"):

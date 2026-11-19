@@ -331,7 +331,7 @@ _TEMPLATES: dict[TicketCategory, tuple[tuple[str, str], ...]] = {
     ),
     TicketCategory.COMPLAINT: (
         ("Not happy", "The {item} from {order_id} feels cheap. I expected better."),
-        ("Poor service", "Order {order_id} has been a hassle from start to finish."),
+        ("Poor service", "I've had a frustrating experience with order {order_id}."),
     ),
     TicketCategory.OTHER: (
         ("Hello", "Hi, {first} here. Do you have a newsletter I can join?"),
@@ -359,7 +359,9 @@ def generate(
         raise ValueError("tickets must be >= 0")
     mix = dict(mix or DEFAULT_MIX)
     counts = allocate(tickets, mix)
-    if customers < (3 if counts.get(TicketCategory.REFUND_REQUEST) else 1):
+    if customers < 1:
+        raise ValueError("need at least 1 customer")
+    if counts.get(TicketCategory.REFUND_REQUEST) and customers < 3:
         raise ValueError("refund tickets need 3 customers (normal, inactive, frequent refunder)")
     b = _Builder(seed)
     rng = b.rng
