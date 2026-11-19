@@ -9,7 +9,6 @@ from triagewright.contracts.guardrails import (
     ContentSource,
     GuardrailDecision,
     GuardrailVerdict,
-    PolicyConfig,
     PolicyContext,
     RedactionResult,
 )
@@ -51,15 +50,14 @@ class RuleGuardrails:
     - ``injection.write_blocked``: no write once injection is suspected.
     - ``scope.no_customer``: an irreversible action needs a customer in scope.
     - refunds: ``refund.no_eligibility`` without a lookup;
-      ``refund.eligibility_mismatch`` if the lookup doesn't cover this order
-      and amount; ``refund.<reason>`` for each reason
-      ``policy.evaluate_refund`` returned. Eligibility itself always comes
-      from ``evaluate_refund`` (via the gateway); it is never recomputed here.
+      ``refund.eligibility_mismatch`` if the lookup is for another order;
+      ``refund.<reason>`` for each reason ``policy.evaluate_refund``
+      returned. That lookup is the only policy: the executor makes it for
+      these exact arguments through the gateway, which applies the server's
+      ``PolicyConfig``. Nothing here re-applies a limit, so the two can't
+      disagree.
     - ``approval.irreversible``: every other irreversible action needs a human.
     """
-
-    def __init__(self, policy: PolicyConfig | None = None) -> None:
-        self.policy = policy or PolicyConfig()
 
     def redact(self, text: str) -> RedactionResult:
         return redaction.redact(text)
@@ -99,11 +97,10 @@ class RuleGuardrails:
         elig = ctx.eligibility
         if elig is None:
             return _block("refund.no_eligibility", "no eligibility check")
-        mismatch = _block(
-            "refund.eligibility_mismatch", "the eligibility check doesn't cover this refund"
-        )
         if elig.order_id != args.order_id:
-            return mismatch
+            return _block(
+                "refund.eligibility_mismatch", "the eligibility check is for another order"
+            )
         if not elig.eligible:
             reasons = [r.value for r in elig.reasons] or ["ineligible"]
             return GuardrailVerdict(
@@ -111,5 +108,4 @@ class RuleGuardrails:
                 rule_ids=[f"refund.{r}" for r in reasons],
                 reasons=reasons,
             )
-        within = min(elig.max_refundable_cents, self.policy.refund_hard_limit_cents)
-        return mismatch if args.amount_cents > within else None
+        return None

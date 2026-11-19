@@ -14,6 +14,7 @@ from triagewright.contracts.guardrails import (
     ContentSource,
     GuardrailDecision,
     GuardrailVerdict,
+    PolicyConfig,
     PolicyContext,
     RedactionResult,
 )
@@ -404,6 +405,38 @@ async def test_concurrent_execution_is_reported_once_committed() -> None:
     assert out.status is ActionStatus.EXECUTED and new_refunds(gw) == 1
 
 
+async def test_an_approve_racing_a_finished_execution_is_a_conflict() -> None:
+    ex, gw, store = executor()
+    pending = await ex.propose(refund(), ctx(), injection_suspected=False)
+    assert pending.approval_id
+    store.decide(approve(pending.approval_id))
+    real_get = store.get
+    reads = 0
+
+    def get_then_execute_elsewhere(approval_id: str) -> object:
+        nonlocal reads
+        reads += 1
+        if reads == 2:  # another worker executes between decide's read and execution
+            store.mark_executed(approval_id)
+        return real_get(approval_id)
+
+    store.get = get_then_execute_elsewhere  # type: ignore[method-assign,assignment]
+    with pytest.raises(ApprovalConflictError) as exc:
+        await ex.decide(approve(pending.approval_id))
+    assert exc.value.status is ApprovalStatus.EXECUTED
+    assert calls(gw, ToolName.ISSUE_REFUND) == []
+
+
+async def test_policy_limits_come_from_the_gateway() -> None:
+    gw = FakeToolGateway(
+        seed_world(), as_of=seed_as_of(), policy=PolicyConfig(refund_hard_limit_cents=100_000)
+    )
+    ex, _, _ = executor(gw)
+    out = await ex.propose(refund("ord_c3001", 89900), ctx("cus_cho03"), injection_suspected=False)
+    assert out.status is ActionStatus.PENDING_APPROVAL and out.eligibility
+    assert out.eligibility.eligible
+
+
 async def test_works_with_the_in_memory_store_too() -> None:
     gw = gateway()
     ex = GuardedActionExecutor(
@@ -460,14 +493,15 @@ async def test_a_guardrail_bug_never_runs_an_irreversible_tool() -> None:
 
 
 async def test_allowed_reads_run_once() -> None:
-    ex, _, _ = executor(gateway([fault(ToolName.GET_ORDER, ErrorCategory.NOT_FOUND)]))
+    ex, gw, _ = executor(gateway([fault(ToolName.GET_ORDER, ErrorCategory.NOT_FOUND)]))
     read = ProposedAction(
         tool=ToolName.GET_ORDER, arguments={"order_id": "ord_h8001"}, rationale="x"
     )
     failed = await ex.propose(read, ctx(), injection_suspected=True)
     assert failed.status is ActionStatus.FAILED and failed.attempts == 1
-    ok = await ex.propose(read, ctx(), injection_suspected=True)
+    ok = await ex.propose(read, ctx(caller="triage"), injection_suspected=True)
     assert ok.status is ActionStatus.EXECUTED and ok.result and ok.result.data
+    assert calls(gw, ToolName.GET_ORDER) == ["action", "triage"]  # the caller's own context
     assert ok.verdict and ok.verdict.decision is GuardrailDecision.ALLOW
 
 

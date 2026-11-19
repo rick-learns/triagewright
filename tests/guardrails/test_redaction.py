@@ -15,10 +15,14 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ("card 4111 1111 1111 1111 please", "card [CARD_NUMBER_1] please", [PIIType.CARD_NUMBER]),
     ("card 4111-1111-1111-1111.", "card [CARD_NUMBER_1].", [PIIType.CARD_NUMBER]),
     ("amex 378282246310005", "amex [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
+    ("card 4111 1111 1111 1111 12/28", "card [CARD_NUMBER_1] 12/28", [PIIType.CARD_NUMBER]),
+    ("card 4111\u00a01111\u00a01111\u00a01111", "card [CARD_NUMBER_1]", [PIIType.CARD_NUMBER]),
     ("ssn 123-45-6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("ssn 123 45 6789", "ssn [SSN_1]", [PIIType.SSN]),
     ("my SSN is 123456789", "my SSN is [SSN_1]", [PIIType.SSN]),
     ("mail Ann.Lee+x@mail.example.com now", "mail [EMAIL_1] now", [PIIType.EMAIL]),
+    ("mail _name@example.com", "mail [EMAIL_1]", [PIIType.EMAIL]),
+    ("mail o'connor@example.com", "mail [EMAIL_1]", [PIIType.EMAIL]),
     ("call (555) 123-4567", "call [PHONE_1]", [PIIType.PHONE]),
     ("call 555.123.4567 or +1 555 987 6543", "call [PHONE_1] or [PHONE_2]", [PIIType.PHONE] * 2),
     ("uk +44 20 7946 0958", "uk [PHONE_1]", [PIIType.PHONE]),
@@ -28,6 +32,8 @@ CORPUS: list[tuple[str, str, list[PIIType]]] = [
     ("OTP: 1234", "OTP: [ONE_TIME_CODE_1]", []),
     ("the code they texted me was 77812", "the code they texted me was [ONE_TIME_CODE_1]", []),
     ("2FA code 004321 didn't work", "2FA code [ONE_TIME_CODE_1] didn't work", []),
+    ("123456 is your verification code", "[ONE_TIME_CODE_1] is your verification code", []),
+    ("My OTP is 123 456", "My OTP is [ONE_TIME_CODE_1]", []),
 ]
 
 # Lookalikes that must stay as they are.
@@ -39,6 +45,9 @@ NEGATIVES = [
     "zip code 94110 and promo code 2024",
     "firmware v1.2.3.4, time 10:30:45, note::",
     "ticket tkt_0001 for cus_ava01 at 12:00",
+    "My login code for order 123456 never arrived",
+    "Tracking number: 5551234567, tracking #555-123-4567",
+    '{"carrier":"ups","tracking_number":"5551234567"}',
 ]
 
 

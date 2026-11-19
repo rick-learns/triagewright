@@ -138,13 +138,12 @@ class GuardedActionExecutor:
                     verdict=existing.verdict,
                     approval_id=approval_id,
                 )
-        action_ctx = ctx.model_copy(update={"caller": "action"})
         elig: RefundEligibility | None = None
         if isinstance(args, RefundProposal):
             check, attempts = await self._call_with_retries(
                 ToolName.CHECK_REFUND_ELIGIBILITY,
                 {"order_id": args.order_id, "amount_cents": args.amount_cents},
-                action_ctx,
+                ctx.model_copy(update={"caller": "action"}),
             )
             if check.is_error or check.data is None:
                 return ActionOutcome(
@@ -200,7 +199,7 @@ class GuardedActionExecutor:
             )
         if action.tool in IRREVERSIBLE_TOOLS:  # a guardrail bug must not run a refund
             return blocked
-        result = await self.gateway.call(action.tool, arguments, action_ctx)
+        result = await self.gateway.call(action.tool, arguments, ctx)
         status = ActionStatus.FAILED if result.is_error else ActionStatus.EXECUTED
         return ActionOutcome(
             action=action, status=status, result=result, verdict=verdict, attempts=1
@@ -211,7 +210,7 @@ class GuardedActionExecutor:
         if current is None:
             raise KeyError(decision.approval_id)
         if current.status is ApprovalStatus.APPROVED and decision.approved:
-            return await self.execute_approved(current.approval_id)  # resume after a failure
+            return await self._run_approved(current.approval_id)  # resume after a failure
         if current.status is not ApprovalStatus.PENDING:
             raise ApprovalConflictError(
                 current.approval_id,
@@ -222,15 +221,27 @@ class GuardedActionExecutor:
             request = self.approvals.decide(decision)
         except ApprovalConflictError as exc:
             if exc.status is ApprovalStatus.APPROVED and decision.approved:
-                return await self.execute_approved(decision.approval_id)  # a concurrent approve
+                return await self._run_approved(decision.approval_id)  # a concurrent approve
             raise
         if request.status is ApprovalStatus.APPROVED:
-            return await self.execute_approved(request.approval_id)
+            return await self._run_approved(request.approval_id)
         return ActionOutcome(
             action=_stored_action(request),
             status=ActionStatus.SKIPPED,
             approval_id=request.approval_id,
         )
+
+    async def _run_approved(self, approval_id: str) -> ActionOutcome:
+        """``execute_approved`` for ``decide``: a request another worker executed first is a
+        conflict (409), not a blocked outcome."""
+        outcome = await self.execute_approved(approval_id)
+        if outcome.status is ActionStatus.BLOCKED:
+            latest = self.approvals.get(approval_id)
+            if latest is not None and latest.status is ApprovalStatus.EXECUTED:
+                raise ApprovalConflictError(
+                    approval_id, latest.status, f"{approval_id} is already executed"
+                )
+        return outcome
 
     async def execute_approved(self, approval_id: str) -> ActionOutcome:
         request = self.approvals.get(approval_id)

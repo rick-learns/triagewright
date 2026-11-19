@@ -62,14 +62,23 @@ def luhn_valid(number: str) -> bool:
     return total % 10 == 0
 
 
-_CARD_RE = re.compile(r"(?<![\w-])\d(?:[ -]?\d){12,18}(?![\w-])")
+# A run of digit groups split by single spaces (incl. no-break and thin) or hyphens.
+_DIGIT_RUN = re.compile(r"(?<![\w-])\d+(?:[ \u00a0\u2009\u202f-]\d+)*(?![A-Za-z_])")
+_GROUP = re.compile(r"\d+")
 
 
 def _cards(text: str) -> Iterator[_Match]:
-    for m in _CARD_RE.finditer(text):
-        digits = _digits(m.group())
-        if 13 <= len(digits) <= 19 and luhn_valid(digits):
-            yield _Match(_CARD, m.start(), m.end(), digits)
+    """The longest leading groups of each run that form a Luhn-valid 13-19 digit number.
+
+    So "4111 1111 1111 1111 12/28" redacts the card and keeps the expiry month.
+    """
+    for run in _DIGIT_RUN.finditer(text):
+        groups = list(_GROUP.finditer(text, run.start(), run.end()))
+        for last in range(len(groups), 0, -1):
+            digits = "".join(g.group() for g in groups[:last])
+            if 13 <= len(digits) <= 19 and luhn_valid(digits):
+                yield _Match(_CARD, run.start(), groups[last - 1].end(), digits)
+                break
 
 
 _SSN_RE = re.compile(r"(?<![\w-])(\d{3})([- ])(\d{2})\2(\d{4})(?![\w-])")
@@ -94,12 +103,24 @@ def _ssns(text: str) -> Iterator[_Match]:
             yield _Match(_SSN, m.start(1), m.end(1), m.group(1))
 
 
+_QUALIFIED = (
+    r"(?:one[- ]time|verification|security|login|log[- ]in|sign[- ]in|auth|authentication"
+    r"|2fa|mfa|sms|text|confirmation|access|reset|backup)\s+(?:pass)?codes?"
+)
+_CODE_DIGITS = r"(?<![\w-])(?P<code>\d{3}[ -]\d{3}|\d{4,8})(?![\w-])"
+# Only these words may sit between a label and its code ("the code they texted me was").
+_GAP_WORDS = (
+    r"is|was|were|are|of|number|no|they|you|we|it|that|sent|texted|emailed|gave|me|i|got"
+    r"|received|just|today"
+)
 _CODE_RE = re.compile(
-    r"\b(?P<label>"
-    r"(?:(?P<qual>one[- ]time|verification|security|login|log[- ]in|sign[- ]in|auth"
-    r"|authentication|2fa|mfa|sms|text|confirmation|access|reset|backup)\s+(?:pass)?codes?)"
-    r"|otp|passcode|pin|codes?)\b"
-    r"[^\d\n]{0,24}?(?<!\w)(?P<code>\d{4,8})(?![\w-])",
+    rf"\b(?P<label>(?P<qual>{_QUALIFIED})|otp|passcode|pin|codes?)\b"
+    rf"(?P<gap>(?:[\s:#=,.-]|\b(?:{_GAP_WORDS})\b)*?){_CODE_DIGITS}",
+    re.IGNORECASE,
+)
+# "123456 is your verification code"
+_CODE_FIRST_RE = re.compile(
+    rf"{_CODE_DIGITS}\s+(?:is|was)\s+(?:your|my|the)\s+(?:{_QUALIFIED}|otp|passcode|code)\b",
     re.IGNORECASE,
 )
 # A bare "code" preceded by one of these is not a one-time code ("zip code 94110").
@@ -116,11 +137,14 @@ def _codes(text: str) -> Iterator[_Match]:
             before = _WORD_BEFORE.search(text, 0, m.start())
             if before and before.group(1).lower() in _NOT_A_CODE:
                 continue
-        yield _Match(_CODE, m.start("code"), m.end("code"), m.group("code"))
+        yield _Match(_CODE, m.start("code"), m.end("code"), _digits(m.group("code")))
+    for m in _CODE_FIRST_RE.finditer(text):
+        yield _Match(_CODE, m.start("code"), m.end("code"), _digits(m.group("code")))
 
 
+_LOCAL_CHARS = r"A-Za-z0-9!#$%&'*+/=?^_`{|}~\-"
 _EMAIL_RE = re.compile(
-    r"(?<![\w.%+-])[A-Za-z0-9](?:[A-Za-z0-9._%+-]{0,62}[A-Za-z0-9_%+-])?"
+    rf"(?<![\w.{_LOCAL_CHARS}])[A-Za-z0-9_](?:[{_LOCAL_CHARS}.]{{0,62}}[{_LOCAL_CHARS}])?"
     r"@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24}(?![\w-])"
 )
 
@@ -140,9 +164,18 @@ _PHONE_RES = (
 )
 
 
+# A carrier's tracking number is order data the reply needs, not a phone number.
+_TRACKING_LABEL = re.compile(
+    r"tracking(?:[\s_-]*(?:number|num|no\.?|#|id))?[\"']?\s*(?:[:=]|is)?\s*[\"']?$",
+    re.IGNORECASE,
+)
+
+
 def _phones(text: str) -> Iterator[_Match]:
     for pattern in _PHONE_RES:
         for m in pattern.finditer(text):
+            if _TRACKING_LABEL.search(text, max(0, m.start() - 40), m.start()):
+                continue
             yield _Match(_PHONE, m.start(), m.end(), _digits(m.group()))
 
 

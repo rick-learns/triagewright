@@ -76,8 +76,12 @@ def test_submit_is_insert_if_absent() -> None:
 
 def test_only_pending_requests_can_be_submitted() -> None:
     approved = request().model_copy(update={"status": ApprovalStatus.APPROVED})
+    store = SqliteApprovalStore()
     with pytest.raises(ValueError, match="only pending"):
-        SqliteApprovalStore().submit(approved)
+        store.submit(approved)
+    store.submit(request())
+    store.decide(decision())
+    assert store.submit(approved) == approved  # an existing row is returned, not refused
 
 
 def test_conflicts_carry_the_stored_status() -> None:
@@ -137,6 +141,22 @@ def test_a_failed_transaction_rolls_back(tmp_path: Path) -> None:
         fail_midway()
     stored = store.get("apr_0001")
     assert stored and stored.status is ApprovalStatus.PENDING
+
+
+def test_a_failed_commit_rolls_back(tmp_path: Path) -> None:
+    path = tmp_path / "busy.sqlite"
+    store = SqliteApprovalStore(path, timeout_s=0.05)
+    store.submit(request())
+    reader = sqlite3.connect(path, isolation_level=None)
+    reader.execute("BEGIN")
+    reader.execute("SELECT * FROM approvals").fetchall()  # holds a shared lock
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        store.decide(decision())
+    reader.execute("ROLLBACK")
+    reader.close()
+    stored = store.get("apr_0001")
+    assert stored and stored.status is ApprovalStatus.PENDING
+    assert store.decide(decision()).status is ApprovalStatus.APPROVED  # the store still works
 
 
 def test_concurrent_decisions_have_exactly_one_winner(tmp_path: Path) -> None:

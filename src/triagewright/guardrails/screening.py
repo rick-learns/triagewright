@@ -3,8 +3,10 @@
 Every rule has a stable id (``injection.override``, ...). Base rules apply to
 every source and catch text that tries to reprogram the assistant. Content
 that reaches the model indirectly (tool output and KB text) is held to a
-stricter standard: it has no reason to address an AI or direct an action at
-all, so the strict rules also flag that.
+stricter standard: it has no reason to address an AI model or to tell the
+reader to reveal, ignore, or grant anything, so the strict rules flag that
+too. Rules stay narrow, because one false positive blocks every write in
+the request: policy text ("never refund without approval") must pass.
 
 A match gives ``decision=block`` and ``injection_suspected=True``: the text
 is data, never instructions. The coordinator still shows it to models,
@@ -51,10 +53,12 @@ _RULES: tuple[_Rule, ...] = (
         "tries to override the assistant's instructions",
         _ALL,
         _rx(
-            r"\b(?:ignore|disregard|forget|override|bypass)\W+(?:\w+\W+){0,3}?"
-            r"(?:previous|prior|above|earlier|preceding|system|initial|original|your|all)"
-            rf"\W+(?:\w+\W+){{0,2}}?{_TARGET}\b",
-            r"\b(?:new|updated|revised|real|actual|true)\s+(?:system\s+)?instructions?\s*:",
+            # The target is the assistant's instructions ("your previous rules"), not the
+            # customer's own ("my earlier return instructions").
+            r"\b(?:ignore|disregard|forget|override|bypass)\W+(?:(?:any|of|the|these|those)\W+){0,2}"
+            r"(?:(?:all|your|previous|prior|above|earlier|preceding|system|initial|original"
+            rf"|safety|developer)\W+){{1,3}}{_TARGET}\b",
+            r"\b(?:new|updated|revised|real|actual|true)\s+system\s+(?:instructions?|prompt)\b",
         ),
     ),
     _Rule(
@@ -93,7 +97,8 @@ _RULES: tuple[_Rule, ...] = (
             r"^\W*(?:system|assistant|developer)\s*:",
             r"\[\s*/?\s*(?:system|admin|inst|sys)\s*\]",
             r"<\|?\s*/?\s*(?:system|im_start|im_end|endoftext|assistant)\s*\|?>",
-            r"\bsystem\s+(?:note|message|notice|override|instruction|alert|update|directive)s?\b",
+            r"\bsystem\s+(?:note|message|notice|override|instruction|alert|directive)s?\s*"
+            r"(?::|to\s+(?:all\s+|any\s+|the\s+)?(?:ai|llm|assistant|bot|model)s?\b)",
             r"\b(?:note|message|instructions?|notice|attention)\s+(?:to|for)\s+(?:all\s+|any\s+"
             r"|the\s+)?(?:ai|llm|chatbot|bot|assistant|language\s+model|model)s?\b",
             r"\b(?:tool_use|function_call|tool_calls?)\b",
@@ -118,8 +123,6 @@ _RULES: tuple[_Rule, ...] = (
         _rx(
             r"\b(?:approve|issue|grant|process|send|authori[sz]e)\W+(?:\w+\W+){0,4}?refunds?"
             r"\W+(?:to|for)\W+(?:any|every|all|each)(?:one)?\b",
-            r"\brefunds?\b(?:\W+\w+){0,6}?\W+without\W+(?:\w+\W+){0,2}?(?:approval|review"
-            r"|verification|authori[sz]ation|checks?|checking)\b",
             r"\bauto[- ]?approv(?:e|al)\b",
             r"\bmark\W+(?:\w+\W+){0,3}?as\W+approved\b",
         ),
@@ -138,28 +141,20 @@ _RULES: tuple[_Rule, ...] = (
         "indirect content addresses an AI model",
         _INDIRECT,
         _rx(
-            r"\b(?:ai|llm)\s+(?:assistants?|agents?|models?|systems?|bots?)\b",
-            r"\blanguage\s+models?\b",
-            r"\bchat\s?bots?\b",
-            r"\b(?:dear|attention|hey|hello)\W+(?:ai|assistant|bot|model)\b",
+            r"\b(?:dear|attention|hey|hello|hi)\W+(?:the\W+)?(?:ai|llm|assistant|bot|model)s?\b",
+            r"\b(?:ai|llm)\s+(?:assistants?|agents?|models?|bots?)\s*(?::|,\s*(?:you|please)\b)",
             r"\bif\s+you\s+are\s+an?\s+(?:ai|assistant|bot|language\s+model|llm)\b",
-            r"\b(?:in|to)\s+your\s+(?:reply|response|answer|output)\b",
+            r"\blanguage\s+models?\s+(?:reading|processing|must|should|will)\b",
         ),
     ),
     _Rule(
         "injection.action_directive",
-        "indirect content directs an action",
+        "indirect content directs the reader past policy",
         _INDIRECT,
         _rx(
-            r"\b(?:always|automatically|immediately)\W+(?:approve|issue|grant|refund|unlock"
-            r"|escalate|reveal)\b",
-            r"\b(?:approve|issue|grant|process|send)\W+(?:\w+\W+){0,4}?refunds?\W+(?:to|for)"
-            r"\W+(?:\w+\W+)?(?:customers?|users?|anyone|everyone|people)\b",
-            r"\bwithout\W+(?:\w+\W+){0,2}?(?:approval|verification|authori[sz]ation|human"
-            r"\s+review|checking|asking)\b",
-            r"\byou\s+(?:must|should|need\s+to|have\s+to|are\s+(?:required|instructed)\s+to)"
-            r"\W+(?:now\W+)?(?:approve|issue|grant|refund|reveal|include|ignore|unlock|change"
-            r"|delete|disable|escalate|call|send)\b",
+            r"\byou\s+(?:must|should|are\s+(?:required|instructed)\s+to)\W+(?:now\W+)?"
+            r"(?:reveal|ignore|disregard|override|bypass|grant\W+(?:\w+\W+)?refunds?"
+            r"|approve\W+(?:\w+\W+)?refunds?)\b",
         ),
     ),
 )

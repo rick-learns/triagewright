@@ -34,7 +34,7 @@ def eligibility(
         refunds=world.refunds,
         amount_cents=amount,
         as_of=seed_as_of(),
-        policy=PolicyConfig(),
+        policy=policy or PolicyConfig(),
     )
 
 
@@ -139,23 +139,20 @@ def test_ineligible_refunds_are_blocked_in_policy_order(
     assert verdict.reasons == [r.value for r in elig.reasons]
 
 
-def test_eligibility_must_cover_the_proposed_refund() -> None:
+def test_eligibility_must_be_for_the_proposed_order() -> None:
     elig = eligibility("ord_h8001", 100)
-    for action in (refund("ord_h8002", 100), refund("ord_h8001", 11801)):
-        assert check(action, pctx(elig)).rule_ids == ["refund.eligibility_mismatch"]
+    assert check(refund("ord_h8002", 100), pctx(elig)).rule_ids == ["refund.eligibility_mismatch"]
     other_order = eligibility("ord_b2001", 1000)  # ineligible, but for another order
     verdict = check(refund("ord_h8001", 1000), pctx(other_order))
     assert verdict.rule_ids == ["refund.eligibility_mismatch"]
 
 
-def test_policy_config_caps_the_amount() -> None:
-    strict = RuleGuardrails(PolicyConfig(refund_hard_limit_cents=5000))
-    elig = eligibility("ord_h8001", 5900)  # eligible under the default $500 limit
-    verdict = strict.check_action(refund(amount=5900), pctx(elig))
-    assert verdict.rule_ids == ["refund.eligibility_mismatch"]
-    assert strict.check_action(refund(amount=5000), pctx(elig)).rule_ids == [
-        "approval.irreversible"
-    ]
+def test_limits_come_only_from_the_eligibility_lookup() -> None:
+    # A server with a $1,000 limit finds $899 eligible; the guardrail doesn't second-guess it.
+    elig = eligibility("ord_c3001", 89900, PolicyConfig(refund_hard_limit_cents=100_000))
+    assert elig.eligible
+    verdict = check(refund("ord_c3001", 89900), pctx(elig, customer_id="cus_cho03"))
+    assert verdict.rule_ids == ["approval.irreversible"]
 
 
 def test_check_action_is_deterministic_and_ignores_the_clock() -> None:

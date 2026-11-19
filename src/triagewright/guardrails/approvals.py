@@ -46,12 +46,12 @@ class SqliteApprovalStore:
     for audit. Safe across threads, and across processes on one file.
     """
 
-    def __init__(self, path: Path | str = ":memory:") -> None:
+    def __init__(self, path: Path | str = ":memory:", *, timeout_s: float = 5.0) -> None:
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(
-            str(path), isolation_level=None, check_same_thread=False, timeout=5.0
+            str(path), isolation_level=None, check_same_thread=False, timeout=timeout_s
         )
         self._conn.execute(_SCHEMA)
 
@@ -65,10 +65,10 @@ class SqliteApprovalStore:
             self._conn.execute("BEGIN IMMEDIATE")
             try:
                 yield self._conn
+                self._conn.execute("COMMIT")  # can fail on a busy database: roll back too
             except BaseException:
                 self._conn.execute("ROLLBACK")
                 raise
-            self._conn.execute("COMMIT")
 
     @staticmethod
     def _load(row: tuple[str, str] | None) -> ApprovalRequest | None:
@@ -87,14 +87,15 @@ class SqliteApprovalStore:
     def submit(self, request: ApprovalRequest) -> ApprovalRequest:
         """Insert if absent. If ``approval_id`` exists, return the stored request unchanged.
 
-        Only a ``pending`` request can be submitted: nothing skips the human.
+        A new request must be ``pending``: nothing skips the human.
         """
-        if request.status is not ApprovalStatus.PENDING:
-            raise ValueError(f"{request.approval_id}: only pending requests can be submitted")
         with self._transaction() as conn:
+            if (stored := self._get(conn, request.approval_id)) is not None:
+                return stored
+            if request.status is not ApprovalStatus.PENDING:
+                raise ValueError(f"{request.approval_id}: only pending requests can be submitted")
             conn.execute(
-                "INSERT OR IGNORE INTO approvals (approval_id, status, request_json)"
-                " VALUES (?, ?, ?)",
+                "INSERT INTO approvals (approval_id, status, request_json) VALUES (?, ?, ?)",
                 (request.approval_id, request.status.value, request.model_dump_json()),
             )
             stored = self._get(conn, request.approval_id)
