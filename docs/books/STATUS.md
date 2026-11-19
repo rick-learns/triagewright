@@ -14,8 +14,8 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 
 Handed to M2/M3 lanes until their PRs merge (one writer per path). Returned: `Dockerfile`,
 `compose.yaml`, `.env.example` from P1 (#29); `src/triagewright/testing/**` from RF2 (#23);
-`src/triagewright/wiring/**` from RF3 (#24). Out now: `src/triagewright/llm/**` and
-`tests/llm/**` to RF4; `src/triagewright/agent/**` and `tests/agent/**` to RF1.
+`src/triagewright/wiring/**` from RF3 (#24); `src/triagewright/llm/**` and `tests/llm/**` from
+RF4 (#34); `src/triagewright/agent/**` and `tests/agent/**` from RF1 (#35). None are out now.
 
 ## M0: Wave 0
 
@@ -54,8 +54,8 @@ Handed to M2/M3 lanes until their PRs merge (one writer per path). Returned: `Do
 ## M2–M3: one writer for the agent core, lanes for everything else
 
 The agent core (`src/triagewright/agent/**`, `src/triagewright/llm/**`, `tests/agent/**`,
-`tests/llm/**`) has one writer at a time, normally the orchestrator (while RF1 and RF4 run,
-those lanes hold `agent/**` + `tests/agent/**` and `llm/**` + `tests/llm/**`): live-quality fixes and the latency work
+`tests/llm/**`) has one writer at a time, normally the orchestrator (while RF1 and RF4 ran,
+those lanes held `agent/**` + `tests/agent/**` and `llm/**` + `tests/llm/**`; both returned on merge): live-quality fixes and the latency work
 both change routing and the model-call sequence, and live evals share one free-tier
 quota, so they run serially. Lanes never make live model calls (fakes, `--stub`, replay).
 Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per lane from `origin/main`.
@@ -68,9 +68,9 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | Q2 code decides every refund outcome | Q1 | agent core | orchestrator | merged (sol-loop 5) | [#19](https://github.com/rick-learns/triagewright/pull/19) |
 | Q3 pending refunds stay with the approver; trace model errors | Q2 | agent core, `src/triagewright/observability/**` | orchestrator | merged (sol-loop 3) | [#20](https://github.com/rick-learns/triagewright/pull/20) |
 | Q4 reviewer reasons code already handled | Q3 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 2) | [#21](https://github.com/rick-learns/triagewright/pull/21) |
-| Q5 remaining live failures (escalation queues, over-cap proposals, tool failures, 503 retries) | Q4, RF1, RF4 (handoffs end) | agent core | orchestrator | todo | – |
+| Q5 live routing fixes: planted injections to security, locked suspended accounts to tier2, asctime Retry-After | Q4, RF1, RF4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5, extended: injection and account routing) | [#37](https://github.com/rick-learns/triagewright/pull/37) |
 | L1 latency: fewer sequential model calls per ticket (p95 < 8 s) | Q4 | agent core, `docs/contracts/behavior.md` | orchestrator | merged (sol-loop 5; live latency not measured yet) | [#30](https://github.com/rick-learns/triagewright/pull/30) |
-| X2 record replay fixtures, full live eval, `evals/report.md` | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | todo | – |
+| X2 full live eval, `evals/report.md`, replay recordings | Q5, L1, F2 | `evals/fixtures/recordings/**`, `evals/report.md` (new), `evals/baseline.json` | orchestrator (live, serial) | running (Gemini free tier degraded; run on OpenRouter `:free`, labeled). Replay recordings not made yet; D3's scripted demo doesn't produce them | – |
 
 ### Lanes (parallel, disjoint owned paths)
 
@@ -85,21 +85,29 @@ Lanes launched 2026-11-19 09:45 UTC (7 at once), one T3 thread and worktree per 
 | RF3 split the wiring module | X1 | `src/triagewright/wiring.py` (removed), `src/triagewright/wiring/**` (new package), `tests/test_wiring.py` | lane thread (claude-opus-5-5) | merged | [#24](https://github.com/rick-learns/triagewright/pull/24) |
 
 Second wave (refactors; RF4–RF6 launched 10:31 UTC, RF1 at 10:38 UTC). RF1 moved ahead of Q5 because the live
-fixes wait for the free-tier quota to reset; `src/triagewright/agent/**` and `tests/agent/**`
-are handed to RF1 until it merges (`llm/**` and `tests/llm/**` are RF4's).
+fixes were waiting for the free-tier quota to reset; `src/triagewright/agent/**` and `tests/agent/**`
+were handed to RF1 until it merged (`llm/**` and `tests/llm/**` to RF4); both returned on merge (#35, #34).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| RF1 split the agent core | L1 | `src/triagewright/agent/**`, `tests/agent/**` (handed off) | lane thread (claude-opus-5-5) | running | – |
-| RF4 split the model adapter | X1 | `src/triagewright/llm/**`, `tests/llm/**` (handed off) | lane thread (claude-opus-5-5) | running | – |
-| RF5 split the eval report and data generator | F2, J1 | `src/triagewright/evals/report.py` (and a new `src/triagewright/evals/report/` package), `tests/evals/test_report*.py`, `src/triagewright/datagen/**`, `tests/datagen/**` | lane thread (claude-opus-5-5) | running | – |
-| RF6 split oversized test modules | RF2, RF3 | `tests/test_wiring.py` (to `tests/wiring/**`), `tests/contracts/test_fakes*.py`, `tests/guardrails/test_executor*.py`, and new helpers in those directories (`tests/contracts/conftest.py`, `tests/contracts/fakes_helpers.py`, `tests/guardrails/conftest.py`, `tests/guardrails/executor_helpers.py`) | lane thread (claude-opus-5-5) | running | – |
+| RF1 split the agent core | L1 | `src/triagewright/agent/**`, `tests/agent/**` (handed off) | lane thread (claude-opus-5-5) | merged (sol-loop 1) | [#35](https://github.com/rick-learns/triagewright/pull/35) |
+| RF4 split the model adapter | X1 | `src/triagewright/llm/**`, `tests/llm/**` (handed off) | lane thread (claude-opus-5-5) | merged (sol-loop 3) | [#34](https://github.com/rick-learns/triagewright/pull/34) |
+| RF5 split the eval report and data generator | F2, J1 | `src/triagewright/evals/report.py` (and a new `src/triagewright/evals/report/` package), `tests/evals/test_report*.py`, `src/triagewright/datagen/**`, `tests/datagen/**` | lane thread (claude-opus-5-5) | merged (sol-loop 1) | [#33](https://github.com/rick-learns/triagewright/pull/33) |
+| RF6 split oversized test modules | RF2, RF3 | `tests/test_wiring.py` (to `tests/wiring/**`), `tests/contracts/test_fakes*.py`, `tests/guardrails/test_executor*.py`, and new helpers in those directories (`tests/contracts/conftest.py`, `tests/contracts/fakes_helpers.py`, `tests/guardrails/conftest.py`, `tests/guardrails/executor_helpers.py`) | lane thread (claude-opus-5-5) | merged (sol-loop 1) | [#32](https://github.com/rick-learns/triagewright/pull/32) |
+
+Third wave (launched about 14:30 UTC; all merged by 16:04 UTC).
+
+| id | deps | owned paths | worker | state | PR |
+| --- | --- | --- | --- | --- | --- |
+| P2 price `gemini-3.1-flash-lite` at $0 | – | `config/pricing.toml` | orchestrator | merged (sol-loop 1) | [#36](https://github.com/rick-learns/triagewright/pull/36) |
+| D3 doc pointers to the refactored modules, offline demo (replaces D2) | RF1–RF6 | `docs/exam-map.md`, `docs/architecture.md`, `docs/adr/ADR-002..007`, `docs/demo.md` (new), `scripts/demo.sh` (new), `docs/assets/demo_run.py` (new) | lane thread (claude-opus-5-5) | merged (sol-loop 3) | [#38](https://github.com/rick-learns/triagewright/pull/38) |
+| T2 harden weak tests, de-flake three, report wording, refund-floor cleanup | RF5, RF6 | `tests/contracts/test_fakes_ports.py`, `tests/wiring/**`, `tests/evals/test_runner.py`, `src/triagewright/evals/report/markdown.py`, `tests/evals/test_report_render.py`, `src/triagewright/datagen/refunds.py` (reserved but unchanged: `tests/datagen/**`) | lane thread (claude-opus-5-5) | merged (sol-loop 3) | [#40](https://github.com/rick-learns/triagewright/pull/40) |
+| C3 council review of the 54 eval cases | F2, G1–G3 | `evals/cases/**`, `evals/REVIEWING.md`, `evals/README.md`, `src/triagewright/evals/cli.py`, `src/triagewright/evals/report/targets.py` | council (3 rounds) + orchestrator | merged (sol-loop 1) | [#39](https://github.com/rick-learns/triagewright/pull/39) |
 
 ### Later
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| D2 demo script and recording on replay | X2, R1 | `scripts/demo/**` (new), `docs/demo.md` (new) | lane thread | todo | – |
 | C2 council review of the PoC before the M3 checkpoint | X2, I1, R1, P1 | read-only | council | todo | – |
 
-Human step: flipping eval cases to `reviewed: true` is the owner's (or a named reviewer's), using `evals/REVIEWING.md` from F2.
+Eval-case review: by owner instruction (14:20 UTC), a three-model council (GPT Sol, GPT Astra, Claude Opus) reviewed all 54 cases against `evals/REVIEWING.md`, and #39 set `reviewed: true` on all of them. It's recorded as a council review, not a human review.
