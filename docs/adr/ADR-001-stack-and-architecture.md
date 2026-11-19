@@ -154,9 +154,12 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   in `pending_approval`. Lane B proposes irreversible actions only after the
   request's last `screen`, so no approval is stored for a flagged request.
   Submitting an existing approval id returns the stored one unchanged.
-- **Human approval.** The API and CLI authenticate the reviewer with
-  `TW_APPROVER_TOKEN` (unset disables decisions), then call
-  `ActionExecutor.decide`. On approval it loads the stored arguments (never
+- **Human approval.** The API authenticates the reviewer with a bearer
+  `TW_APPROVER_TOKEN` (unset disables decisions), then calls
+  `ActionExecutor.decide`. The CLI is a trusted local operator tool: it runs
+  with the same environment, approval store, and `TW_APPROVAL_KEY` as the
+  service, so its token check only enforces that decisions are enabled. The
+  API is the authenticated boundary. On approval it loads the stored arguments (never
   fresh model output), signs an HMAC token over the approval id, order, amount, and idempotency
   key (`TW_APPROVAL_KEY`), and calls the gateway as `caller="human"`. The
   approval is marked `executed` only on confirmed success. After a failure

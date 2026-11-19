@@ -25,17 +25,17 @@ States: `todo` → `running` → `in-review` → `merged` (or `blocked`).
 
 | id | deps | owned paths | worker | state | PR |
 | --- | --- | --- | --- | --- | --- |
-| A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | lane thread (claude-opus-5-5) | running | – |
-| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | lane thread (claude-opus-5-5) | running | – |
+| A1 MCP server + mock systems | W0.2 | `src/triagewright/mcp_server/**`, `tests/mcp_server/**` | lane thread (claude-opus-5-5) | in-review | [#13](https://github.com/rick-learns/triagewright/pull/13) |
+| B1 model adapters (gemini, openrouter, replay/record) | W0.4 | `src/triagewright/llm/**`, `tests/llm/**` | lane thread (claude-opus-5-5) | in-review | [#11](https://github.com/rick-learns/triagewright/pull/11) |
 | B2 coordinator loop + subagents | W0.2 | `src/triagewright/agent/**`, `tests/agent/**` | lane thread (claude-opus-5-5) | running | – |
-| C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | lane thread (claude-opus-5-5) | running | – |
+| C1 RAG ingest/retrieve/citations | W0.2 | `src/triagewright/rag/**`, `tests/rag/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#9](https://github.com/rick-learns/triagewright/pull/9) |
 | D1 guardrails, approvals, action executor | W0.2 | `src/triagewright/guardrails/**`, `tests/guardrails/**` | lane thread (claude-opus-5-5) | running | – |
-| E1 tracing, pricing, cost, latency | W0.2 | `src/triagewright/observability/**`, `tests/observability/**`, `config/pricing.toml` | lane thread (claude-opus-5-5) | running | – |
-| F1 eval harness + graders + report | W0.2 | `src/triagewright/evals/**`, `tests/evals/**`, `evals/baseline.json`, `evals/README.md` | lane thread (claude-opus-5-5) | running | – |
-| G1 cases: happy path + ambiguous | W0.2 | `evals/cases/happy_path/**`, `evals/cases/ambiguous/**` | lane thread (claude-opus-5-5) | running | – |
-| G2 cases: policy edge + escalation | W0.2 | `evals/cases/policy_edge/**`, `evals/cases/escalation_required/**` | lane thread (claude-opus-5-5) | running | – |
-| G3 cases: injection + tool failure | W0.2 | `evals/cases/injection/**`, `evals/cases/tool_failure/**` | lane thread (claude-opus-5-5) | running | – |
-| H1 HTTP API + CLI | W0.2 | `src/triagewright/api/**`, `src/triagewright/cli/**`, `tests/api/**`, `tests/cli/**` | lane thread (claude-opus-5-5) | running | – |
+| E1 tracing, pricing, cost, latency | W0.2 | `src/triagewright/observability/**`, `tests/observability/**`, `config/pricing.toml` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#7](https://github.com/rick-learns/triagewright/pull/7) |
+| F1 eval harness + graders + report | W0.2 | `src/triagewright/evals/**`, `tests/evals/**`, `evals/baseline.json`, `evals/README.md` | lane thread (claude-opus-5-5) | in-review | [#12](https://github.com/rick-learns/triagewright/pull/12) |
+| G1 cases: happy path + ambiguous | W0.2 | `evals/cases/happy_path/**`, `evals/cases/ambiguous/**` | lane thread (claude-opus-5-5) | merged (sol-loop 3, approve) | [#6](https://github.com/rick-learns/triagewright/pull/6) |
+| G2 cases: policy edge + escalation | W0.2 | `evals/cases/policy_edge/**`, `evals/cases/escalation_required/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2; exact-refund gap accepted, follow-up) | [#5](https://github.com/rick-learns/triagewright/pull/5) |
+| G3 cases: injection + tool failure | W0.2 | `evals/cases/injection/**`, `evals/cases/tool_failure/**` | lane thread (claude-opus-5-5) | merged (sol-loop 2, approve) | [#8](https://github.com/rick-learns/triagewright/pull/8) |
+| H1 HTTP API + CLI | W0.2 | `src/triagewright/api/**`, `src/triagewright/cli/**`, `tests/api/**`, `tests/cli/**` | lane thread (claude-opus-5-5) | merged (sol-loop 3; CLI-token S1 resolved by ADR amendment) | [#10](https://github.com/rick-learns/triagewright/pull/10) |
 | I1 architecture docs (deferred to M2) | X1 | `docs/architecture.md`, `docs/adr/` (except ADR-001), `README.md` | – | todo | – |
 | J1 synthetic data generator (deferred to M2, only if needed) | X1 | `src/triagewright/datagen/**`, `tests/datagen/**`, `data/generated/**` | – | todo | – |
 
