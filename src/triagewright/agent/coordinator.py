@@ -24,6 +24,7 @@ and the ticket is escalated with a code-built handoff summary.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import Mapping
 from typing import Annotated, Literal
@@ -94,6 +95,15 @@ READ_TOOLS: tuple[ToolName, ...] = tuple(
 # On a refund request it gets only the knowledge base: the order lookups and the refund
 # proposal belong to the action subagent, which it must run (enforced in ``_check_final``).
 REFUND_READ_TOOLS: tuple[ToolName, ...] = (ToolName.SEARCH_KB,)
+# An explicit ask for money back, whatever triage called the ticket. Questions about the
+# policy ("what is your refund policy", "how long do refunds take") don't match.
+_REFUND_ASK = re.compile(
+    r"\b(?:refund\s+(?:me|my|this|it|order)\b"
+    r"|(?:want|like|need|request(?:ing)?|get|issue|give\s+me|process|demand|expect)\s+"
+    r"(?:(?:a|an|my|the|full|partial|complete|immediate)\s+)*refund\b"
+    r"|(?:my|the|our)\s+money\s+back\b|reimburse\s+me\b)",
+    re.IGNORECASE,
+)
 
 _REFUND_POLICY_DOC = "kb_refund_policy"
 # Errors the customer can fix by giving other details; anything else is a tool failure.
@@ -233,17 +243,17 @@ class Coordinator:
         )
 
     def _check_final(self, run: RequestRun, final: FinalizeArgs) -> str | None:
-        """A refund reply needs the action subagent's result and a verified refund-policy
-        citation (behavior.md). Code checks both: a model can skip a prompt rule."""
-        assert run.triage is not None
-        if run.triage.category is not TicketCategory.REFUND_REQUEST:
+        """A refund reply needs a verified refund-policy citation and, for a signed-in
+        customer, a refund proposal for the executor to decide (behavior.md). Code checks
+        both: a model can skip a prompt rule."""
+        if not _refund_requested(run):
             return None
         citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
         cited = any(c.doc_id == _REFUND_POLICY_DOC for c in citations)
         missing = [
             message
             for message, ok in (
-                (prompts.RUN_ACTION_FIRST, run.action_ran),
+                (prompts.PROPOSE_REFUND_FIRST, _refund_decidable(run, final)),
                 (prompts.CITE_REFUND_POLICY, cited),
             )
             if not ok
@@ -256,12 +266,15 @@ class Coordinator:
             return as_data(canonical_json(draft.model_dump(mode="json")), flagged), False
 
         async def action(_: JsonObject) -> tuple[str, bool]:
-            result, flagged = await subagents.action(run)
+            try:
+                result, flagged = await subagents.action(run)
+            except Refused:  # an internal step, not the customer's answer: hand off
+                raise Fallback(
+                    LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, "action subagent refused"
+                ) from None
             return as_data(canonical_json(result.model_dump(mode="json")), flagged), False
 
-        assert run.triage is not None
-        refund = run.triage.category is TicketCategory.REFUND_REQUEST
-        reads = REFUND_READ_TOOLS if refund else READ_TOOLS
+        reads = REFUND_READ_TOOLS if _refund_requested(run) else READ_TOOLS
         tools = [run.business_tool(name, "coordinator") for name in reads]
         for name, description, handler in (
             (SubagentName.ANSWER, prompts.ANSWER_TOOL_DESCRIPTION, answer),
@@ -548,6 +561,30 @@ class Coordinator:
                 name = f"{base}#{suffix[base]}"
             redacted[name] = self._guardrails.redact(value).text
         return redacted
+
+
+def _refund_requested(run: RequestRun) -> bool:
+    """Triage says refund, or the customer plainly asks for one (triage can mislabel it)."""
+    assert run.triage is not None
+    if run.triage.category is TicketCategory.REFUND_REQUEST:
+        return True
+    return _REFUND_ASK.search(f"{run.ticket.subject}\n{run.ticket.body}") is not None
+
+
+def _refund_decidable(run: RequestRun, final: FinalizeArgs) -> bool:
+    """Whether a refund finalize leaves the decision to code, not the model.
+
+    The executor decides from a queued ``issue_refund`` proposal. Without one, a reply is
+    accepted only if no refund could be made in this request anyway: no signed-in
+    customer, suspected injection (proposals are dropped), or ``needs_info`` after the
+    action subagent looked the records up.
+    """
+    if run.ticket.customer_id is None or run.injection:
+        return True
+    proposals = [*run.deferred, *(o.action for o in run.outcomes)]
+    if any(p.tool is ToolName.ISSUE_REFUND for p in proposals):
+        return True
+    return final.status == "needs_info" and bool(run.action_lookups)
 
 
 def _refund_reason(outcome: ActionOutcome) -> RefundReason | None:

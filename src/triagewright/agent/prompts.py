@@ -128,9 +128,10 @@ def force_output(tool: str) -> str:
     return f"Call `{tool}` now with your result."
 
 
-RUN_ACTION_FIRST = (
-    "Not accepted. A refund request needs the action subagent: call `action`, then call "
-    "`finalize` with what it found."
+PROPOSE_REFUND_FIRST = (
+    "Not accepted. A refund request needs a refund proposal: call `action`, which proposes "
+    "`issue_refund` so the system can check eligibility, then call `finalize`. If the "
+    "records don't show which order to refund, finalize with status `needs_info`."
 )
 CITE_REFUND_POLICY = (
     "Not accepted. A reply to a refund request must cite the refund policy: search the "

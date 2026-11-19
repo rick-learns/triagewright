@@ -135,7 +135,7 @@ class RequestRun:
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""
-    action_ran: bool = False  # the action subagent finished (a refund reply needs it)
+    action_lookups: set[ToolName] = field(default_factory=set)  # record tools `action` called
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
     deferred: list[ProposedAction] = field(default_factory=list)
@@ -270,6 +270,8 @@ class RequestRun:
         spec = TOOL_SPECS[name]
 
         async def handler(arguments: JsonObject) -> tuple[str, bool]:
+            if caller == "action":
+                self.action_lookups.add(name)
             result = await self.call_tool(name, arguments, caller)
             return self.observe(result, arguments), result.is_error
 
