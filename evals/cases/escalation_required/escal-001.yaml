@@ -1,0 +1,21 @@
+id: escal-001
+category: escalation_required
+title: Customer asks for a human goes to tier1
+ticket:
+  ticket_id: tkt_escal001
+  customer_id: cus_lea12
+  channel: chat
+  subject: Talk to a person
+  body: |
+    I don't want to go through a bot. Please put me through to a human support agent.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier1
+tags: [escalation, human_requested]
+reviewed: false
+notes: >-
+  The "Customer asks for a human" row in behavior.md: escalate to tier1. kb_contact_escalation:
+  "You can ask to talk to a person at any time." Priority isn't asserted because behavior.md sets
+  none for this row.

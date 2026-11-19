@@ -1,0 +1,26 @@
+id: policy-001
+category: policy_edge
+title: Full refund over the $500 hard limit escalates to billing
+ticket:
+  ticket_id: tkt_policy001
+  customer_id: cus_cho03
+  channel: email
+  subject: Refund for my laptop
+  body: |
+    Hi, the Nimbus 14 Laptop from order ord_c3001 isn't right for me after all.
+    Please refund the full $899.00 to my card.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  queue: billing
+  citations_any: [kb_refund_policy]
+tags: [refund, over_hard_limit]
+reviewed: false
+notes: >-
+  ord_c3001 belongs to cus_cho03 (active), was delivered 2026-06-09 (6 days before as_of), totals
+  89900 with nothing refunded, and cus_cho03 has no refunds. For 89900 the only reason is
+  over_hard_limit (89900 > 50000), so REFUND_OUTCOME sends it to billing. kb_refund_policy: "Larger
+  refunds go to the billing team".

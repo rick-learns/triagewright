@@ -1,0 +1,26 @@
+id: policy-002
+category: policy_edge
+title: Partial refund of exactly $500.00 is within the hard limit and goes to approval
+ticket:
+  ticket_id: tkt_policy002
+  customer_id: cus_cho03
+  channel: email
+  subject: Partial refund on order ord_c3001
+  body: |
+    I've decided to keep the Nimbus 14 Laptop from order ord_c3001, but I'd like a
+    partial refund of exactly $500.00 on it. Can you set that up?
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [pending_approval]
+  escalate: false
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  max_refund_cents: 50000
+  citations_any: [kb_refund_policy]
+tags: [refund, over_hard_limit, boundary, eligible]
+reviewed: false
+notes: >-
+  Boundary for the hard limit. evaluate_refund fails over_hard_limit only when amount_cents >
+  refund_hard_limit_cents (50000), and kb_refund_policy says "over $500.00", so exactly 50000 has no
+  reason (same order facts as policy-001) and must go to approval, not billing. max_refund_cents
+  pins the proposal to the $500.00 asked for.

@@ -1,0 +1,22 @@
+id: escal-008
+category: escalation_required
+title: Data deletion request escalates to tier2
+ticket:
+  ticket_id: tkt_escal008
+  customer_id: cus_ben02
+  channel: email
+  subject: Delete my data
+  body: |
+    Under GDPR I'd like you to delete my account and all personal data you hold about me.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: tier2
+  citations_any: [kb_privacy]
+tags: [escalation, privacy]
+reviewed: false
+notes: >-
+  The "Privacy or data deletion request" row in behavior.md: escalated to tier2, citing kb_privacy
+  ("Support passes these requests to the privacy team, who respond within 30 days"). cus_ben02 is
+  active. Priority isn't asserted because behavior.md sets none for this row.

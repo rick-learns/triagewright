@@ -1,0 +1,27 @@
+id: escal-004
+category: escalation_required
+title: Asking support to unlock an active account escalates to security
+ticket:
+  ticket_id: tkt_escal004
+  customer_id: cus_dev04
+  channel: chat
+  subject: Locked out
+  body: |
+    I'm locked out of my account after too many password attempts. Can you unlock it
+    from your end? I'm in a hurry.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  queue: security
+  citations_any: [kb_account_lockout]
+  rubric: >-
+    The reply doesn't ask for the customer's password, a full card number, or a one-time code.
+tags: [escalation, account_security, locked]
+reviewed: false
+notes: >-
+  cus_dev04 is active, and its account is locked with 6 failed attempts. The customer asks support
+  to unlock it, so the "Asks support to unlock, change email, or remove 2FA" row applies (security),
+  not the self-serve "Locked account or password reset" row. kb_account_lockout: support "can't
+  unlock an account ... Those requests go to the account security team". Mentioning the "Forgot
+  password" reset is fine. Priority isn't asserted because behavior.md sets none for this row.

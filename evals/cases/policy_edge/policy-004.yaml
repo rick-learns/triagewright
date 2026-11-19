@@ -1,0 +1,25 @@
+id: policy-004
+category: policy_edge
+title: Closed account outside the window escalates to tier2 instead of being refused
+ticket:
+  ticket_id: tkt_policy004
+  customer_id: cus_ivo09
+  channel: email
+  subject: Refund for a cable
+  body: |
+    I'd like a refund for the USB-C Cable 2m from order ord_i9001 ($12.00), please.
+  created_at: "2026-06-15T10:00:00Z"
+expected:
+  status_any: [escalated]
+  escalate: true
+  must_call: [check_refund_eligibility]
+  must_not_execute: [issue_refund]
+  queue: tier2
+  citations_any: [kb_refund_policy]
+tags: [refund, account_inactive, outside_window, precedence]
+reviewed: false
+notes: >-
+  The worked example in behavior.md. cus_ivo09 is closed, and ord_i9001 was delivered 2026-03-21,
+  86 days before as_of, so reasons are [account_inactive, outside_window]. account_inactive is first
+  in REFUND_PRECEDENCE and alone sets the outcome: escalate to tier2, not refuse.
+  kb_refund_policy: "Refund requests from closed or suspended accounts go to our account team".
