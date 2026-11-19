@@ -135,6 +135,7 @@ class RequestRun:
     triage: TriageResult | None = None
     answer: AnswerDraft | None = None
     action_summary: str = ""
+    action_ran: bool = False  # the action subagent finished (a refund reply needs it)
     facts: list[str] = field(default_factory=list)
     kb_hits: dict[str, KBHit] = field(default_factory=dict)
     deferred: list[ProposedAction] = field(default_factory=list)

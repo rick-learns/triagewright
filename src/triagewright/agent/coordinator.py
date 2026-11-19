@@ -91,6 +91,9 @@ PURPOSES: tuple[str, ...] = ("coordinator", *(name.value for name in SubagentNam
 READ_TOOLS: tuple[ToolName, ...] = tuple(
     name for name, spec in TOOL_SPECS.items() if spec.side_effect is SideEffect.READ
 )
+# On a refund request it gets only the knowledge base: the order lookups and the refund
+# proposal belong to the action subagent, which it must run (enforced in ``_check_final``).
+REFUND_READ_TOOLS: tuple[ToolName, ...] = (ToolName.SEARCH_KB,)
 
 _REFUND_POLICY_DOC = "kb_refund_policy"
 # Errors the customer can fix by giving other details; anything else is a tool failure.
@@ -230,14 +233,22 @@ class Coordinator:
         )
 
     def _check_final(self, run: RequestRun, final: FinalizeArgs) -> str | None:
-        """A refund reply must carry a verified refund-policy citation (behavior.md)."""
+        """A refund reply needs the action subagent's result and a verified refund-policy
+        citation (behavior.md). Code checks both: a model can skip a prompt rule."""
         assert run.triage is not None
         if run.triage.category is not TicketCategory.REFUND_REQUEST:
             return None
         citations = run.cite_all([(c.chunk_id, c.quote) for c in final.citations])
-        if any(c.doc_id == _REFUND_POLICY_DOC for c in citations):
-            return None
-        return prompts.CITE_REFUND_POLICY
+        cited = any(c.doc_id == _REFUND_POLICY_DOC for c in citations)
+        missing = [
+            message
+            for message, ok in (
+                (prompts.RUN_ACTION_FIRST, run.action_ran),
+                (prompts.CITE_REFUND_POLICY, cited),
+            )
+            if not ok
+        ]
+        return " ".join(missing) or None
 
     def _tools(self, run: RequestRun) -> list[LocalTool]:
         async def answer(_: JsonObject) -> tuple[str, bool]:
@@ -248,7 +259,10 @@ class Coordinator:
             result, flagged = await subagents.action(run)
             return as_data(canonical_json(result.model_dump(mode="json")), flagged), False
 
-        tools = [run.business_tool(name, "coordinator") for name in READ_TOOLS]
+        assert run.triage is not None
+        refund = run.triage.category is TicketCategory.REFUND_REQUEST
+        reads = REFUND_READ_TOOLS if refund else READ_TOOLS
+        tools = [run.business_tool(name, "coordinator") for name in reads]
         for name, description, handler in (
             (SubagentName.ANSWER, prompts.ANSWER_TOOL_DESCRIPTION, answer),
             (SubagentName.ACTION, prompts.ACTION_TOOL_DESCRIPTION, action),

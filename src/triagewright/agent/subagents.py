@@ -107,6 +107,7 @@ async def action(run: RequestRun) -> tuple[ActionResult, bool]:
         run, SubagentName.ACTION, prompts.ACTION, payload, ActionSummary, tools
     )
     run.action_summary = summary.summary
+    run.action_ran = True
     facts = run.facts[facts_start:] + [queued(a) for a in run.deferred[deferred_start:]]
     result = ActionResult(outcomes=list(run.outcomes), facts=facts, summary=summary.summary)
     return result, flagged

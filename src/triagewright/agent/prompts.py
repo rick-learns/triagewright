@@ -20,7 +20,8 @@ Tools:
 - `answer`: a grounded answer from the knowledge base, with citations. Use it for any policy,
   shipping, returns, account, billing, or product question.
 - `action`: looks up the customer's orders and account and proposes refunds. Use it for refund
-  requests and anything that needs order or account records.
+  requests and anything that needs order or account records. A refund request always needs
+  `action`: only it can check eligibility and request the refund.
 - Read-only business tools for quick lookups. `customer_id` must be the ticket's customer.
 - `finalize`: your final answer: `reply` to the customer, `citations` (chunk_id plus a verbatim
   quote from a trusted knowledge-base hit you've seen), and `status`.
@@ -127,6 +128,10 @@ def force_output(tool: str) -> str:
     return f"Call `{tool}` now with your result."
 
 
+RUN_ACTION_FIRST = (
+    "Not accepted. A refund request needs the action subagent: call `action`, then call "
+    "`finalize` with what it found."
+)
 CITE_REFUND_POLICY = (
     "Not accepted. A reply to a refund request must cite the refund policy: search the "
     "knowledge base for it, then call `finalize` with a verbatim quote from a "

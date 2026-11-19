@@ -836,3 +836,33 @@ async def test_reviewer_escalation_without_queue_or_reasons_gets_defaults() -> N
     args = s.escalation_args()
     assert (args["queue"], args["reason_codes"]) == ("tier1", ["low_confidence"])
     assert str(args["summary"]).startswith("Customer goal:")
+
+
+async def test_a_refund_request_offers_the_coordinator_no_order_lookups() -> None:
+    s = stack(refund_script("ord_b2001", 11800))
+    await s.resolve(refund_ticket("cus_ben02", "ord_b2001"))
+    offered = {t.name for t in s.requests("coordinator")[0].tools}
+    assert {"search_kb", "answer", "action", "finalize"} <= offered
+    assert not offered & {"get_order", "list_orders", "check_refund_eligibility"}
+    other = stack([triage(), finalize(), review()])
+    await other.resolve(sample_ticket())
+    assert "get_order" in {t.name for t in other.requests("coordinator")[0].tools}
+
+
+async def test_a_refund_finalize_before_the_action_subagent_is_sent_back() -> None:
+    # Flash-Lite answered refund requests from the knowledge base and never ran `action`.
+    triaged, search, *acting, cited, reviewed = refund_script("ord_h8001", 11800)
+    s = stack([triaged, search, cited, *acting, cited, reviewed])
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))  # eligible (happy-005)
+    assert response.status is ResolutionStatus.PENDING_APPROVAL
+    assert [o.status for o in response.actions] == [ActionStatus.PENDING_APPROVAL]
+    repair = s.requests("coordinator")[2]
+    assert tool_results(repair)[-1].content == prompts.RUN_ACTION_FIRST
+
+
+async def test_a_refund_finalize_missing_both_hears_both() -> None:
+    triaged, _, *acting, cited, reviewed = refund_script("ord_b2001", 11800)
+    s = stack([triaged, finalize("Sure."), *acting, cited, reviewed])
+    await s.resolve(refund_ticket("cus_ben02", "ord_b2001"))
+    message = tool_results(s.requests("coordinator")[1])[-1].content
+    assert message == f"{prompts.RUN_ACTION_FIRST} {prompts.CITE_REFUND_POLICY}"
