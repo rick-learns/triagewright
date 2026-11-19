@@ -15,6 +15,15 @@ input_per_mtok_usd = 0.0
 output_per_mtok_usd = 0.0
 source = "https://ai.google.dev/gemini-api/docs/pricing (free tier), checked 2026-11-19"
 
+# Second free Flash-Lite. Free-tier quota is per model, so live runs can use it
+# (TW_MODEL_*) while the default's daily quota is spent.
+[[model]]
+provider = "gemini"
+model = "gemini-3.1-flash-lite"
+input_per_mtok_usd = 0.0
+output_per_mtok_usd = 0.0
+source = "https://ai.google.dev/gemini-api/docs/pricing (free tier), checked 2026-11-19"
+
 [[model]]
 provider = "gemini"
 model = "gemini-3.8-flash"
