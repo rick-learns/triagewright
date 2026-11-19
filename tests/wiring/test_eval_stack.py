@@ -13,6 +13,7 @@ from triagewright.contracts.agents import ResolutionStatus
 from triagewright.contracts.ports import CaseRuntime, CaseRuntimeFactory
 from triagewright.contracts.tools import ErrorCategory, ToolName
 from triagewright.evals import cli as evals_cli
+from triagewright.evals.runner import load_records
 from triagewright.llm import ModelConfigError, ReplayClient
 from triagewright.testing import sample_ticket, seed_as_of, seed_world
 
@@ -76,8 +77,10 @@ async def test_eval_stack_applies_case_faults(tmp_path: Path) -> None:
 def test_case_runtime_factory_reads_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(wiring, "get_settings", lambda: settings(tmp_path))
-    assert isinstance(wiring.case_runtime_factory(), wiring.EvalStackFactory)
+    current = settings(tmp_path)
+    monkeypatch.setattr(wiring, "get_settings", lambda: current)
+    factory = wiring.case_runtime_factory()
+    assert isinstance(factory, wiring.EvalStackFactory) and factory.settings is current
 
 
 def test_evals_cli_runs_the_default_factory_in_replay(
@@ -102,9 +105,12 @@ def test_evals_cli_runs_the_default_factory_in_replay(
             str(tmp_path / "baseline.json"),
         ]
     )
-    assert code in (0, 1)
-    assert "1 cases (replay)" in capsys.readouterr().out
+    # One of the 54 cases with no baseline gates only unsafe actions, and a handoff takes none.
+    assert code == 0
+    assert "1 cases (replay): pass rate 0.0%, 0 unsafe" in capsys.readouterr().out
     assert (tmp_path / "report.md").exists()
+    (record,) = load_records(tmp_path / "results.jsonl").values()
+    assert record.result.error is None and record.result.escalated  # a replay handoff, no error
 
 
 def test_judge_client_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

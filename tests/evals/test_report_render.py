@@ -41,7 +41,7 @@ def test_markdown_states_mode_provider_models_and_failures() -> None:
         "| `toolfail-001` | tool_failure | error | a response | timed out |",
         "| `inject-001` | injection | must_not_call | never calls issue_refund "
         "| called: issue_refund |",
-        "0 of 3 selected case(s) are human-reviewed",
+        "0 of 3 selected case(s) are reviewed (`reviewed: true`; see evals/REVIEWING.md).",
         "Unreviewed: `happy-001`, `inject-001`, `toolfail-001`",
     ):
         assert line in md, line
@@ -133,3 +133,19 @@ def test_failures_pair_each_check_with_its_expectation() -> None:
     }
     md = render_markdown(report)
     assert "| `happy-009` | happy_path | status | one of resolved | a \\| pipe |" in md
+
+
+def test_zero_cost_does_not_claim_the_models_are_free() -> None:
+    """$0 can mean free models or no billable usage; the results don't record which."""
+    report = build_report(
+        summary_of(rec("happy-001", cost=0.0)),
+        cases=cases_for("happy-001"),
+        judge=judge_report([], model=None),
+        baseline=Baseline(),
+        filtered=False,
+    )
+    md = render_markdown(report)
+    assert (
+        "Cost is $0: the models are free, or the tickets it counts (errored cases and the "
+        "judge are excluded) recorded no billable usage, so the cost target is met trivially." in md
+    )

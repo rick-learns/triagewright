@@ -6,6 +6,7 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,7 @@ from triagewright.contracts.telemetry import RequestMetrics
 from triagewright.contracts.tickets import Ticket
 from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
 from triagewright.contracts.world import WorldState
+from triagewright.evals import runner
 from triagewright.evals.runner import CaseRecord, RunConfig, input_key, load_records, run_cases
 from triagewright.pacing import CALL_BUDGET
 from triagewright.testing import (
@@ -128,19 +130,43 @@ async def test_concurrency_is_bounded_and_order_is_kept() -> None:
     assert [r.result.case_id for r in records] == [c.id for c in selected]
 
 
-async def test_throttle_spaces_case_starts() -> None:
+class _VirtualClock:
+    """The throttle's clock and sleep: time moves only when it sleeps, so load can't skew gaps."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+        self.sleeps: list[float] = []
+        self.late = [0.03]  # the first sleep wakes 30 ms late
+        self._sleep = asyncio.sleep
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, delay: float) -> None:
+        self.sleeps.append(delay)
+        self.now += delay + (self.late.pop() if self.late else 0.0)
+        await self._sleep(0)
+
+
+async def test_throttle_spaces_case_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _VirtualClock()
+    monkeypatch.setattr(
+        runner, "time", SimpleNamespace(monotonic=clock.monotonic, perf_counter=time.perf_counter)
+    )
+    monkeypatch.setattr(asyncio, "sleep", clock.sleep)
     starts: list[float] = []
 
     async def stamp(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
-        starts.append(time.monotonic())
+        starts.append(clock.now)
         return respond(t)
 
     selected = cases(3)
     factory = scripted_factory(scripts_for(selected, stamp))
     config = RunConfig(mode="replay", concurrency=3, min_interval_s=0.05)
     await run_all(factory, selected, config)
-    gaps = [b - a for a, b in itertools.pairwise(starts)]
-    assert len(gaps) == 2 and all(g >= 0.045 for g in gaps)
+    assert clock.sleeps == pytest.approx([0.05, 0.05])  # the first start doesn't wait
+    # The interval runs from the late start, not from when the sleep was due to end.
+    assert [b - a for a, b in itertools.pairwise(starts)] == pytest.approx([0.08, 0.05])
 
 
 async def test_results_are_appended_and_resume_skips_finished_cases(tmp_path: Path) -> None:

@@ -65,7 +65,12 @@ def render_markdown(report: EvalReport) -> str:
     if s.mode != "live":
         lines += ["", "Latency is judged on live runs only (ADR-001)."]
     if s.mode != "stub" and sampled and s.cost_per_ticket_usd == 0:
-        lines += ["", "Cost is $0: the models are free, so the cost target is met trivially."]
+        # Results don't count model calls, so a run whose calls all failed also costs $0.
+        lines += [
+            "",
+            "Cost is $0: the models are free, or the tickets it counts (errored cases and the "
+            "judge are excluded) recorded no billable usage, so the cost target is met trivially.",
+        ]
     lines += [
         "",
         "## Summary",
@@ -96,7 +101,8 @@ def render_markdown(report: EvalReport) -> str:
         "",
         "## Review",
         "",
-        f"{rv.reviewed} of {rv.total} selected case(s) are human-reviewed (`reviewed: true`).",
+        f"{rv.reviewed} of {rv.total} selected case(s) are reviewed "
+        "(`reviewed: true`; see evals/REVIEWING.md).",
     ]
     if rv.unreviewed:
         lines.append("Unreviewed: " + ", ".join(f"`{c}`" for c in rv.unreviewed))

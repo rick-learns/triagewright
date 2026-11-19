@@ -12,7 +12,7 @@ import pytest
 
 from tests.agent.helpers import refund_script
 from tests.mcp_server.conftest import ctx
-from tests.wiring.helpers import REFUND_TICKET, scripted, settings
+from tests.wiring.helpers import REFUND_TICKET, memory_gateway, scripted, settings
 from triagewright import wiring
 from triagewright.api.services import (
     DecisionConflictError,
@@ -20,11 +20,12 @@ from triagewright.api.services import (
     WiringUnavailableError,
     decide_approval,
 )
+from triagewright.config import Settings
 from triagewright.contracts.agents import ResolutionStatus
 from triagewright.contracts.llm import ModelResponse
 from triagewright.contracts.rag import RetrievalQuery
 from triagewright.contracts.tools import ToolName
-from triagewright.mcp_server import MockSystems
+from triagewright.mcp_server import McpToolGateway, MockSystems
 from triagewright.testing import seed_world
 
 pytestmark = pytest.mark.anyio
@@ -63,13 +64,33 @@ async def test_services_persist_approvals_and_execute_on_a_human_decision(
         )
 
 
-def test_services_reach_an_out_of_process_mcp_server_lazily(tmp_path: Path) -> None:
+def test_services_reach_an_out_of_process_mcp_server_lazily(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     remote = settings(tmp_path, mcp_transport="http", approval_key="k" * 32)
+    opened: list[Settings] = []
+
+    def from_settings(current: Settings, *, log_calls: bool) -> McpToolGateway:
+        opened.append(current)
+        return memory_gateway()  # stands in for the server at mcp_url
+
+    monkeypatch.setattr(McpToolGateway, "from_settings", from_settings)
     built = wiring.build_services(remote, model_factory=scripted(()))
     gateway = built.executor.gateway  # type: ignore[attr-defined]
-    assert isinstance(gateway, wiring.BackgroundMcpGateway)  # no connection until a call
+    assert isinstance(gateway, wiring.BackgroundMcpGateway)
     assert {s.name for s in gateway.list_tools()} == set(ToolName)
-    gateway.close()
+    try:
+
+        async def session() -> object:  # runs after anything building queued on the loop
+            return gateway._session
+
+        assert asyncio.run_coroutine_threadsafe(session(), gateway._loop).result(30) is None
+        assert opened == []  # building doesn't connect
+        result = asyncio.run(gateway.call(ToolName.GET_ORDER, {"order_id": "ord_a1002"}, ctx()))
+        assert not result.is_error, result
+        assert opened == [remote]  # the first call does
+    finally:
+        built.close()
     assert not (tmp_path / "world.sqlite").exists()  # the MCP server owns the world
 
 
