@@ -95,6 +95,7 @@ def respond(
             ticket_id=ticket.ticket_id,
             estimated=mode == "replay",
         )
+    stored = escalation is not None and escalation.escalate
     return FinalResponse(
         request_id=stable_id("req", ticket.ticket_id),
         ticket_id=ticket.ticket_id,
@@ -104,6 +105,7 @@ def respond(
             Citation(doc_id=d, chunk_id=f"{d}#0", title=d, quote="quoted policy") for d in citations
         ],
         escalation=escalation,
+        handoff_id=stable_id("esc", ticket.ticket_id) if stored else None,  # the fake gateway's
         actions=list(actions),
         mode=mode,
         metrics=metrics,

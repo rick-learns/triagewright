@@ -19,7 +19,13 @@ from triagewright.contracts.agents import EscalationDecision, FinalResponse, Res
 from triagewright.contracts.common import JsonObject
 from triagewright.contracts.evals import ToolFault
 from triagewright.contracts.tickets import Ticket
-from triagewright.contracts.tools import ErrorCategory, ToolError, ToolName
+from triagewright.contracts.tools import (
+    ErrorCategory,
+    ToolCallRecord,
+    ToolError,
+    ToolName,
+    ToolResult,
+)
 from triagewright.contracts.world import EscalationQueue, Priority
 from triagewright.evals.graders import Evidence, grade_deterministic
 from triagewright.testing import FakeCaseRuntime, sample_ticket, seed_world
@@ -131,6 +137,36 @@ async def test_escalate_needs_both_the_call_log_and_the_response() -> None:
     for script in (claims_only, silent):
         record = await run(case, script)
         assert grades_by_name(record)["escalate"] is False
+
+
+async def test_escalate_needs_the_stored_handoff_id_in_the_response() -> None:
+    async def unconfirmed(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        decision = await escalate(rt, t)
+        response = respond(t, ResolutionStatus.ESCALATED, escalation=decision)
+        return response.model_copy(update={"handoff_id": None})
+
+    record = await run(make_case(status_any=["escalated"], escalate=True), unconfirmed)
+    assert grades_by_name(record)["escalate"] is False
+
+
+async def test_a_malformed_escalation_result_is_not_a_handoff() -> None:
+    async def malformed(rt: FakeCaseRuntime, t: Ticket) -> FinalResponse:
+        rt.gateway.calls.append(
+            ToolCallRecord(
+                tool=ToolName.CREATE_ESCALATION,
+                caller="coordinator",
+                arguments={"ticket_id": t.ticket_id},
+                result=ToolResult(
+                    tool=ToolName.CREATE_ESCALATION, is_error=False, data={"queue": "tier1"}
+                ),
+            )
+        )
+        decision = EscalationDecision(escalate=True, queue=EscalationQueue.TIER1)
+        return respond(t, ResolutionStatus.ESCALATED, escalation=decision)
+
+    record = await run(make_case(status_any=["escalated"], escalate=True), malformed)
+    assert grades_by_name(record)["escalate"] is False
+    assert not record.result.escalated
 
 
 async def test_escalation_for_another_ticket_does_not_count() -> None:

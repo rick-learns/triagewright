@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from tests.agent.helpers import (
+    SHIPPING,
     FakeClock,
     RedactingGuardrails,
     TimedModel,
@@ -122,14 +123,20 @@ async def test_reviewer_escalations_reach_the_gateway(
 async def test_failed_escalation_write_does_not_promise_a_follow_up() -> None:
     error = ToolError(category=ErrorCategory.INTERNAL, message="db down", retryable=False)
     fault = ToolFault(tool=ToolName.CREATE_ESCALATION, error=error)
+    cited = [(SHIPPING.chunk_id, SHIPPING.text[:40])]
     s = stack(
-        [triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])],
+        [
+            triage("shipping"),
+            call("search_kb", {"query": SHIPPING.text}),
+            finalize("I've passed you to a person.", citations=cited),
+            review(True, "tier1", ["customer_requested_human"]),
+        ],
         faults=[fault],
     )
     response = await s.resolve(sample_ticket("A human, please."))
     assert response.status is ResolutionStatus.ESCALATED
-    assert response.reply.endswith(prompts.HANDOFF_FAILED)
-    assert "passed your request" not in response.reply
+    assert response.reply == f"{prompts.FALLBACK_REPLY}\n\n{prompts.HANDOFF_FAILED}"
+    assert response.citations == []
     assert response.handoff_id is None
 
 
@@ -451,6 +458,30 @@ async def test_a_handoff_that_times_out_does_not_claim_it_was_passed_on() -> Non
     s.gateway.call = hang_on_handoff  # type: ignore[method-assign]
     response = await s.resolve(sample_ticket("A human, please."))
     assert response.status is ResolutionStatus.ESCALATED
+    assert response.reply.endswith(prompts.HANDOFF_FAILED)
+    assert response.handoff_id is None
+
+
+async def test_another_tickets_escalation_is_not_this_tickets_handoff() -> None:
+    other = Escalation(
+        escalation_id="esc_other001",
+        ticket_id="tkt_9999",
+        queue=EscalationQueue.BILLING,
+        priority=Priority.NORMAL,
+        summary="Another ticket.",
+        reason_codes=[EscalationReason.CUSTOMER_REQUESTED_HUMAN],
+        created_at=seed_as_of(),
+    )
+    s = stack([triage(), finalize("Thanks."), review(True, "tier1", ["customer_requested_human"])])
+    call_gateway = s.gateway.call
+
+    async def wrong_ticket(name: ToolName, arguments: Any, ctx: Any) -> Any:
+        if name is ToolName.CREATE_ESCALATION:
+            return ToolResult.ok(name, other)
+        return await call_gateway(name, arguments, ctx)
+
+    s.gateway.call = wrong_ticket  # type: ignore[method-assign]
+    response = await s.resolve(sample_ticket("A human, please."))
     assert response.reply.endswith(prompts.HANDOFF_FAILED)
     assert response.handoff_id is None
 

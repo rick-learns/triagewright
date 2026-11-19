@@ -196,9 +196,10 @@ class LoopConfig(Contract):
 class FinalResponse(Contract):
     """Built by coordinator *code*. The model's ``finalize`` call supplies only ``reply``,
     citation candidates, and a proposed status among resolved/needs_info/refused;
-    ``actions`` and ``escalation`` come from executor and gateway records, and a
-    pending approval or a created escalation overrides the proposed status.
-    If both apply, ``escalated`` wins over ``pending_approval``.
+    ``actions`` come from executor records, ``escalation`` is code's routing decision,
+    and ``handoff_id`` confirms the gateway stored it. A pending approval or an
+    escalation decision overrides the proposed status; if both apply, ``escalated`` wins
+    over ``pending_approval``. ``escalated`` with no ``handoff_id`` means the write failed.
     """
 
     request_id: RequestId

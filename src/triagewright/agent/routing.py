@@ -127,6 +127,9 @@ class Routing(Replies, RefundRules):
         if decision is not None:
             status = ResolutionStatus.ESCALATED
             notes.append(await self._handoff(run, decision))
+            if run.handoff is None:
+                # The draft may say it was passed on, so only code's words go out.
+                reply, citations = prompts.FALLBACK_REPLY, []
         elif any(o.status is ActionStatus.PENDING_APPROVAL for o in run.outcomes):
             status = ResolutionStatus.PENDING_APPROVAL
         elif any(_refused(o) for o in run.outcomes):
@@ -202,7 +205,7 @@ class Routing(Replies, RefundRules):
             stored = Escalation.model_validate(result.data) if not result.is_error else None
         except ValidationError:
             stored = None
-        if stored is None:
+        if stored is None or stored.ticket_id != run.ticket.ticket_id:
             return prompts.HANDOFF_FAILED
         run.handoff = stored
         # An earlier handoff for the ticket is kept as it was, so name its queue.

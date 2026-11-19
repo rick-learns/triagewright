@@ -420,7 +420,8 @@ calls (`model.<purpose>`), tool calls (`tool.<name>`), guardrail steps
   `create_escalation` stored the handoff, and the reply names the stored
   escalation's queue. If the write fails or times out, the status is still
   `escalated` (a human has to take over), `handoff_id` is empty, and the reply
-  asks the customer to contact support again instead of claiming a handoff. Provider fallback is a config
+  is code's: the fallback reply plus a request to contact support again, with
+  no model text or citations that might claim a handoff. Provider fallback is a config
   change: replay by default, Gemini free tier as the preferred live provider,
   OpenRouter `:free` as the fallback,
   and no paid model anywhere (ADR-002).
