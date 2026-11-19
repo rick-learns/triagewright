@@ -212,7 +212,9 @@ async def run_case(
         grades=grades,
         cost_usd=metrics.cost_usd if metrics else 0.0,
         latency_ms=metrics.latency_ms if metrics else wall_ms,
+        paced_ms=metrics.paced_ms if metrics else None,
         ttft_ms=metrics.ttft_ms if metrics else None,
+        stop=response.stop if response else None,
         error=error,
     )
     return CaseRecord(

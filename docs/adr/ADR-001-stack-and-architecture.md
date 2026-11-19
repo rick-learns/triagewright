@@ -228,7 +228,8 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
   separately and never count toward cost per ticket.
 - TTFT is request start to the first streamed token
   (`ModelCallRecord.started_ms` plus that call's TTFT).
-- Live latency is wall time. In replay, latency is non-model wall time plus
+- Live latency is wall time less client-side rate-limit waits (`paced_ms`,
+  ADR-003), which the report's latency notes count separately. In replay, latency is non-model wall time plus
   each call's *recorded* latency, and metrics are marked `estimated`. Live
   and replay numbers are never compared: baselines and gates are per mode,
   and the p95 < 8 s target is judged on live runs only.

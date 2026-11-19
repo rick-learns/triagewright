@@ -18,7 +18,7 @@ from tests.evals.scenarios import (
     run,
     scripted_factory,
 )
-from triagewright.contracts.agents import FinalResponse
+from triagewright.contracts.agents import FinalResponse, LoopStop
 from triagewright.contracts.evals import EvalCase, ToolFault
 from triagewright.contracts.telemetry import RequestMetrics
 from triagewright.contracts.tickets import Ticket
@@ -291,13 +291,15 @@ async def test_cost_and_latency_come_from_request_metrics() -> None:
             ticket_id=t.ticket_id,
             cost_usd=0.002,
             latency_ms=1234.0,
+            paced_ms=500.0,
             ttft_ms=210.0,
             estimated=True,
         )
-        return respond(t, metrics=metrics)
+        return respond(t, metrics=metrics).model_copy(update={"stop": LoopStop.TIMEOUT})
 
     r = (await run(make_case(), measured)).result
     assert (r.cost_usd, r.latency_ms, r.ttft_ms) == (0.002, 1234.0, 210.0)
+    assert (r.paced_ms, r.stop) == (500.0, LoopStop.TIMEOUT)
 
 
 def test_input_key_ignores_defaults_so_new_optional_fields_keep_old_keys() -> None:
@@ -323,3 +325,4 @@ async def test_a_timed_out_cases_latency_leaves_out_pacing() -> None:
     r = record.result
     assert r.error == "timed out after 0.05s"
     assert 40 <= r.latency_ms < 150  # ~50 ms of work, not ~200 ms of wall time
+    assert r.paced_ms is None and r.stop is None  # no response, so neither was recorded
