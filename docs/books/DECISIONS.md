@@ -3,12 +3,12 @@
 | ADR | Title | Status | Date |
 | --- | --- | --- | --- |
 | [ADR-001](../adr/ADR-001-stack-and-architecture.md) | Stack and architecture | Accepted (council, 5 rounds) | 2026-11-19 |
-| [ADR-002](../adr/ADR-002-gemini-free-tier-default-provider.md) | Gemini API free tier as the default live provider | Accepted (#28) | 2026-11-19 |
-| [ADR-003](../adr/ADR-003-pace-live-calls-per-quota.md) | Pace live model calls per quota and model | Accepted (#28) | 2026-11-19 |
-| [ADR-004](../adr/ADR-004-code-decides-refund-outcomes.md) | Code decides every refund outcome | Accepted (#28) | 2026-11-19 |
-| [ADR-005](../adr/ADR-005-approval-queue-is-the-human-step.md) | The approval queue is the human step | Accepted (#28) | 2026-11-19 |
-| [ADR-006](../adr/ADR-006-span-errors-without-exception-messages.md) | Span errors never carry exception messages | Accepted (#28) | 2026-11-19 |
-| [ADR-007](../adr/ADR-007-rootless-podman-local-stack.md) | Rootless Podman replaces Docker for the local stack | Accepted (#28) | 2026-11-19 |
+| [ADR-002](../adr/ADR-002-gemini-free-tier-default-provider.md) | Gemini API free tier as the default live provider | Accepted (owner decision; #4), written up in #28 | 2026-11-19 |
+| [ADR-003](../adr/ADR-003-pace-live-calls-per-quota.md) | Pace live model calls per quota and model, off deadlines and latency | Accepted (#18), written up in #28 | 2026-11-19 |
+| [ADR-004](../adr/ADR-004-code-decides-refund-outcomes.md) | Code decides every refund outcome | Accepted (#19), written up in #28 | 2026-11-19 |
+| [ADR-005](../adr/ADR-005-approval-queue-is-the-human-step.md) | The approval queue is the human step; reviewer escalations code already handled are left to code | Accepted (#20, extended by #21), written up in #28 | 2026-11-19 |
+| [ADR-006](../adr/ADR-006-span-errors-without-exception-messages.md) | Span errors never carry exception messages | Accepted (#20), written up in #28 | 2026-11-19 |
+| [ADR-007](../adr/ADR-007-rootless-podman-local-stack.md) | Rootless Podman replaces Docker for the local stack | Accepted (owner decision; recorded in #4), written up in #28 | 2026-11-19 |
 
 ## Owner decisions
 

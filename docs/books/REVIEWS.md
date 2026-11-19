@@ -29,7 +29,7 @@
 | #28 | I1 architecture doc, ADR-002..007, exam map | sol-loop: gpt-6.2-sol (high) | 3 | changes (r3: two wording points fixed after the round, not re-reviewed; checked by the orchestrator against the code) | see PR | – | not reported |
 | #29 | P1 fresh-clone compose quick start | sol-loop: gpt-6.2-sol (high) | 3 | changes (r3: probe hard-kill and tool check fixed after the round, not re-reviewed; compose smoke PASS on the combined tree) | see PR | – | not reported |
 | #30 | L1 settle refund tickets in code | sol-loop: gpt-6.2-sol (high) | 5 (extended: refund approval path) | approve | F1 heading-only policy chunk, F2 proposal on a mis-triaged ticket, F3 duplicate search, F4 repeated lookup, F5 uncited reply beside a proposal, F6 model refund text before review, F7 refusal overwritten, F8 sequential proposals dropped, F9 stale grounding, F10 filtered search, F11 empty categories | – | not reported |
-| #31 | books: wave 1 merges, wave 2 lanes | sol-loop: gpt-6.2-sol (high) | 3 | approve | N1 RF1/RF4 path handoff wording | – | not reported |
+| #31 | books: wave 1 merges, wave 2 lanes | sol-loop: gpt-6.2-sol (high) | 2 rounds of fixes (branch commits r1, r2) | not recorded (the PR body still says pending; merged without a recorded final verdict) | r1: temporary core handoffs, Q5 waits, launch times, lane paths; r2: RF1 holds agent paths only | – | not reported |
 | #32 | RF6 split oversized test modules | sol-loop: gpt-6.2-sol (high) | 1 | approve | – | – | not reported |
 | #33 | RF5 split the eval report and data generator | sol-loop: gpt-6.2-sol (high) | 1 | approve | – | – | not reported |
 | #34 | RF4 split the model adapter | sol-loop: gpt-6.2-sol (high) | 3 | approve | see PR | – | not reported |
