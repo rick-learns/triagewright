@@ -93,13 +93,15 @@ stale. Lanes talk only through the Protocols in `contracts/ports.py`.
 ### 4. Guardrails are code, not prompts
 
 - **Customer scope.** Every tool call carries a `CallContext` set by code
-  from the ticket: `customer_id` never comes from model arguments. The ticket
-  API is a trusted internal ingress, like a helpdesk webhook: it binds to
+  from the ticket: `customer_id` never comes from model arguments. Only the
+  tools in `UNSCOPED_TOOLS` work without it: `search_kb`, and the
+  coordinator-owned `create_escalation` (only for `ctx.ticket_id`). All
+  others fail with `permission` when it's missing, and another customer's
+  records are reported as `not_found`, exactly like missing ones. So no
+  other customer's data can enter a transcript. The ticket API is a trusted
+  internal ingress, like a helpdesk webhook: its host port binds to
   localhost, and the helpdesk (not the customer) asserts `customer_id`. The
-  MCP server isn't published outside the Compose network. All tools
-  except `search_kb` fail with `permission` when it's missing, and another
-  customer's records are reported as `not_found`, exactly like missing ones.
-  So no other customer's data can enter a transcript.
+  MCP server isn't published outside the Compose network.
 - Customer text is PII-redacted before any model sees it, and re-redacted in
   the final reply.
 - **Injection.** Ticket text, tool outputs, and KB text are untrusted. The

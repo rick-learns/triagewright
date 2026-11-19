@@ -5,6 +5,8 @@ services:
     build: .
     command: ["triagewright-mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8765"]
     env_file: [{ path: .env, required: false }]
+    environment:
+      TW_MCP_TRANSPORT: http  # so settings require TW_APPROVAL_KEY here too
     # Not published: only the api container reaches MCP, on the compose network.
     volumes: ["tw-var:/app/var"]
 
@@ -13,6 +15,7 @@ services:
     command: ["triagewright-api"]
     env_file: [{ path: .env, required: false }]
     environment:
+      TW_API_HOST: 0.0.0.0  # inside the container; the host port stays on 127.0.0.1
       TW_MCP_TRANSPORT: http
       TW_MCP_URL: http://mcp:8765/mcp
       TW_OTLP_ENDPOINT: http://jaeger:4318

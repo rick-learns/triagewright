@@ -466,6 +466,23 @@ class FakeActionExecutor:
             )
             return ActionOutcome(action=action, status=ActionStatus.BLOCKED, result=result)
         arguments: JsonObject = args.model_dump(mode="json")
+        approval_id = stable_id("apr", ctx.ticket_id, action.tool, canonical_json(arguments))
+        if action.tool in IRREVERSIBLE_TOOLS:
+            if injection_suspected:
+                verdict = GuardrailVerdict(
+                    decision=GuardrailDecision.BLOCK,
+                    rule_ids=["injection.write_blocked"],
+                    injection_suspected=True,
+                )
+                return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
+            existing = self.approvals.get(approval_id)
+            if existing is not None and existing.customer_id == ctx.customer_id:
+                return ActionOutcome(
+                    action=action,
+                    status=_STORED_STATUS[existing.status],
+                    verdict=existing.verdict,
+                    approval_id=approval_id,
+                )
         elig = None
         if isinstance(args, RefundProposal):
             check, attempts = await self._call_with_retries(
@@ -491,7 +508,6 @@ class FakeActionExecutor:
         if verdict.decision is GuardrailDecision.REQUIRE_APPROVAL:
             if action.tool not in IRREVERSIBLE_TOOLS or ctx.customer_id is None:
                 return ActionOutcome(action=action, status=ActionStatus.BLOCKED, verdict=verdict)
-            approval_id = stable_id("apr", ctx.ticket_id, action.tool, canonical_json(arguments))
             stored = self.approvals.submit(
                 ApprovalRequest(
                     approval_id=approval_id,
@@ -520,7 +536,10 @@ class FakeActionExecutor:
         )
 
     async def decide(self, decision: ApprovalDecision) -> ActionOutcome:
-        request = self.approvals.decide(decision)
+        current = self.approvals.get(decision.approval_id)
+        if current is not None and current.status is ApprovalStatus.APPROVED and decision.approved:
+            return await self.execute_approved(current.approval_id)  # resume after a failure
+        request = self.approvals.decide(decision)  # raises on any other repeat decision
         if request.status is ApprovalStatus.APPROVED:
             return await self.execute_approved(request.approval_id)
         return ActionOutcome(

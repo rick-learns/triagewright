@@ -349,9 +349,26 @@ async def test_retry_after_a_lost_response_succeeds() -> None:
     assert not committed.is_error
     foreign = await gw.call(ToolName.ISSUE_REFUND, signed, ctx("cus_ava01", "human"))
     assert foreign.error and foreign.error.category is ErrorCategory.NOT_FOUND
-    retried = await ex.execute_approved(pending.approval_id)
+    # The reviewer re-sends the same approval through the API/CLI path.
+    retried = await ex.decide(
+        ApprovalDecision(
+            approval_id=pending.approval_id, approved=True, reviewer="s", decided_at=seed_as_of()
+        )
+    )
     assert retried.status is ActionStatus.EXECUTED and retried.result == committed
     assert len(gw.refunds) == len(seed_world().refunds) + 1
+    with pytest.raises(ValueError, match="already"):
+        await ex.decide(
+            ApprovalDecision(
+                approval_id=pending.approval_id,
+                approved=False,
+                reviewer="s",
+                decided_at=seed_as_of(),
+            )
+        )
+    # Re-proposing the executed full refund reports the stored outcome, not a refusal.
+    again = await ex.propose(_refund(amount=11800), ctx("cus_hal08"), injection_suspected=False)
+    assert again.status is ActionStatus.SKIPPED and again.approval_id == pending.approval_id
 
 
 async def test_reproposing_keeps_the_stored_decision() -> None:

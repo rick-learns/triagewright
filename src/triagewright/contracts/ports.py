@@ -99,13 +99,20 @@ class ActionExecutor(Protocol):
 
     ``propose``: blocks ``tools.CODE_OWNED_TOOLS``, then validates
     ``action.arguments`` against ``tools.proposal_model(tool)`` (a
-    model-supplied ``approval_id`` or token is a validation error). It builds
+    model-supplied ``approval_id`` or token is a validation error). For an
+    irreversible tool it then blocks if ``injection_suspected``, and if the
+    approval for these exact arguments already exists it returns that
+    approval's stored status without re-applying policy (so an executed
+    refund isn't reported as refused for the spent balance). It builds
     the :class:`PolicyContext` itself from ``ctx`` and its own clock. For
     refunds it calls ``check_refund_eligibility`` (``caller="action"``,
     counted in ``ExpectedOutcome.attempts``), retrying retryable errors up to
     ``LoopConfig.tool_retries`` times; a persistent error returns ``failed``
     with that ``ToolResult``, so lane B maps it like any tool error
-    (``not_found`` -> needs_info, retryable -> tool_failure). Then
+    (``not_found`` -> needs_info, retryable -> tool_failure). This lookup
+    needs no injection screen: it is parsed into ``RefundEligibility``, which
+    holds only ids, integers, dates, and ``RefundReason`` codes, so it can't
+    carry instructions. Then
     ``Guardrails.check_action``: ``allow`` runs the call; ``require_approval``
     submits an :class:`ApprovalRequest` with the exact arguments and
     idempotency key and returns ``pending_approval`` (or the stored status if
@@ -117,7 +124,10 @@ class ActionExecutor(Protocol):
     approval is ever stored for a request that turns out to be flagged.
 
     ``decide``: the one path the API and CLI use after a human decision. It
-    records the decision; if approved it runs ``execute_approved``.
+    records the decision; if approved it runs ``execute_approved``. Repeating
+    an approve for an already-approved (not yet executed) request resumes
+    execution with the stored idempotency key; any other repeat decision
+    raises ``ValueError``.
 
     ``execute_approved``: loads the stored request (never fresh model
     arguments), requires status ``approved``, signs ``policy.approval_token``,
