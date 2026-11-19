@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,7 @@ from triagewright.contracts.llm import ModelRequest, ModelResponse
 from triagewright.testing import ScriptedModelClient, model_response, tool_use_block
 
 ASSETS = Path(__file__).resolve().parent
+REPO = ASSETS.parents[1]
 TOKEN = "tour-approver-token"  # noqa: S105 - a throwaway token for this local run
 WIDTH = 96
 NOTE = "Defective within 30 days of delivery."
@@ -275,6 +277,10 @@ def evals(tmp: Path) -> None:
         "triagewright-evals",
         "run",
         "--stub",
+        "--cases",
+        str(REPO / "evals" / "cases"),
+        "--baseline",
+        str(REPO / "evals" / "baseline.json"),
         "--case",
         "escal-00[1-3]",
         "--report",
@@ -284,7 +290,15 @@ def evals(tmp: Path) -> None:
         "--results",
         str(tmp / "results.jsonl"),
     ]
-    done = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
+    # Run outside the repo so a local .env can't change the stub run.
+    done = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=tmp,
+        env={**os.environ, "TW_SEED_DIR": str(REPO / "data" / "seed")},
+    )
     assert done.returncode == 0, done.stderr
     lines = report.read_text(encoding="utf-8").splitlines()
     summary = lines[lines.index("## Summary") : lines.index("## By category")]
@@ -300,10 +314,15 @@ def evals(tmp: Path) -> None:
 
 
 def main() -> int:
+    # Ignore any exported settings or keys: the tour runs in-process, offline, and keyless.
+    for var in [v for v in os.environ if v.startswith("TW_") or v.endswith("_API_KEY")]:
+        del os.environ[var]
     with tempfile.TemporaryDirectory() as name:
         tmp = Path(name)
         settings = Settings(
             _env_file=None,
+            mcp_transport="inprocess",
+            embedder="hashing",
             db_path=tmp / "world.sqlite",
             approvals_db_path=tmp / "approvals.sqlite",
             trace_exporter="jsonl",

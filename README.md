@@ -59,7 +59,7 @@ Latest live run: the Gemini API free tier (`gemini-3.5-flash-lite`), 2026-11-19.
 | p95 latency | < 8 s | 47.6 s | – |
 | Reviewed cases | ≥ 50 | 0 of 54 human-reviewed | – |
 
-No unsafe action in any case, but pass rate and p95 latency are still below target, and the 54 cases haven't been human-reviewed yet. Free-tier queues inflate latency, and the $0.00 cost meets its target only because the models are free.
+No unsafe action in any case, but the pass rate is still below target and p95 latency is far above it, and the 54 cases haven't been human-reviewed yet. Free-tier queues inflate latency, and the $0.00 cost meets its target only because the models are free.
 
 ## Tour
 
@@ -72,14 +72,14 @@ Every image below comes from `uv run python docs/assets/tour.py`. It runs the re
 </tr>
 <tr>
 <td><b>Resolve.</b> The CLI prints the <code>FinalResponse</code> (trimmed here). Code builds the status, actions, and escalation from executor records. The refund was judged eligible and is held for approval.</td>
-<td><b>Approve.</b> A reviewer with <code>TW_APPROVER_TOKEN</code> approves over the HTTP API. The stored arguments run under a signed approval token, with an idempotency key derived from the approval id.</td>
+<td><b>Approve.</b> The script approves the refund through the real HTTP API in-process, with the approver token. The curl lines show the equivalent requests. The stored arguments run under a signed approval token, with an idempotency key derived from the approval id.</td>
 </tr>
 <tr>
 <td><img src="docs/assets/tour-trace.svg" alt="Span tree of one request: redaction, injection screening, triage, coordinator turns, search_kb, the action subagent's get_order call, escalation review, and executor.propose ending in pending_approval" /></td>
 <td><img src="docs/assets/tour-evals.svg" alt="Stub eval report: three escalation cases fail because the stub claims an escalation without calling create_escalation" /></td>
 </tr>
 <tr>
-<td><b>Trace.</b> OpenTelemetry spans for every turn, subagent, model call, tool call, and guardrail check, written as JSONL (or sent to Jaeger). Every KB chunk and tool result is screened before a model sees it.</td>
+<td><b>Trace.</b> The scripted resolve's JSONL trace, drawn as a span tree: redaction, injection screening of the ticket, KB chunks, and tool output, each subagent and model call, <code>search_kb</code> and <code>get_order</code>, and <code>executor.propose</code> holding the refund. Spans can also go to Jaeger over OTLP.</td>
 <td><b>Evals grade evidence.</b> The stub resolver <i>says</i> it escalated, but never called <code>create_escalation</code>. The graders read the call log, so all three cases fail.</td>
 </tr>
 </table>
@@ -90,9 +90,10 @@ You need Python 3.12 and [uv](https://docs.astral.sh/uv/). None of these command
 
 ```bash
 uv sync
-uv run pytest                               # 854 tests, no network
+uv run pytest                               # 854 tests, no external network
 uv run triagewright-evals smoke             # validate all 54 eval cases
-uv run triagewright-evals run --stub        # exercise the harness and graders without a model
+uv run triagewright-evals run --stub --report var/evals/stub.md \
+  --json var/evals/stub.json --results var/evals/stub.jsonl   # harness and graders, no model
 uv run python docs/assets/tour.py           # re-render the tour images
 ```
 
@@ -104,27 +105,35 @@ cp .env.example .env
 uv run triagewright resolve --ticket-id tkt_demo0001 --customer-id cus_jun10 \
   --body "My smartwatch from ord_j1001 won't turn on. I'd like a refund."
 uv run triagewright approvals list
-TW_APPROVER_TOKEN=<token> uv run triagewright approvals decide <approval_id> --approve
+
+# Decisions need the same TW_APPROVER_TOKEN in .env and in this shell.
+python3 -c 'import secrets; print(secrets.token_hex(32))'   # paste into .env as TW_APPROVER_TOKEN
+export TW_APPROVER_TOKEN="<the same value>"
+APPROVAL_ID="apr_..."                       # an approval_id from the list above
+uv run triagewright approvals decide "$APPROVAL_ID" --approve
 ```
 
 **Containers (live provider).** `compose.yaml` runs the MCP server and the API from one image. The MCP server runs in its own container, so `.env` also needs `TW_APPROVAL_KEY`, and approving refunds needs `TW_APPROVER_TOKEN`:
 
 ```bash
-# In .env, as well as the provider settings above:
-#   TW_APPROVAL_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
-#   TW_APPROVER_TOKEN=<another random token>
-podman compose up                           # or: docker compose up
-podman compose --profile tracing up         # also starts Jaeger, UI on http://localhost:16686
+# .env as above, plus TW_APPROVAL_KEY set to another secrets.token_hex(32) value.
+podman compose up -d                        # or: docker compose up -d
 
 curl -s localhost:8080/healthz
 curl -s -X POST localhost:8080/tickets -H 'Content-Type: application/json' -d '{
-  "ticket_id": "tkt_demo0001", "customer_id": "cus_jun10",
+  "ticket_id": "tkt_demo0002", "customer_id": "cus_jun10",
   "body": "My smartwatch from ord_j1001 will not turn on. I would like a refund.",
   "created_at": "2026-06-15T07:55:00Z"}'
 curl -s localhost:8080/approvals
-curl -s -X POST localhost:8080/approvals/<approval_id>/decision -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TW_APPROVER_TOKEN" -d '{"approved": true}'
+APPROVAL_ID="apr_..."                       # an approval_id from the list above
+curl -s -X POST "localhost:8080/approvals/$APPROVAL_ID/decision" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TW_APPROVER_TOKEN" \
+  -d '{"approved": true}'
+podman compose down
 ```
+
+For traces in Jaeger, set `TW_TRACE_EXPORTER=otlp` in `.env` and start with
+`podman compose --profile tracing up -d` instead. The UI is at http://localhost:16686.
 
 The API binds to `127.0.0.1:8080`. The MCP server isn't published outside the Compose network.
 
@@ -138,7 +147,7 @@ Settings are `TW_*` environment variables, read from `.env`. [`.env.example`](.e
 | `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | – | key for the chosen live provider |
 | `TW_MODEL_COORDINATOR`, `TW_MODEL_TRIAGE`, `TW_MODEL_ANSWER`, `TW_MODEL_ACTION`, `TW_MODEL_ESCALATION`, `TW_MODEL_JUDGE` | provider's free defaults | model id per role |
 | `TW_LLM_REQUESTS_PER_MINUTE` | provider's free quota | client-side pacing (gemini 15, openrouter 20) |
-| `TW_RECORD` | `false` | append live calls to `evals/fixtures/recordings/` for replay |
+| `TW_RECORD` | `false` | live eval runs only: append calls to `evals/fixtures/recordings/` for replay (the API and CLI refuse it) |
 | `TW_MAX_TURNS`, `TW_TURN_TIMEOUT_S`, `TW_TOTAL_TIMEOUT_S`, `TW_TOOL_RETRIES` | `8`, `20`, `30`, `2` | agent loop bounds |
 | `TW_REFUND_HARD_LIMIT_CENTS`, `TW_REFUND_WINDOW_DAYS` | `50000`, `30` | refund policy |
 | `TW_APPROVAL_KEY` | unset | HMAC key for approval tokens; required when MCP runs out of process |
@@ -166,11 +175,12 @@ The full design is in [`docs/architecture.md`](docs/architecture.md) and [ADR-00
 
 ## Evals
 
-There are 54 cases in six categories: happy path (10), policy edge (10), injection (9), tool failure (9), ambiguous (8), and escalation required (8). Each case runs on its own isolated stack, with a fresh world, clock, injected faults, call log, ledger, and approvals. Deterministic graders run first, then an optional LLM-judge rubric. A run fails the gate on any unsafe action, a lower pass rate, or a cost or p95 rise of more than 10% in the same mode.
+There are 54 cases in six categories: happy path (10), policy edge (10), injection (9), tool failure (9), ambiguous (8), and escalation required (8). Each case runs on its own isolated stack, with a fresh world, clock, injected faults, call log, ledger, and approvals. Deterministic graders run first, then an optional LLM-judge rubric. Any unsafe action always fails the gate. A full run is also compared with the same mode's entry in `evals/baseline.json` and fails on a lower pass rate or a rise of more than 10% in cost or p95 latency (latency isn't gated in stub mode). The checked-in baseline has no entries yet.
 
 ```bash
 uv run triagewright-evals smoke                         # validate case files (no key)
-uv run triagewright-evals run --stub                    # harness self-check (no key)
+uv run triagewright-evals run --stub --report var/evals/stub.md \
+  --json var/evals/stub.json --results var/evals/stub.jsonl     # harness self-check (no key)
 
 # Live, on a free tier (spends quota):
 TW_LLM_PROVIDER=gemini uv run triagewright-evals run --concurrency 1 --min-interval 5 --resume
