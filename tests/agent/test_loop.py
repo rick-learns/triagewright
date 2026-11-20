@@ -104,6 +104,15 @@ async def test_max_tokens_gets_one_continuation() -> None:
     assert retry.messages[-1].content == [TextBlock(text=prompts.CONTINUE_AFTER_MAX_TOKENS)]
 
 
+async def test_the_continuation_gets_twice_the_token_limit() -> None:
+    # A reasoning model's thinking counts against max_tokens: the same limit would cut it again.
+    s = stack([triage(), text("Your order", StopReason.MAX_TOKENS), finalize(), review()])
+    await s.resolve(sample_ticket())
+    first, retry = s.requests("coordinator")
+    assert (first.max_tokens, retry.max_tokens) == (1024, 2048)
+    assert s.requests("escalation")[0].max_tokens == 1024
+
+
 async def test_max_tokens_twice_is_a_safe_fallback() -> None:
     cut = model_response(stop_reason=StopReason.MAX_TOKENS)
     s = stack([triage(), cut, cut])
