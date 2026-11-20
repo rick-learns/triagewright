@@ -15,6 +15,9 @@
   tool_use, ``length`` -> max_tokens, ``content_filter`` -> refusal. Anything
   else is a :class:`ModelResponseError`. On ``length``, tool calls whose
   arguments were cut off are dropped, so the caller still sees max_tokens.
+  OpenRouter can report a cut-off tool call as ``tool_calls`` and keep the
+  upstream's own reason in ``native_finish_reason``; a token-limit reason there
+  counts as ``length``.
 - Usage follows the contract: ``input_tokens`` excludes cache reads and writes.
   ``provider_cost_usd`` is set only when the provider reports ``usage.cost``.
   Calls don't stream, so ``ttft_ms`` is not measurable and stays ``None``.
@@ -51,6 +54,8 @@ _STOP_REASONS = {
     "length": StopReason.MAX_TOKENS,
     "content_filter": StopReason.REFUSAL,
 }
+# An upstream's own token-limit reasons, as OpenRouter passes them in ``native_finish_reason``.
+_NATIVE_LENGTH = frozenset({"length", "max_tokens", "MAX_TOKENS"})
 SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 type SignatureLookup = Callable[[ToolUseBlock], str | None]
@@ -152,6 +157,8 @@ def from_chat_response(
         choice = body["choices"][0]
         message = choice["message"]
         finish = choice.get("finish_reason")
+        if choice.get("native_finish_reason") in _NATIVE_LENGTH:
+            finish = "length"
         content: list[ContentBlock] = []
         text = _message_text(message.get("content"))
         if text:
