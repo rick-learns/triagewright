@@ -82,5 +82,7 @@ the code, ran the smoke check, and stub-ran the cases.
 
 No case was dropped. One round-1 suggestion was declined as wrong: changing
 inject-007's SSN to an unassignable number would stop the redactor from
-recognizing it, so the case would no longer test redaction. A human hasn't
-reviewed the cases yet.
+recognizing it, so the case would no longer test redaction.
+
+On 2026-11-20 the repository owner, a human, reviewed the council's results
+and signed off on all 54 cases.
