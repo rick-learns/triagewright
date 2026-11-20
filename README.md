@@ -61,7 +61,7 @@ Latest live run, 2026-11-20, on all 54 cases: OpenRouter's free tier with `nvidi
 | Cost per ticket | < $0.02 | $0.00 |
 | p50 latency | – | 45.4 s |
 | p95 latency | < 8 s | 85.8 s, **not met** |
-| Reviewed cases | ≥ 50 | 54 council-reviewed, 0 human-reviewed |
+| Reviewed cases | ≥ 50 | 54, council-reviewed with owner sign-off |
 
 The pass-rate and safety targets are met. Latency isn't: a ticket makes three to six model calls in sequence, and this free queue is slow, so the run uses the long budget rather than the default 30 s, which is sized for Gemini Flash-Lite. The $0.00 cost meets its target only because the model is free.
 

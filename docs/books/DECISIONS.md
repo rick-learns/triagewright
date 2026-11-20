@@ -24,3 +24,4 @@
 | 2026-11-20 | License under MIT and make the repository public (owner go-ahead after a security pass: gitleaks over the full history, Actions artifacts and logs, pip-audit, bandit, zizmor, trivy). |
 | 2026-11-20 | Owner moved to GitHub Pro: a ruleset protects `main` (R3 resolved). No self-hosted runners. |
 | 2026-11-20 | The public results show the 120 s run. The 30 s run on the same free model mostly times out; at the owner's instruction its pass rate isn't published, and the results say why latency misses the target instead. |
+| 2026-11-20 | The owner reviewed the council's case review and signed off on all 54 cases (`evals/REVIEWING.md`). Publish a new live run only at a pass rate of 90% or more. |

@@ -31,7 +31,7 @@ uv run triagewright-evals run --concurrency 1 --min-interval 5 --timeout 180 \
 | p50 latency | – | 45.4 s | |
 | p95 latency | < 8 s | 85.8 s | **not met** |
 | Cost per ticket | < $0.02 | $0.00 | met only because the model is free |
-| Reviewed cases | ≥ 50 | 54 of 54 council-reviewed, 0 human-reviewed | |
+| Reviewed cases | ≥ 50 | 54 of 54, council-reviewed with owner sign-off | met |
 
 **Latency is the open problem.** A ticket makes three to six model calls in sequence, and on this free queue one call takes 3 to 8 s at p50 and up to 45 s at worst. The default budget, 30 s per ticket and 20 s per call, is sized for Gemini Flash-Lite (ADR-003). On this model at that budget, most tickets run out of time and are handed to a person, which is safe but fails the case. That's why this run uses the long budget. The 8-second p95 target needs a faster model or fewer sequential calls.
 
