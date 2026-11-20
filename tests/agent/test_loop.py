@@ -361,6 +361,33 @@ async def test_persistent_tool_failure_escalates_tier1() -> None:
     assert "get_order" in str(args["summary"])
 
 
+async def test_a_tool_still_failing_after_the_retries_tells_the_model_to_stop() -> None:
+    # toolfail-008 live: the model read "retryable" and searched a rate-limited KB three ways.
+    s = stack(
+        [triage(), call("get_order", ORDER), finalize("Sorry, I couldn't check."), review()],
+        faults=[transient(times=5)],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket())
+    seen = tool_results(s.requests("coordinator")[1])[0]
+    assert seen.is_error
+    assert seen.content.endswith(prompts.TOOL_DOWN.format(tool="get_order"))
+
+
+async def test_a_non_retryable_error_gets_no_stop_note() -> None:
+    s = stack(
+        [
+            triage(),
+            call("get_order", {"order_id": "ord_zzzz"}),
+            finalize("I couldn't find that order. Could you check the id?", "needs_info"),
+            review(),
+        ]
+    )
+    await s.resolve(sample_ticket("Where is ord_zzzz?"))
+    seen = tool_results(s.requests("coordinator")[1])[0]
+    assert seen.is_error and "retried" not in seen.content
+
+
 async def test_fallback_after_a_tool_failure_keeps_the_reason() -> None:
     s = stack(
         [triage(), call("get_order", ORDER)],
