@@ -11,7 +11,9 @@ RUN uv sync --no-dev --no-editable
 
 # Runtime: the venv and the data the app reads relative to /app. No uv, no sources, no build tools.
 FROM python:3.12-slim
-RUN useradd --create-home --uid 10001 app
+# Debian security fixes land before the base image is rebuilt (zlib CVE-2026-85091, 2026-11).
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=build /app/.venv ./.venv
 COPY data ./data
