@@ -220,3 +220,7 @@ evals/              54 cases, recordings, baseline
 schemas/            JSON Schemas exported from the contracts
 docs/               ADRs, contracts, project books, README assets
 ```
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
