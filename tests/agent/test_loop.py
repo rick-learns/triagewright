@@ -374,6 +374,30 @@ async def test_a_tool_still_failing_after_the_retries_tells_the_model_to_stop() 
     assert seen.content.endswith(prompts.TOOL_DOWN.format(tool="get_order"))
 
 
+async def test_the_coordinator_hears_a_subagent_s_tool_is_down() -> None:
+    # toolfail-008 live: after the answer subagent's search failed through its retries, the
+    # coordinator, which sees only the draft, searched again itself.
+    error = ToolError(category=ErrorCategory.RATE_LIMITED, message="slow down", retryable=True)
+    down = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)
+    draft: JsonObject = {"answer": "I couldn't check.", "grounded": False, "confidence": 0.2}
+    s = stack(
+        [
+            triage(),
+            call("answer"),
+            call("search_kb", {"query": "return window"}),
+            submit("answer", draft),
+            finalize("Sorry, I couldn't check."),
+            review(),
+        ],
+        faults=[down],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    await s.resolve(sample_ticket("How long do I have to return an item?"))
+    (answered,) = tool_results(s.requests("coordinator")[1])
+    assert answered.content.endswith(prompts.TOOL_DOWN.format(tool="search_kb"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 3
+
+
 async def test_a_non_retryable_error_gets_no_stop_note() -> None:
     s = stack(
         [

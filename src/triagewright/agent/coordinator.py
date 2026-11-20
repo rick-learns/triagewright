@@ -228,7 +228,8 @@ class Coordinator(Routing):
     def _tools(self, run: RequestRun) -> list[LocalTool]:
         async def answer(_: JsonObject) -> tuple[str, bool]:
             draft, flagged = await subagents.answer(run)
-            return as_data(canonical_json(draft.model_dump(mode="json")), flagged), False
+            content = as_data(canonical_json(draft.model_dump(mode="json")), flagged)
+            return content + run.down_notes(), False
 
         async def action(_: JsonObject) -> tuple[str, bool]:
             try:
@@ -237,7 +238,8 @@ class Coordinator(Routing):
                 raise Fallback(
                     LoopStop.ERROR, EscalationReason.LOW_CONFIDENCE, "action subagent refused"
                 ) from None
-            return as_data(canonical_json(result.model_dump(mode="json")), flagged), False
+            content = as_data(canonical_json(result.model_dump(mode="json")), flagged)
+            return content + run.down_notes(), False
 
         reads = REFUND_READ_TOOLS if _refund_requested(run) else READ_TOOLS
         tools = [run.business_tool(name, "coordinator") for name in reads]

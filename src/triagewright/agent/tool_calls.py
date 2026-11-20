@@ -198,6 +198,12 @@ class ToolCalls(RunState):
         )
         return LocalTool(definition=definition, handler=handler)
 
+    def down_notes(self) -> str:
+        """The stop note for each tool that failed through its retries so far, for a model that
+        didn't see the failure itself (the coordinator, after a subagent's call)."""
+        down = sorted({r.tool.value for r in self.broken.values() if r.error and r.error.retryable})
+        return "".join(f"\n{prompts.TOOL_DOWN.format(tool=tool)}" for tool in down)
+
     def searched(self, arguments: JsonObject) -> bool:
         """Whether this request already ran an equivalent ``search_kb`` call."""
         return _search_key(arguments) in self.kb_searches
