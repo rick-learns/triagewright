@@ -28,6 +28,8 @@ from triagewright.contracts.telemetry import SpanKind
 from triagewright.contracts.world import EscalationReason
 from triagewright.pacing import CallBudget, PacingRefusedError
 
+_MAX_TOKENS_CAP = 64_000  # ModelRequest's bound
+
 
 def _append(
     messages: list[Message], role: Literal["user", "assistant"], blocks: Sequence[ContentBlock]
@@ -52,6 +54,7 @@ class ModelLoop(ToolCalls):
         messages: Sequence[Message],
         tools: Sequence[ToolDefinition],
         force: str | None,
+        max_tokens: int | None = None,
     ) -> ModelResponse:
         left = self.ensure_time()
         request = ModelRequest(
@@ -60,7 +63,7 @@ class ModelLoop(ToolCalls):
             messages=list(messages),
             tools=list(tools),
             tool_choice=ToolChoice(type="tool", name=force) if force else None,
-            max_tokens=self.config.max_tokens,
+            max_tokens=max_tokens or self.config.max_tokens,
             purpose=purpose,
         )
         started_ms = self.elapsed_ms()
@@ -115,7 +118,9 @@ class ModelLoop(ToolCalls):
         The result arrives as a call to ``output_tool``, whose schema is ``output``.
         ``tool_use`` runs every requested tool and appends the results; ``end_turn``
         (or ``stop_sequence``) forces the output tool; ``max_tokens`` gets one
-        continuation; ``pause_turn`` continues; ``refusal`` raises :class:`Refused`.
+        continuation, with twice the token limit from then on (a reasoning model's thinking
+        counts against the limit, and would fill the same one again); ``pause_turn``
+        continues; ``refusal`` raises :class:`Refused`.
         Invalid output, or output ``check`` rejects with a message, gets one repair
         attempt (a ``check`` repair leaves the tools free). ``settle`` runs after all of a
         turn's tool calls and lets code return the result once they have decided it, saving
@@ -144,7 +149,12 @@ class ModelLoop(ToolCalls):
                 f"{purpose}.turn", SpanKind.AGENT_TURN, {"turn": turn}
             ) as span:
                 response = await self.call_model(
-                    purpose, system, messages, definitions, output_tool if force else None
+                    purpose,
+                    system,
+                    messages,
+                    definitions,
+                    output_tool if force else None,
+                    min(2 * self.config.max_tokens, _MAX_TOKENS_CAP) if continued else None,
                 )
                 stop = response.stop_reason
                 texts = [b for b in response.content if isinstance(b, TextBlock)]
