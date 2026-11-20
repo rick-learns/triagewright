@@ -4,6 +4,7 @@ citation."""
 from __future__ import annotations
 
 import re
+import sys
 
 from triagewright.agent import prompts
 from triagewright.agent.finalize import CitationCandidate, FinalizeArgs
@@ -99,13 +100,21 @@ async def _settled(run: RequestRun) -> FinalizeArgs | None:
 
 
 def _policy_citation(run: RequestRun) -> Citation | None:
-    """The first trusted refund-policy hit seen, quoting its first sentence."""
-    for hit in run.kb_hits.values():
-        if hit.doc_id != _REFUND_POLICY_DOC:
-            continue
+    """A trusted refund-policy hit, quoting its first sentence. Hits go in page order, not
+    rank, so the policy's opening rule (the 30-day window every refund is decided by) is
+    cited when it was retrieved, rather than whichever section ranked first, such as what
+    can't be refunded beside an eligible refund."""
+    hits = [hit for hit in run.kb_hits.values() if hit.doc_id == _REFUND_POLICY_DOC]
+    for hit in sorted(hits, key=lambda hit: _ordinal(hit.chunk_id)):
         if (citation := run.cite(hit.chunk_id, first_sentence(hit.text))) is not None:
             return citation
     return None
+
+
+def _ordinal(chunk_id: str) -> int:
+    """A chunk's place in its page (``<doc_id>#<ordinal>``); unnumbered chunks go last."""
+    ordinal = chunk_id.rpartition("#")[2]
+    return int(ordinal) if ordinal.isdigit() else sys.maxsize
 
 
 def first_sentence(text: str) -> str:
