@@ -13,7 +13,7 @@ Runs on one machine on free-tier models. Spend so far is $0.
 ![MCP](https://img.shields.io/badge/tools-MCP-111827)
 ![OpenTelemetry](https://img.shields.io/badge/tracing-OpenTelemetry-f5a800)
 ![Podman](https://img.shields.io/badge/runtime-Podman-892ca0)
-![Tests](https://img.shields.io/badge/tests-854%20passing-16a34a)
+![Tests](https://img.shields.io/badge/tests-941%20passing-16a34a)
 ![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate-70.4%25%20(target%2090%25)-d97706)
 ![Spend](https://img.shields.io/badge/spend-%240-16a34a)
 
@@ -94,7 +94,7 @@ You need Python 3.12 and [uv](https://docs.astral.sh/uv/). None of these command
 
 ```bash
 uv sync
-uv run pytest                               # 854 tests, no external network
+uv run pytest                               # 941 tests, no external network
 uv run triagewright-evals smoke             # validate all 54 eval cases
 uv run triagewright-evals run --stub --report var/evals/stub.md \
   --json var/evals/stub.json --results var/evals/stub.jsonl   # harness and graders, no model
@@ -122,7 +122,7 @@ uv run triagewright approvals decide "$APPROVAL_ID" --approve
 
 ```bash
 # .env as above, plus TW_APPROVAL_KEY set to another secrets.token_hex(32) value.
-podman compose up -d                        # or: docker compose up -d
+podman compose up -d --build                # or: docker compose up -d --build
 until curl -sf localhost:8080/healthz; do sleep 1; done    # wait for the API
 
 curl -s -X POST localhost:8080/tickets -H 'Content-Type: application/json' -d '{
@@ -141,7 +141,7 @@ For traces in Jaeger, set `TW_TRACE_EXPORTER=otlp` in `.env`, start with
 `podman compose --profile tracing up -d`, and stop with `podman compose --profile tracing down`.
 The UI is at http://localhost:16686.
 
-The API binds to `127.0.0.1:8080`. The MCP server isn't published outside the Compose network.
+The API binds to `127.0.0.1:8080`. The MCP server isn't published outside the Compose network. `/healthz` only says the API process is up; it doesn't check the MCP server, so the first ticket is the real check. A ticket the agent can't finish is handed off to a person over MCP, and its `handoff_id` confirms the handoff was stored.
 
 ## Configuration
 
@@ -213,10 +213,14 @@ src/triagewright/
   observability/   OpenTelemetry spans, pricing, cost and latency
   evals/           eval harness, graders, judge, report
   api/, cli/       FastAPI app and Typer CLI
-  wiring.py        composition root
+  wiring/          composition root
   testing/         fakes for every port
 data/seed, data/kb  synthetic world (customers, orders, refunds) and 13 KB articles
 evals/              54 cases, recordings, baseline
 schemas/            JSON Schemas exported from the contracts
 docs/               ADRs, contracts, project books, README assets
 ```
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
