@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -57,6 +58,19 @@ async def test_code_cites_the_refund_policy_not_the_first_page_seen() -> None:
     s = stack([triaged, shipping, act, propose, submitted, reviewed])
     response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
     assert [c.doc_id for c in response.citations] == ["kb_refund_policy"]
+
+
+async def test_code_cites_the_refund_rule_not_the_exclusion_that_ranked_first() -> None:
+    # A search worded like the "not refundable" section ranks it above the 30-day rule.
+    triaged, _, act, propose, submitted, reviewed = refund_script("ord_h8001", 11800)
+    search = call("search_kb", {"query": "orders never delivered can't be refunded, suspended"})
+    s = stack([triaged, search, act, propose, submitted, reviewed])
+    response = await s.resolve(refund_ticket("cus_hal08", "ord_h8001"))
+    (result,) = tool_results(s.requests("coordinator")[1])
+    ranked = [hit["chunk_id"] for hit in json.loads(result.content)["data"]["hits"]]
+    assert ranked.index(REFUND_POLICY) > 0  # the rule didn't rank first
+    assert response.status is ResolutionStatus.PENDING_APPROVAL
+    assert [c.chunk_id for c in response.citations] == [REFUND_POLICY]
 
 
 async def test_a_refund_proposed_on_a_ticket_triage_missed_is_settled_too() -> None:
