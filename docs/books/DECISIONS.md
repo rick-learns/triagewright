@@ -21,3 +21,6 @@
 | 2026-11-19 | Use rootless Podman instead of Docker for the local stack (R1 resolved). |
 | 2026-11-19 | Finish M2 and M3 without stopping. When a free model's quota runs out, use another free Gemini model or OpenRouter `:free`, and label every result with its provider and model. No paid models. |
 | 2026-11-19 | A three-model council (GPT Sol, GPT Astra, Claude Opus; high effort; read-only) reviews the eval cases instead of the owner. Only accepted cases get `reviewed: true`, and it's recorded as a council review (#39). |
+| 2026-11-20 | License under MIT and make the repository public (owner go-ahead after a security pass: gitleaks over the full history, Actions artifacts and logs, pip-audit, bandit, zizmor, trivy). |
+| 2026-11-20 | Owner moved to GitHub Pro: a ruleset protects `main` (R3 resolved). No self-hosted runners. |
+| 2026-11-20 | The public results show the 120 s run. The 30 s run on the same free model mostly times out; at the owner's instruction its pass rate isn't published, and the results say why latency misses the target instead. |
