@@ -212,6 +212,18 @@ def test_length_drops_cut_off_tool_calls() -> None:
     ]
 
 
+@pytest.mark.parametrize("native", ["length", "max_tokens", "MAX_TOKENS"])
+def test_a_native_token_limit_is_max_tokens_even_when_finish_says_tool_calls(native: str) -> None:
+    # OpenRouter, Nemotron: reasoning used up max_tokens mid-arguments, reported as tool_calls.
+    req = request(tools=[ORDER_TOOL])
+    calls = [{"id": "a", "function": {"name": "get_order", "arguments": '{"order_id": "'}}]
+    body = chat({"content": "", "tool_calls": calls}, finish="tool_calls")
+    body["choices"][0]["native_finish_reason"] = native
+    resp = from_chat_response(body, request=req, provider=Provider.OPENROUTER, latency_ms=0)
+    assert resp.stop_reason is StopReason.MAX_TOKENS
+    assert resp.content == []
+
+
 @pytest.mark.parametrize(
     "body",
     [
