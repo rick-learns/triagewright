@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from pydantic import ValidationError
 
+from triagewright.agent import prompts
 from triagewright.agent.common import Fallback, LocalTool, as_data
 from triagewright.agent.state import RunState
 from triagewright.contracts.agents import LoopStop, ProposedAction
@@ -185,7 +186,12 @@ class ToolCalls(RunState):
             if name is ToolName.LIST_ORDERS and result.data is not None:
                 with contextlib.suppress(ValidationError):
                     self._list_orders(ListOrdersInput.model_validate(arguments), result.data)
-            return self.observe(result, arguments), result.is_error
+            seen = self.observe(result, arguments)
+            if result.error is not None and result.error.retryable:
+                # call_tool returns a retryable error only once it has used up the retries,
+                # and the model would otherwise read "retryable" as a reason to ask again.
+                seen = f"{seen}\n{prompts.TOOL_DOWN.format(tool=name.value)}"
+            return seen, result.is_error
 
         definition = ToolDefinition(
             name=name.value, description=spec.description, input_schema=spec.input_schema()
