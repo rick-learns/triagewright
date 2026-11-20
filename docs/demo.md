@@ -19,9 +19,13 @@ case's world and injected faults, as `triagewright-evals run` does. The model's 
 scripted, so what's being shown is everything code does around them: grounding, routing,
 guardrails, approvals, and tracing.
 
-The animation at the top of the README is this run, rendered by
-[`docs/assets/demo_svg.py`](assets/demo_svg.py) into `docs/assets/demo.svg`
-(`uv run python docs/assets/demo_svg.py` re-renders it after a change to the demo).
+The animation at the top of the README is four of these scenes drawn as a support console
+by [`docs/assets/demo_chat.py`](assets/demo_chat.py) into `docs/assets/demo-chat.svg`. The
+terminal run itself is recorded below by [`docs/assets/demo_svg.py`](assets/demo_svg.py) into
+`docs/assets/demo.svg`. Re-render both after a change to the demo:
+`uv run python docs/assets/demo_chat.py` and `uv run python docs/assets/demo_svg.py`.
+
+<img src="assets/demo.svg" width="840" alt="Animated terminal running bash scripts/demo.sh: a grounded answer with KB citations, a $199 refund held for approval and then approved over the HTTP API, a prompt-injection ticket whose $5000 refund is blocked and sent to the security queue, a failing tool escalated to tier1, and the refund request's trace as a span tree" />
 
 ## Presenter script
 

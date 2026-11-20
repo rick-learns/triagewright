@@ -17,9 +17,9 @@ Runs on one machine on free-tier models. Spend so far is $0.
 ![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate-70.4%25%20(target%2090%25)-d97706)
 ![Spend](https://img.shields.io/badge/spend-%240-16a34a)
 
-<img src="docs/assets/demo.svg" width="840" alt="Animated terminal running bash scripts/demo.sh: a grounded answer with KB citations, a $199 refund held for approval and then approved over the HTTP API, a prompt-injection ticket whose $5000 refund is blocked and sent to the security queue, a failing tool escalated to tier1, and the refund request's trace as a span tree" />
+<img src="docs/assets/demo-chat.svg" width="900" alt="Animated support console. A customer asks about the return window and gets an answer with two verified knowledge-base quotes. A $199 smartwatch refund is checked against the policy, held, and executed once a reviewer clicks Approve. A ticket with planted instructions asking for a $5000 refund is blocked by code and handed to the security queue. An order lookup that times out three times is handed to tier1. The agent's guardrail and tool steps appear beside each conversation as they run." />
 
-<sub>A recording of <a href="docs/demo.md"><code>scripts/demo.sh</code></a>: the real stack, with a scripted model in place of the LLM, offline. Live-model results are in the table below.</sub>
+<sub>Four tickets from <a href="docs/demo.md"><code>scripts/demo.sh</code></a> on the real stack, offline, with a scripted model in place of the LLM. Every reply, citation, tool call, and outcome is from the run. Live-model results are in the table below.</sub>
 
 </div>
 
@@ -99,7 +99,7 @@ uv run triagewright-evals smoke             # validate all 54 eval cases
 uv run triagewright-evals run --stub --report var/evals/stub.md \
   --json var/evals/stub.json --results var/evals/stub.jsonl   # harness and graders, no model
 uv run python docs/assets/tour.py           # re-render the tour images
-uv run python docs/assets/demo_svg.py       # re-render the animated demo above
+uv run python docs/assets/demo_chat.py      # re-render the animated demo above
 ```
 
 **Resolve tickets (live provider).** Resolving a ticket needs a free-tier model. The default `replay` provider only replays recorded eval calls, so the API and CLI refuse to start under it.
