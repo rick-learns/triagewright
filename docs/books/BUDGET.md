@@ -16,6 +16,7 @@ Reviewer and worker model usage (sol-loop, council, delegates) is tracked separa
 | 2026-11-19 | X2 | openrouter (`:free`) | development runs full3 (30 s budget), full4 and full5 (120 s budget, judge on), all 54 cases on `nemotron-3-ultra-550b-a55b:free` | 0.00 | 0.00 |
 | 2026-11-20 | report | openrouter (`:free`) | key metadata check (usage $0); 54-case runs on `nemotron-3-ultra-550b-a55b:free`: 30 s budget on `b67de70`, 120 s budget (50 cases, stopped) on `b67de70`, 120 s budget on `74a3b11` (the report); 3-case spot check on `d395c1d`, 1-case spot check on `9b05b11`; 11 single-request probes | 0.00 | 0.00 |
 | 2026-11-20 | report | gemini (free plan) | 2 single-case probes; a 54-case attempt stopped after 8 cases (judge timeouts, 503s) | 0.00 | 0.00 |
+| 2026-11-21 | report | openrouter (`:free`) | 1 quota probe; 54-case run, 120 s budget, on `2c650e6` (the report). A 54-case attempt on 2026-11-20 on `6666fb5` was invalid: the daily free quota ran out partway through | 0.00 | 0.00 |
 
 ## Harness usage (reviewers/workers)
 
