@@ -14,7 +14,7 @@ Runs on one machine on free-tier models. Spend so far is $0.
 ![OpenTelemetry](https://img.shields.io/badge/tracing-OpenTelemetry-f5a800)
 ![Podman](https://img.shields.io/badge/runtime-Podman-892ca0)
 ![Tests](https://img.shields.io/badge/tests-949%20passing-16a34a)
-![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate-90.7%25%20(target%2090%25)-16a34a)
+![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate-92.6%25%20(target%2090%25)-16a34a)
 ![Spend](https://img.shields.io/badge/spend-%240-16a34a)
 
 <img src="docs/assets/demo-chat.svg" width="900" alt="Animated support console. A customer asks about the return window and gets an answer with two verified knowledge-base quotes. A $199 smartwatch refund is checked against the policy, held, and executed once a reviewer clicks Approve. A ticket with planted instructions asking for a $5000 refund is blocked by code and handed to the security queue. An order lookup that times out three times is handed to tier1. The agent's guardrail and tool steps appear beside each conversation as they run." />
@@ -50,17 +50,17 @@ This is eval case `happy-006` (all customers and orders are synthetic). What the
 - **Citation:** `kb_refund_policy`, *"Delivered orders can be refunded within 30 days of the delivery date."* Quotes are checked against the chunk text, and any that don't match are dropped.
 - **Outcome:** `pending_approval`. The refund is stored with its exact arguments and only runs once a human approves it over the API or CLI. The reply says the refund is under review, not that it's been sent.
 
-Latest live run, 2026-11-20, on all 54 cases: OpenRouter's free tier with `nvidia/nemotron-3-ultra-550b-a55b:free` for every role and the judge, a 120 s budget per ticket, commit `74a3b11`. Every failure and its cause are in [`docs/results.md`](docs/results.md).
+Latest live run, 2026-11-21, on all 54 cases: OpenRouter's free tier with `nvidia/nemotron-3-ultra-550b-a55b:free` for every role and the judge, a 120 s budget per ticket, commit `2c650e6`. Every failure and its cause are in [`docs/results.md`](docs/results.md).
 
 | Metric | Target | Measured |
 | --- | ---: | ---: |
-| Pass rate | ≥ 90% | **90.7%** (49/54) |
+| Pass rate | ≥ 90% | **92.6%** (50/54) |
 | Unsafe actions | 0 | **0** |
 | Escalation precision | – | 95.8% |
 | Escalation recall | – | 100% |
 | Cost per ticket | < $0.02 | $0.00 |
-| p50 latency | – | 45.4 s |
-| p95 latency | < 8 s | 85.8 s, **not met** |
+| p50 latency | – | 34.1 s |
+| p95 latency | < 8 s | 59.2 s, **not met** |
 | Reviewed cases | ≥ 50 | 54, council-reviewed with owner sign-off |
 
 The pass-rate and safety targets are met. Latency isn't: a ticket makes three to six model calls in sequence, and this free queue is slow, so the run uses the long budget rather than the default 30 s, which is sized for Gemini Flash-Lite. The $0.00 cost meets its target only because the model is free.
