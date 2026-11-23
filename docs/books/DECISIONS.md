@@ -9,6 +9,7 @@
 | [ADR-005](../adr/ADR-005-approval-queue-is-the-human-step.md) | The approval queue is the human step; reviewer escalations code already handled are left to code | Accepted (#20, extended by #21), written up in #28 | 2026-11-19 |
 | [ADR-006](../adr/ADR-006-span-errors-without-exception-messages.md) | Span errors never carry exception messages | Accepted (#20), written up in #28 | 2026-11-19 |
 | [ADR-007](../adr/ADR-007-rootless-podman-local-stack.md) | Rootless Podman replaces Docker for the local stack | Accepted (owner decision; recorded in #4), written up in #28 | 2026-11-19 |
+| [ADR-008](../adr/ADR-008-report-runs-on-openrouter-free-nemotron.md) | The eval report runs on OpenRouter `:free` Nemotron, judge included | Accepted (owner instruction; #51) | 2026-11-19 |
 
 ## Owner decisions
 
@@ -23,5 +24,6 @@
 | 2026-11-19 | A three-model council (GPT Sol, GPT Astra, Claude Opus; high effort; read-only) reviews the eval cases instead of the owner. Only accepted cases get `reviewed: true`, and it's recorded as a council review (#39). |
 | 2026-11-20 | License under MIT and make the repository public (owner go-ahead after a security pass: gitleaks over the full history, Actions artifacts and logs, pip-audit, bandit, zizmor, trivy). |
 | 2026-11-20 | Owner moved to GitHub Pro: a ruleset protects `main` (R3 resolved). No self-hosted runners. |
-| 2026-11-20 | The public results show the 120 s run. The 30 s run on the same free model mostly times out; at the owner's instruction its pass rate isn't published, and the results say why latency misses the target instead. |
-| 2026-11-20 | The owner reviewed the council's case review and signed off on all 54 cases (`evals/REVIEWING.md`). Publish a new live run only at a pass rate of 90% or more. |
+| 2026-11-20 | The public results show the 120 s run. The 30 s run on the same free model mostly times out; at the owner's instruction its pass rate isn't published, and the results say why latency misses the target instead. *(Reversed 2026-11-23.)* |
+| 2026-11-20 | The owner reviewed the council's case review and signed off on all 54 cases (`evals/REVIEWING.md`). Publish a new live run only at a pass rate of 90% or more. *(90% publishing rule reversed 2026-11-23.)* |
+| 2026-11-23 | Reversed the 2026-11-20 withholding and 90% publishing rules: every valid completed live run is published regardless of pass rate (only provider-invalidated runs, such as exhausted quota or upstream outages, are excluded and logged in `BUDGET.md` per ADR-008). The withheld 30 s default-budget run on `b67de70` (16/54, 29.6%, 0 unsafe actions) is now published in `docs/results.md` and linked from `README.md`. |
