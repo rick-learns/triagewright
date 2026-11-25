@@ -44,8 +44,10 @@ orchestrator. Policy facts come from `data/kb/`. The world clock is the seed
    - A call that failed this way stays failed for the rest of the request:
      the agent calling the same tool with equivalent arguments (defaults
      filled in) again gets the
-     same error without a new raw call. The refund executor retries its own
-     eligibility lookup for each proposal.
+     same error without a new raw call. A `rate_limited` failure closes the
+     whole tool for the rest of the request regardless of arguments (a quota
+     limit applies to the tool, not one query or record). The refund executor
+     retries its own eligibility lookup for each proposal.
    - `not_found` for an id the customer gave means asking for the correct id
      (`needs_info`).
 6. **Stay within the bounds.** Hitting the turn or time limit means escalating

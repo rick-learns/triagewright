@@ -398,6 +398,77 @@ async def test_the_coordinator_hears_a_subagent_s_tool_is_down() -> None:
     assert len(s.calls(ToolName.SEARCH_KB)) == 3
 
 
+async def test_a_rate_limited_tool_stays_closed_across_queries_and_callers() -> None:
+    # toolfail-008: even if the coordinator ignores TOOL_DOWN and retries search_kb with
+    # a reworded query after the answer subagent exhausted retries, code blocks extra raw calls.
+    error = ToolError(
+        category=ErrorCategory.RATE_LIMITED, message="too many requests", retryable=True
+    )
+    down = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)
+    draft: JsonObject = {"answer": "I couldn't check.", "grounded": False, "confidence": 0.2}
+    s = stack(
+        [
+            triage(),
+            call("answer"),
+            call("search_kb", {"query": "return window"}),
+            call("search_kb", {"query": "how to start a return"}),
+            submit("answer", draft),
+            call("search_kb", {"query": "return policy shipping label"}),
+            finalize("Sorry, I couldn't check."),
+            review(),
+        ],
+        faults=[down],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(sample_ticket("How many days do I have to return an item?"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 3
+    coord_search = tool_results(s.requests("coordinator")[2])[-1]
+    assert coord_search.is_error
+    assert coord_search.content.endswith(prompts.TOOL_DOWN.format(tool="search_kb"))
+    assert response.status is ResolutionStatus.ESCALATED
+    args = s.escalation_args()
+    assert (args["queue"], args["reason_codes"]) == ("tier1", ["tool_failure"])
+
+
+async def test_a_rate_limited_tool_that_recovers_stays_open() -> None:
+    error = ToolError(category=ErrorCategory.RATE_LIMITED, message="slow down", retryable=True)
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=2)
+    s = stack(
+        [
+            triage(),
+            call("search_kb", {"query": "return window"}),
+            call("search_kb", {"query": "shipping times"}),
+            finalize(),
+            review(),
+        ],
+        faults=[fault],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(sample_ticket("Returns and shipping?"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 4  # 2 faults + recovery + second query
+    assert response.status is ResolutionStatus.RESOLVED
+
+
+async def test_a_non_retryable_rate_limit_closes_the_tool_after_one_call() -> None:
+    error = ToolError(category=ErrorCategory.RATE_LIMITED, message="quota spent", retryable=False)
+    fault = ToolFault(tool=ToolName.SEARCH_KB, error=error, times=10)
+    s = stack(
+        [
+            triage(),
+            call("search_kb", {"query": "return window"}),
+            call("search_kb", {"query": "how to start a return"}),
+            finalize("Sorry, I couldn't check."),
+            review(),
+        ],
+        faults=[fault],
+        config=LoopConfig(retry_backoff_s=0),
+    )
+    response = await s.resolve(sample_ticket("How many days do I have to return an item?"))
+    assert len(s.calls(ToolName.SEARCH_KB)) == 1
+    assert response.status is ResolutionStatus.ESCALATED
+    assert s.escalation_args()["reason_codes"] == ["tool_failure"]
+
+
 async def test_a_non_retryable_error_gets_no_stop_note() -> None:
     s = stack(
         [

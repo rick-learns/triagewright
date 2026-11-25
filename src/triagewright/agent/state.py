@@ -70,6 +70,8 @@ class RunState:
     tool_failures: list[ToolName] = field(default_factory=list)
     # Failed calls by tool and canonical arguments; see ``call_tool``.
     broken: dict[tuple[ToolName, str], ToolResult] = field(default_factory=dict)
+    # Tools closed for the rest of the request regardless of arguments (rate_limited).
+    broken_tools: dict[ToolName, ToolResult] = field(default_factory=dict)
     turns: dict[str, int] = field(default_factory=dict)
     paced_s: float = 0.0  # rate-limit waits so far; off the request clock
 

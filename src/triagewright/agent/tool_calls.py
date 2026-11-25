@@ -89,10 +89,12 @@ class ToolCalls(RunState):
         A final service error (a retryable one that outlasts the retries, or one marked not
         retryable) is a tool failure, and that call stays failed for the rest of the request:
         the same tool with equivalent arguments (``_call_key``) returns the failure without a
-        raw call, so a model asking again can't multiply the attempts.
+        raw call, so a model asking again can't multiply the attempts. A ``rate_limited``
+        failure closes the whole tool for the rest of the request regardless of arguments,
+        since a quota limit applies to the tool rather than one query or record.
         """
         key = (name, _call_key(name, arguments))
-        if (failed := self.broken.get(key)) is not None:
+        if (failed := self.broken_tools.get(name) or self.broken.get(key)) is not None:
             return failed
         ctx = self.context(caller)
         attempt = 0
@@ -142,6 +144,8 @@ class ToolCalls(RunState):
     def _break(self, key: tuple[ToolName, str], result: ToolResult) -> None:
         self.tool_failures.append(key[0])
         self.broken[key] = result
+        if result.error is not None and result.error.category is ErrorCategory.RATE_LIMITED:
+            self.broken_tools[key[0]] = result
 
     def observe(self, result: ToolResult, arguments: JsonObject) -> str:
         """Screen a tool result, keep its facts and KB hits, and return what models see."""
