@@ -45,7 +45,7 @@ def record() -> list[Text]:
     out.print()
     seconds = round(time.monotonic() - start)
     out.print(f"demo finished in {seconds} s, offline, with a scripted model")
-    return Text.from_ansi(out.export_text(styles=True)).split("\n", allow_blank=True)
+    return list(Text.from_ansi(out.export_text(styles=True)).split("\n", allow_blank=True))
 
 
 def pause_before(line: Text) -> float:

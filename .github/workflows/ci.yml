@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,6 +51,16 @@ jobs:
       - run: uv sync
       - run: uv run pytest -m "not live" --cov --cov-report=term
 
+  test-py313:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync --python 3.13
+      - run: uv run --python 3.13 pytest -m "not live"
+
   evals-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -57,7 +70,35 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv sync
       - run: uv run triagewright-evals smoke
+      - run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          uv run triagewright-evals run --stub \
+            --report "$tmp/stub.md" \
+            --json "$tmp/stub.json" \
+            --results "$tmp/stub.jsonl"
       - run: bash scripts/demo.sh # offline, scripted model; fails over 60 s
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync
+      - run: |
+          uv export --locked --no-hashes --no-emit-project --all-groups --format requirements-txt \
+            | uv run pip-audit -r /dev/stdin --no-deps --disable-pip
+      - run: uv run zizmor --offline .github/workflows/
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: TW_COMPOSE="docker compose" bash scripts/compose_smoke.sh
 
   secrets:
     runs-on: ubuntu-latest

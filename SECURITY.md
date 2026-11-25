@@ -26,6 +26,7 @@ of every endpoint, and is out of scope here.
 
 ## What's checked
 
-CI runs ruff's security rules (bandit's `S` set), mypy, the test suite, and gitleaks over the
-full history on every pull request. Secrets come from the environment; only `.env.example` is
-committed.
+CI runs ruff's security rules (bandit's `S` set), mypy, the test suite (Python 3.12 and 3.13),
+`pip-audit` against `uv.lock`, `zizmor` on `.github/workflows/`, `scripts/compose_smoke.sh`, and
+gitleaks over the full history on every pull request and on a weekly schedule. Secrets come from
+the environment; only `.env.example` is committed.
