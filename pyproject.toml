@@ -41,6 +41,8 @@ dev = [
     "anyio>=4.6",
     "types-PyYAML>=6.0",
     "types-jsonschema>=4.23",
+    "pip-audit>=2.10",
+    "zizmor>=1.33",
 ]
 
 [build-system]
@@ -67,7 +69,7 @@ strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 mypy_path = "src"
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "docs/assets"]
 
 [[tool.mypy.overrides]]
 module = ["fastembed.*"]
@@ -87,7 +89,7 @@ source = ["triagewright"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 95
 show_missing = true
 skip_covered = true
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\.$"]

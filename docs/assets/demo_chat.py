@@ -17,7 +17,7 @@ import io
 import json
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
@@ -30,6 +30,7 @@ from rich.console import Console
 from triagewright import wiring
 from triagewright.config import Settings
 from triagewright.contracts.agents import ActionOutcome, FinalResponse
+from triagewright.contracts.common import JsonValue
 from triagewright.contracts.tickets import Ticket
 from triagewright.guardrails import SqliteApprovalStore
 
@@ -92,6 +93,13 @@ def money(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
 
+def int_arg(args: Mapping[str, JsonValue], key: str) -> int:
+    value = args[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"expected int for {key!r}, got {type(value).__name__}")
+    return value
+
+
 def opening(response: FinalResponse) -> list[Step]:
     triage = response.triage
     assert triage is not None, response
@@ -112,7 +120,7 @@ def opening(response: FinalResponse) -> list[Step]:
     return steps
 
 
-def tool_steps(names: list[tuple[str, str | None]]) -> list[Step]:
+def tool_steps(names: Sequence[tuple[str, str | None]]) -> list[Step]:
     steps: list[Step] = []
     attempts = sum(1 for _, error in names if error)
     tried = 0
@@ -129,7 +137,7 @@ def tool_steps(names: list[tuple[str, str | None]]) -> list[Step]:
 
 def blocked(outcome: ActionOutcome) -> Step:
     rules = ", ".join(outcome.verdict.rule_ids) if outcome.verdict else "policy"
-    amount = money(int(outcome.action.arguments["amount_cents"]))
+    amount = money(int_arg(outcome.action.arguments, "amount_cents"))
     return Step(f"{outcome.action.tool.value} {amount}", f"blocked by code: {rules}", "block")
 
 
@@ -183,12 +191,12 @@ def refund(settings: Settings) -> Scene:
         for path in sorted(settings.trace_dir.glob("*.jsonl"))
         for line in path.read_text(encoding="utf-8").splitlines()
     ]
-    names = [
-        (s["name"].removeprefix("tool."), None) for s in spans if s["name"].startswith("tool.")
+    names: list[tuple[str, str | None]] = [
+        (str(s["name"]).removeprefix("tool."), None) for s in spans if s["name"].startswith("tool.")
     ]
     # Spans are written as they end; tools end in the order they ran.
     eligibility = outcome.eligibility
-    amount = money(int(outcome.action.arguments["amount_cents"]))
+    amount = money(int_arg(outcome.action.arguments, "amount_cents"))
     order = str(outcome.action.arguments["order_id"])
     steps = opening(response) + tool_steps(names)
     steps.append(
@@ -253,7 +261,7 @@ def injection(settings: Settings) -> Scene:
         card=Card(
             "block",
             f"Blocked: {outcome.action.tool.value} "
-            f"{money(int(outcome.action.arguments['amount_cents']))}",
+            f"{money(int_arg(outcome.action.arguments, 'amount_cents'))}",
             [
                 "The model proposed it; code refused. Nothing awaits approval.",
                 f"Handed to the {response.escalation.queue.value} queue · {response.handoff_id}",
@@ -547,7 +555,7 @@ def draw_scene(tl: Timeline, scene: Scene, start: float) -> Iterator[str]:
     for title, quote in scene.citations:
         qlines = wrap(f"“{quote}”", 42)
         ch = 28 + 17 * len(qlines)
-        card = (
+        cite_card = (
             el("rect", width=BUBBLE_W, height=ch, rx=8, fill=PANEL, stroke=EDGE)
             + el("rect", width=3, height=ch, fill=TONES["ok"])
             + text(12, 17, f"{title} · quote checked ✓", 11, TONES["ok"], font="mono")
@@ -556,7 +564,7 @@ def draw_scene(tl: Timeline, scene: Scene, start: float) -> Iterator[str]:
                 for i, q in enumerate(qlines)
             )
         )
-        yield group(tl.show(t, end - FADE), card, x, y)
+        yield group(tl.show(t, end - FADE), cite_card, x, y)
         t += CITE_S
         y += ch + 8
 

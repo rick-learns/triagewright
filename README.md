@@ -13,7 +13,7 @@ Runs on one machine on free-tier models. Spend so far is $0.
 ![MCP](https://img.shields.io/badge/tools-MCP-111827)
 ![OpenTelemetry](https://img.shields.io/badge/tracing-OpenTelemetry-f5a800)
 ![Podman](https://img.shields.io/badge/runtime-Podman-892ca0)
-![Tests](https://img.shields.io/badge/tests-949%20passing-16a34a)
+[![CI](https://github.com/rick-learns/triagewright/actions/workflows/ci.yml/badge.svg)](https://github.com/rick-learns/triagewright/actions/workflows/ci.yml)
 ![Eval pass rate](https://img.shields.io/badge/eval%20pass%20rate%20(120s)-92.6%25%20(target%2090%25)-16a34a)
 ![Spend](https://img.shields.io/badge/spend-%240-16a34a)
 
